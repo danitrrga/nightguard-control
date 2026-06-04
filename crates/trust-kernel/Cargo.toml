@@ -3,6 +3,12 @@ name = "trust-kernel"
 version = "0.1.0"
 edition = "2021"
 
+# The crate is primarily a library; interop_cli is the Rust side of the Phase 1
+# cross-language exit gate (driven by scripts/interop/run_interop_gate.ps1).
+[[bin]]
+name = "interop_cli"
+path = "src/bin/interop_cli.rs"
+
 [dependencies]
 thiserror = "1"
 hmac = "0.12.1"
