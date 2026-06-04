@@ -7,8 +7,8 @@
 
 ### Trust Kernel
 
-- [ ] **KERN-01**: HMAC-SHA256 sign/verify produces byte-identical results across the Rust app and the PowerShell guard for the same key + input.
-- [ ] **KERN-02**: A 32-byte signing key is generated once and stored encrypted at rest via Windows DPAPI (CurrentUser), decryptable by both the Rust app and the PowerShell guard (raw `CryptProtectData` blob, no SecureString framing).
+- [x] **KERN-01**: HMAC-SHA256 sign/verify produces byte-identical results across the Rust app and the PowerShell guard for the same key + input.
+- [x] **KERN-02**: A 32-byte signing key is generated once and stored encrypted at rest via Windows DPAPI (CurrentUser), decryptable by both the Rust app and the PowerShell guard (raw `CryptProtectData` blob, no SecureString framing).
 - [x] **KERN-03**: Config and state writes are atomic and idempotent (temp → rename), never leaving partial or corrupt files.
 - [x] **KERN-04**: The config writer round-trips `config.yaml` so it stays readable by the existing PowerShell minimal YAML parser (format/comments preserved as needed).
 
@@ -68,8 +68,8 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| KERN-01 | Phase 1 | Pending |
-| KERN-02 | Phase 1 | Pending |
+| KERN-01 | Phase 1 | Complete |
+| KERN-02 | Phase 1 | Complete |
 | KERN-03 | Phase 1 | Complete |
 | KERN-04 | Phase 1 | Complete |
 | RULE-01 | Phase 2 | Pending |

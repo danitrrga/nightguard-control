@@ -40,7 +40,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. The config writer round-trips `config.yaml` so the existing PowerShell minimal YAML parser still reads it correctly after a write.
 **Plans**: 3 plans
   - [x] 01-01-PLAN.md — Scaffold Rust workspace + canonicalization + atomic store (KERN-03, KERN-04)
-  - [ ] 01-02-PLAN.md — HMAC-SHA256 sign/verify + DPAPI key store, Rust side (KERN-01, KERN-02)
+  - [x] 01-02-PLAN.md — HMAC-SHA256 sign/verify + DPAPI key store, Rust side (KERN-01, KERN-02)
   - [ ] 01-03-PLAN.md — Rust↔PowerShell DPAPI+HMAC interop exit gate (KERN-01, KERN-02, KERN-04)
 
 ### Phase 2: Mutation Engine
@@ -96,7 +96,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Trust Kernel | 1/3 | In Progress|  |
+| 1. Trust Kernel | 2/3 | In Progress|  |
 | 2. Mutation Engine | 0/TBD | Not started | - |
 | 3. Enforcement Guard | 0/TBD | Not started | - |
 | 4. UI (Moonlit Indigo) | 0/TBD | Not started | - |
