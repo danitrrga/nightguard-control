@@ -64,7 +64,7 @@
 
 ## Traceability
 
-(Phase mapping below is the research-suggested structure; the roadmapper finalizes it.)
+Phase mapping finalized by the roadmapper (matches the research-converged layered structure).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -99,4 +99,4 @@
 
 ---
 *Requirements defined: 2026-06-04*
-*Last updated: 2026-06-04 after initial definition*
+*Last updated: 2026-06-04 after roadmap creation (traceability finalized)*
