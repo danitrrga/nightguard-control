@@ -38,7 +38,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The same `config.yaml` bytes hashed via Rust and via PowerShell `[IO.File]::ReadAllBytes` yield identical HMAC-SHA256 tags (no CRLF/BOM/trailing-newline divergence).
   3. A config or state write that is interrupted never leaves a partial or corrupt file — the prior valid file remains intact (temp → atomic rename).
   4. The config writer round-trips `config.yaml` so the existing PowerShell minimal YAML parser still reads it correctly after a write.
-**Plans**: TBD
+**Plans**: 3 plans
+  - [ ] 01-01-PLAN.md — Scaffold Rust workspace + canonicalization + atomic store (KERN-03, KERN-04)
+  - [ ] 01-02-PLAN.md — HMAC-SHA256 sign/verify + DPAPI key store, Rust side (KERN-01, KERN-02)
+  - [ ] 01-03-PLAN.md — Rust↔PowerShell DPAPI+HMAC interop exit gate (KERN-01, KERN-02, KERN-04)
 
 ### Phase 2: Mutation Engine
 **Goal**: All edit-intent logic lives authoritatively in Rust — every proposed change is classified, loosening is rate-limited against a DST-aware weekly token budget, and grace is granted only against true time, committing atomically in the safe order.
@@ -93,7 +96,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Trust Kernel | 0/TBD | Not started | - |
+| 1. Trust Kernel | 0/3 | Not started | - |
 | 2. Mutation Engine | 0/TBD | Not started | - |
 | 3. Enforcement Guard | 0/TBD | Not started | - |
 | 4. UI (Moonlit Indigo) | 0/TBD | Not started | - |
