@@ -10,6 +10,7 @@
 //!   (temp file in the same dir, then atomic rename) that never corrupt the prior file.
 
 pub mod canon;
+pub mod hmac;
 pub mod store;
 
 pub use canon::canonicalize_bytes;
