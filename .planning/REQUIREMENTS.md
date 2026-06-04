@@ -9,8 +9,8 @@
 
 - [ ] **KERN-01**: HMAC-SHA256 sign/verify produces byte-identical results across the Rust app and the PowerShell guard for the same key + input.
 - [ ] **KERN-02**: A 32-byte signing key is generated once and stored encrypted at rest via Windows DPAPI (CurrentUser), decryptable by both the Rust app and the PowerShell guard (raw `CryptProtectData` blob, no SecureString framing).
-- [ ] **KERN-03**: Config and state writes are atomic and idempotent (temp → rename), never leaving partial or corrupt files.
-- [ ] **KERN-04**: The config writer round-trips `config.yaml` so it stays readable by the existing PowerShell minimal YAML parser (format/comments preserved as needed).
+- [x] **KERN-03**: Config and state writes are atomic and idempotent (temp → rename), never leaving partial or corrupt files.
+- [x] **KERN-04**: The config writer round-trips `config.yaml` so it stays readable by the existing PowerShell minimal YAML parser (format/comments preserved as needed).
 
 ### Rules Engine
 
@@ -70,8 +70,8 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 |-------------|-------|--------|
 | KERN-01 | Phase 1 | Pending |
 | KERN-02 | Phase 1 | Pending |
-| KERN-03 | Phase 1 | Pending |
-| KERN-04 | Phase 1 | Pending |
+| KERN-03 | Phase 1 | Complete |
+| KERN-04 | Phase 1 | Complete |
 | RULE-01 | Phase 2 | Pending |
 | RULE-02 | Phase 2 | Pending |
 | RULE-03 | Phase 2 | Pending |
