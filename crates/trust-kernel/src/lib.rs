@@ -10,7 +10,10 @@
 //!   (temp file in the same dir, then atomic rename) that never corrupt the prior file.
 
 pub mod canon;
+#[cfg(windows)]
+pub mod dpapi;
 pub mod hmac;
+pub mod key;
 pub mod store;
 
 pub use canon::canonicalize_bytes;
