@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-02 (HMAC-SHA256 + DPAPI key store); KERN-01/KERN-02 done.
-last_updated: "2026-06-04T18:32:38.916Z"
-last_activity: 2026-06-04 — Completed Plan 01-02 (HMAC-SHA256 sign/verify + DPAPI key store)
+stopped_at: "Completed 01-02 (HMAC-SHA256 + DPAPI key store); KERN-01/KERN-02 done. Next: Plan 01-03 (Rust<->PowerShell byte-identical round-trip exit gate)."
+last_updated: "2026-06-04T18:44:59.107Z"
+last_activity: 2026-06-04
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 67
+  completed_plans: 3
+  percent: 20
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 1 of 5 (Trust Kernel)
-Plan: 2 of 3 in current phase complete
-Status: In progress
-Last activity: 2026-06-04 — Completed Plan 01-02 (HMAC-SHA256 sign/verify + DPAPI key store)
+Plan: 3 of 3 in current phase complete
+Status: Ready to execute
+Last activity: 2026-06-04
 
-Progress: [███████░░░] 67%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [███████░░░] 67%
 
 *Updated after each plan completion*
 | Phase 1 P01-02 | 5 | 2 tasks | 8 files |
+| Phase 1 P01-03 | 10 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,8 @@ Recent decisions affecting current work:
 - [Phase 5]: Propagation fix is instance-level config, not product surface — point the hook at the LifeOS canonical config (zero-copy).
 - [Phase 1]: HMAC-SHA256 known-answer vector = HMAC(32x0x0b, "Hi There") derived via an RFC 4231 TC1-faithful oracle (resolved in 01-02); constant-time verify via `verify_slice`, never `==`; signer hashes raw bytes (no internal normalization).
 - [Phase 1]: DPAPI key store uses `windows-dpapi` 0.2.0 (`Scope::User`, `None` entropy) — raw `CryptProtectData` blob; 32-not-64 length guard (`KernelError::BadKeyLength`) is the SecureString-framing canary.
+- [Phase ?]: [Phase 1]: Cross-language exit gate PROVEN GREEN — Rust<->PowerShell DPAPI key round-trips to identical 32 bytes both directions, HMAC-SHA256 tags byte-identical both signing directions over raw file bytes, CRLF/BOM tampers flagged both sides; the project's single genuine technical risk is closed.
+- [Phase ?]: [Phase 1]: interop harness is host-agnostic ([ProtectedData]/[HMACSHA256] are .NET framework types identical in pwsh 7 and Windows PowerShell 5.1); signs raw bytes on disk with no re-canonicalization at sign time so cosmetic CRLF/BOM/trailing-newline drift is tamper.
 
 ### Pending Todos
 
@@ -89,6 +92,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-04T18:32:14.166Z
+Last session: 2026-06-04T18:44:21.323Z
 Stopped at: Completed 01-02 (HMAC-SHA256 + DPAPI key store); KERN-01/KERN-02 done. Next: Plan 01-03 (Rust<->PowerShell byte-identical round-trip exit gate).
 Resume file: None

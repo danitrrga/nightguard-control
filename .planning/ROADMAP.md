@@ -21,7 +21,7 @@ instance wiring points the author's live LifeOS hook at the canonical config, cl
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Trust Kernel** - HMAC + DPAPI + atomic store with a Rust↔PowerShell interop round-trip as the exit gate
+- [x] **Phase 1: Trust Kernel** - HMAC + DPAPI + atomic store with a Rust↔PowerShell interop round-trip as the exit gate (completed 2026-06-04)
 - [ ] **Phase 2: Mutation Engine** - Direction classifier, weekly token quota, NTP-true grace, atomic ordered commit
 - [ ] **Phase 3: Enforcement Guard** - PowerShell verify→auto-revert with fail-closed paths and grace re-check
 - [ ] **Phase 4: UI (Moonlit Indigo)** - Status, token meter, +8 button, and live per-field editor feedback
@@ -41,7 +41,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
   - [x] 01-01-PLAN.md — Scaffold Rust workspace + canonicalization + atomic store (KERN-03, KERN-04)
   - [x] 01-02-PLAN.md — HMAC-SHA256 sign/verify + DPAPI key store, Rust side (KERN-01, KERN-02)
-  - [ ] 01-03-PLAN.md — Rust↔PowerShell DPAPI+HMAC interop exit gate (KERN-01, KERN-02, KERN-04)
+  - [x] 01-03-PLAN.md — Rust↔PowerShell DPAPI+HMAC interop exit gate (KERN-01, KERN-02, KERN-04)
 
 ### Phase 2: Mutation Engine
 **Goal**: All edit-intent logic lives authoritatively in Rust — every proposed change is classified, loosening is rate-limited against a DST-aware weekly token budget, and grace is granted only against true time, committing atomically in the safe order.
@@ -96,7 +96,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Trust Kernel | 2/3 | In Progress|  |
+| 1. Trust Kernel | 3/3 | Complete   | 2026-06-04 |
 | 2. Mutation Engine | 0/TBD | Not started | - |
 | 3. Enforcement Guard | 0/TBD | Not started | - |
 | 4. UI (Moonlit Indigo) | 0/TBD | Not started | - |
