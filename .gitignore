@@ -1,0 +1,9 @@
+# Build output
+/target
+
+# Runtime secret/state artifacts — MUST never be committed (T-01-04)
+*.guardkey
+guard.json
+config.yaml
+config.sanctioned.yaml
+tamper.log

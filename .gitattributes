@@ -1,0 +1,4 @@
+# Defend HMAC byte-stability against Git autocrlf rewriting (PITFALLS Pitfall 2).
+# The config and key files are signed over raw bytes — Git must never normalize them.
+config*.yaml -text
+*.guardkey -text
