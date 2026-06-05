@@ -54,7 +54,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. "+8" grants a once-per-true-day 8-minute grace window recorded in signed state, refused if already used today or if NTP is unreachable.
   5. Every sanctioned commit atomically writes the sanctioned snapshot and signed state *before* the live config, re-signing all artifacts under a single-writer lock.
 **Plans**: 5 plans
-  - [ ] 02-01-PLAN.md — Scaffold mutation-engine crate + guard.json serde model + canonical-bytes sign layer (RULE-06)
+  - [x] 02-01-PLAN.md — Scaffold mutation-engine crate + guard.json serde model + canonical-bytes sign layer (RULE-06)
   - [ ] 02-02-PLAN.md — Pure logic: direction classifier + token quota + DST-aware Monday reset (RULE-01, RULE-02, RULE-03, RULE-04)
   - [ ] 02-03-PLAN.md — NTP true-time module behind a TrueTime trait (RULE-05)
   - [ ] 02-04-PLAN.md — fd-lock ordered atomic re-signed commit + once-per-true-day grace (RULE-05, RULE-06)
@@ -102,7 +102,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Trust Kernel | 3/3 | Complete   | 2026-06-04 |
-| 2. Mutation Engine | 0/5 | Not started | - |
+| 2. Mutation Engine | 1/5 | In progress | - |
 | 3. Enforcement Guard | 0/TBD | Not started | - |
 | 4. UI (Moonlit Indigo) | 0/TBD | Not started | - |
 | 5. Instance Wiring | 0/TBD | Not started | - |

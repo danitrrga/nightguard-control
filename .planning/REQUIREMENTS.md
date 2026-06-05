@@ -77,7 +77,7 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | RULE-03 | Phase 2 | Pending |
 | RULE-04 | Phase 2 | Pending |
 | RULE-05 | Phase 2 | Pending |
-| RULE-06 | Phase 2 | Pending |
+| RULE-06 | Phase 2 | In progress (02-01 sign layer + guard.json state model; full ordered commit closes in 02-04) |
 | GARD-01 | Phase 3 | Pending |
 | GARD-02 | Phase 3 | Pending |
 | GARD-03 | Phase 3 | Pending |

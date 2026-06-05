@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 1 (Trust Kernel) COMPLETE + verified. All 3 plans done, KERN-01..04, interop exit gate green 6/6. NEXT: Phase 2 (Mutation Engine) — run `/gsd:plan-phase 2` after /clear."
-last_updated: "2026-06-05T09:08:54.463Z"
-last_activity: 2026-06-05 -- Phase 2 planning complete
+stopped_at: "Phase 2 Plan 01 (mutation-engine scaffold + guard.json sign layer) COMPLETE. Crate builds, 4/4 state tests green, RULE-06 partially advanced. NEXT: 02-02-PLAN.md (classify/quota/week)."
+last_updated: "2026-06-05T09:10:27.101Z"
+last_activity: 2026-06-05 -- Phase 02 Plan 01 complete
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 8
-  completed_plans: 3
-  percent: 20
+  completed_plans: 4
+  percent: 25
 ---
 
 # Project State
@@ -21,16 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts.
-**Current focus:** Phase 2 — Mutation Engine (next; Phase 1 complete)
+**Current focus:** Phase 02 — mutation-engine
 
 ## Current Position
 
-Phase: 1 of 5 (Trust Kernel) — COMPLETE & VERIFIED
-Next: Phase 2 of 5 (Mutation Engine) — not yet planned
-Status: Ready to execute
-Last activity: 2026-06-05 -- Phase 2 planning complete
+Phase: 02 (mutation-engine) — EXECUTING
+Plan: 2 of 5
+Next: 02-02-PLAN.md (direction classifier + token quota + DST-aware Monday reset)
+Status: Executing Phase 02
+Last activity: 2026-06-05 -- Phase 02 Plan 01 complete
 
-Phase progress: [██░░░░░░░░] 1/5 phases complete
+Phase progress: [██░░░░░░░░] 1/5 phases complete (Phase 02: 1/5 plans)
 
 ## Performance Metrics
 
@@ -54,6 +55,7 @@ Phase progress: [██░░░░░░░░] 1/5 phases complete
 *Updated after each plan completion*
 | Phase 1 P01-02 | 5 | 2 tasks | 8 files |
 | Phase 1 P01-03 | 10 | 3 tasks | 5 files |
+| Phase 2 P02-01 | 8 | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -71,6 +73,10 @@ Recent decisions affecting current work:
 - [Phase 1]: DPAPI key store uses `windows-dpapi` 0.2.0 (`Scope::User`, `None` entropy) — raw `CryptProtectData` blob; 32-not-64 length guard (`KernelError::BadKeyLength`) is the SecureString-framing canary.
 - [Phase 1]: Cross-language exit gate PROVEN GREEN — Rust<->PowerShell DPAPI key round-trips to identical 32 bytes both directions, HMAC-SHA256 tags byte-identical both signing directions over raw file bytes, CRLF/BOM tampers flagged both sides; the project's single genuine technical risk is closed.
 - [Phase 1]: interop harness is host-agnostic ([ProtectedData]/[HMACSHA256] are .NET framework types identical in pwsh 7 and Windows PowerShell 5.1); signs raw bytes on disk with no re-canonicalization at sign time so cosmetic CRLF/BOM/trailing-newline drift is tamper.
+- [Phase 2, 02-01]: state_hmac recipe LOCKED (A3) — serialize GuardState with state_hmac blanked to "", canonicalize_bytes, sign_bytes, tag_to_hex; the field is re-blanked on every computation so its prior value never affects the tag (Phase 3 PS guard must re-derive identically).
+- [Phase 2, 02-01]: sign_config returns (hex tag, canonical bytes) so the caller writes EXACTLY the signed bytes (sign-the-canonical-bytes invariant; closes Pitfall 3 / T-02-02 by construction).
+- [Phase 2, 02-01]: guard.json field names/types locked as the Phase 3 PowerShell interop contract (A1); GuardState derives PartialEq for round-trip assertions.
+- [Phase 2, 02-01]: sntpc 0.10.1 + sntpc-net-std 1.2 pairing confirmed by a clean dependency-tree resolve (Pitfall 1 did not materialize).
 
 ### Pending Todos
 
@@ -93,6 +99,6 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-05T10:30:00.000Z
-Stopped at: Phase 1 (Trust Kernel) COMPLETE + verified. All 3 plans done, KERN-01..04, interop exit gate green 6/6. NEXT: Phase 2 (Mutation Engine) — run `/gsd:plan-phase 2` after /clear.
+Stopped at: Phase 2 Plan 01 COMPLETE — mutation-engine crate scaffolded (workspace member), guard.json serde model + MutationError + state_hmac (A3) recipe + sign_config canonical-bytes signer; cargo build green, 4/4 state tests green. NEXT: 02-02-PLAN.md (classify/quota/week).
 Resume file: .planning/HANDOFF.md
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
