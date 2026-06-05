@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 2 Plan 01 (mutation-engine scaffold + guard.json sign layer) COMPLETE. Crate builds, 4/4 state tests green, RULE-06 partially advanced. NEXT: 02-02-PLAN.md (classify/quota/week)."
-last_updated: "2026-06-05T09:10:27.101Z"
-last_activity: 2026-06-05 -- Phase 02 Plan 01 complete
+stopped_at: "Phase 2 Plan 02 (classify/quota/week pure logic) COMPLETE. 43 new tests green (27 classify + 7 week + 9 quota), full crate 47/47; RULE-01/02/03/04 done. NEXT: 02-03-PLAN.md (NTP true-time module)."
+last_updated: "2026-06-05T09:30:00.000Z"
+last_activity: 2026-06-05 -- Phase 02 Plan 02 complete
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 8
-  completed_plans: 4
-  percent: 25
+  completed_plans: 5
+  percent: 31
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 02 (mutation-engine) — EXECUTING
-Plan: 2 of 5
-Next: 02-02-PLAN.md (direction classifier + token quota + DST-aware Monday reset)
+Plan: 3 of 5
+Next: 02-03-PLAN.md (NTP true-time module behind a TrueTime trait, RULE-05)
 Status: Executing Phase 02
-Last activity: 2026-06-05 -- Phase 02 Plan 01 complete
+Last activity: 2026-06-05 -- Phase 02 Plan 02 complete
 
-Phase progress: [██░░░░░░░░] 1/5 phases complete (Phase 02: 1/5 plans)
+Phase progress: [██░░░░░░░░] 1/5 phases complete (Phase 02: 2/5 plans)
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Phase progress: [██░░░░░░░░] 1/5 phases complete (Phase 02: 
 | Phase 1 P01-02 | 5 | 2 tasks | 8 files |
 | Phase 1 P01-03 | 10 | 3 tasks | 5 files |
 | Phase 2 P02-01 | 8 | 2 tasks | 13 files |
+| Phase 2 P02-02 | 14 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,9 @@ Recent decisions affecting current work:
 - [Phase 2, 02-01]: sign_config returns (hex tag, canonical bytes) so the caller writes EXACTLY the signed bytes (sign-the-canonical-bytes invariant; closes Pitfall 3 / T-02-02 by construction).
 - [Phase 2, 02-01]: guard.json field names/types locked as the Phase 3 PowerShell interop contract (A1); GuardState derives PartialEq for round-trip assertions.
 - [Phase 2, 02-01]: sntpc 0.10.1 + sntpc-net-std 1.2 pairing confirmed by a clean dependency-tree resolve (Pitfall 1 did not materialize).
+- [Phase 2, 02-02]: Defensive A2 covers BOTH a missing leaf key (yamlpath query_exact -> Ok(None)) AND structural absence on the path (ExhaustedMapping/ExpectedMapping/Exhausted-/ExpectedList query errors) — all map to field-absent Noop; only malformed YAML folds to Serde (never a panic, never a silent loosen, T-02-05).
+- [Phase 2, 02-02]: week reset is DST-aware via from_local_datetime + explicit MappedLocalTime (Ambiguous->earliest deterministic); next_monday_midnight re-derives from the local Monday DATE + 7 days (transition week = 169h), never +7*24h (T-02-06; grep gate = 0).
+- [Phase 2, 02-02]: QuotaDecision.next_reset is always populated (upcoming Monday), and decide() applies the lazy week reset to an EFFECTIVE weekly_spent before charging — a stale spent=3 never blocks a fresh-week loosen; blocked reason carries the locked 'available again Monday' substring (RULE-04).
 
 ### Pending Todos
 
@@ -98,7 +102,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-05T10:30:00.000Z
-Stopped at: Phase 2 Plan 01 COMPLETE — mutation-engine crate scaffolded (workspace member), guard.json serde model + MutationError + state_hmac (A3) recipe + sign_config canonical-bytes signer; cargo build green, 4/4 state tests green. NEXT: 02-02-PLAN.md (classify/quota/week).
+Last session: 2026-06-05T11:30:00.000Z
+Stopped at: Phase 2 Plan 02 COMPLETE — classify.rs (RULE-01 per-field direction classifier), week.rs (RULE-03 DST-aware Monday reset), quota.rs (RULE-02/04 commit-rule token quota); all pure/I-O-free, 43 new tests green (full crate 47/47), no-naive-week grep gate = 0. NEXT: 02-03-PLAN.md (NTP true-time module).
 Resume file: .planning/HANDOFF.md
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
