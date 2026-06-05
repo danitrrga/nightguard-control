@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 01-02 (HMAC-SHA256 + DPAPI key store); KERN-01/KERN-02 done. Next: Plan 01-03 (Rust<->PowerShell byte-identical round-trip exit gate)."
-last_updated: "2026-06-04T18:44:59.107Z"
-last_activity: 2026-06-04
+stopped_at: "Phase 1 (Trust Kernel) COMPLETE + verified (4/4 must-haves, interop exit gate green 6/6). KERN-01..04 done. NEXT: Phase 2 (Mutation Engine) — run /gsd:plan-phase 2."
+last_updated: "2026-06-05T10:30:00.000Z"
+last_activity: 2026-06-05
 progress:
   total_phases: 5
   completed_phases: 1
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts.
-**Current focus:** Phase 1 — Trust Kernel
+**Current focus:** Phase 2 — Mutation Engine (next; Phase 1 complete)
 
 ## Current Position
 
-Phase: 1 of 5 (Trust Kernel)
-Plan: 3 of 3 in current phase complete
-Status: Ready to execute
-Last activity: 2026-06-04
+Phase: 1 of 5 (Trust Kernel) — COMPLETE & VERIFIED
+Next: Phase 2 of 5 (Mutation Engine) — not yet planned
+Status: Phase 1 done; resume with `/gsd:plan-phase 2`
+Last activity: 2026-06-05
 
-Progress: [██████████] 100%
+Phase progress: [██░░░░░░░░] 1/5 phases complete
 
 ## Performance Metrics
 
@@ -69,8 +69,8 @@ Recent decisions affecting current work:
 - [Phase 5]: Propagation fix is instance-level config, not product surface — point the hook at the LifeOS canonical config (zero-copy).
 - [Phase 1]: HMAC-SHA256 known-answer vector = HMAC(32x0x0b, "Hi There") derived via an RFC 4231 TC1-faithful oracle (resolved in 01-02); constant-time verify via `verify_slice`, never `==`; signer hashes raw bytes (no internal normalization).
 - [Phase 1]: DPAPI key store uses `windows-dpapi` 0.2.0 (`Scope::User`, `None` entropy) — raw `CryptProtectData` blob; 32-not-64 length guard (`KernelError::BadKeyLength`) is the SecureString-framing canary.
-- [Phase ?]: [Phase 1]: Cross-language exit gate PROVEN GREEN — Rust<->PowerShell DPAPI key round-trips to identical 32 bytes both directions, HMAC-SHA256 tags byte-identical both signing directions over raw file bytes, CRLF/BOM tampers flagged both sides; the project's single genuine technical risk is closed.
-- [Phase ?]: [Phase 1]: interop harness is host-agnostic ([ProtectedData]/[HMACSHA256] are .NET framework types identical in pwsh 7 and Windows PowerShell 5.1); signs raw bytes on disk with no re-canonicalization at sign time so cosmetic CRLF/BOM/trailing-newline drift is tamper.
+- [Phase 1]: Cross-language exit gate PROVEN GREEN — Rust<->PowerShell DPAPI key round-trips to identical 32 bytes both directions, HMAC-SHA256 tags byte-identical both signing directions over raw file bytes, CRLF/BOM tampers flagged both sides; the project's single genuine technical risk is closed.
+- [Phase 1]: interop harness is host-agnostic ([ProtectedData]/[HMACSHA256] are .NET framework types identical in pwsh 7 and Windows PowerShell 5.1); signs raw bytes on disk with no re-canonicalization at sign time so cosmetic CRLF/BOM/trailing-newline drift is tamper.
 
 ### Pending Todos
 
@@ -92,6 +92,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-04T18:44:21.323Z
-Stopped at: Completed 01-02 (HMAC-SHA256 + DPAPI key store); KERN-01/KERN-02 done. Next: Plan 01-03 (Rust<->PowerShell byte-identical round-trip exit gate).
-Resume file: None
+Last session: 2026-06-05T10:30:00.000Z
+Stopped at: Phase 1 (Trust Kernel) COMPLETE + verified. All 3 plans done, KERN-01..04, interop exit gate green 6/6. NEXT: Phase 2 (Mutation Engine) — run `/gsd:plan-phase 2` after /clear.
+Resume file: .planning/HANDOFF.md
+Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
