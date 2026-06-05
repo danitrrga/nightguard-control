@@ -1,0 +1,18 @@
+[package]
+name = "mutation-engine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+trust-kernel = { path = "../trust-kernel" }
+chrono = "0.4"
+chrono-tz = "0.10"
+sntpc = { version = "0.10.1", features = ["std", "sync"] }
+sntpc-net-std = "1.2"
+fd-lock = "4"
+yamlpath = "1.25"
+yamlpatch = "1.25"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+hex = "0.4.3"
