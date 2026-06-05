@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 2 Plan 02 (classify/quota/week pure logic) COMPLETE. 43 new tests green (27 classify + 7 week + 9 quota), full crate 47/47; RULE-01/02/03/04 done. NEXT: 02-03-PLAN.md (NTP true-time module)."
-last_updated: "2026-06-05T09:30:00.000Z"
-last_activity: 2026-06-05 -- Phase 02 Plan 02 complete
+stopped_at: "Phase 2 Plan 03 (NTP true-time behind TrueTime trait) COMPLETE. 2 new fake-based tests green + 1 #[ignore] live test; full crate 49/49 (live ignored); RULE-05 time-half done. NEXT: 02-04-PLAN.md (fd-lock ordered commit + grace)."
+last_updated: "2026-06-05T10:00:00.000Z"
+last_activity: 2026-06-05 -- Phase 02 Plan 03 complete
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 8
-  completed_plans: 5
-  percent: 31
+  completed_plans: 6
+  percent: 38
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 02 (mutation-engine) — EXECUTING
-Plan: 3 of 5
-Next: 02-03-PLAN.md (NTP true-time module behind a TrueTime trait, RULE-05)
+Plan: 4 of 5
+Next: 02-04-PLAN.md (fd-lock ordered atomic re-signed commit + once-per-true-day grace, RULE-05/06)
 Status: Executing Phase 02
-Last activity: 2026-06-05 -- Phase 02 Plan 02 complete
+Last activity: 2026-06-05 -- Phase 02 Plan 03 complete
 
-Phase progress: [██░░░░░░░░] 1/5 phases complete (Phase 02: 2/5 plans)
+Phase progress: [██░░░░░░░░] 1/5 phases complete (Phase 02: 3/5 plans)
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Phase progress: [██░░░░░░░░] 1/5 phases complete (Phase 02: 
 | Phase 1 P01-03 | 10 | 3 tasks | 5 files |
 | Phase 2 P02-01 | 8 | 2 tasks | 13 files |
 | Phase 2 P02-02 | 14 | 3 tasks | 6 files |
+| Phase 2 P02-03 | 6 | 1 task | 2 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,7 @@ Recent decisions affecting current work:
 - [Phase 2, 02-02]: Defensive A2 covers BOTH a missing leaf key (yamlpath query_exact -> Ok(None)) AND structural absence on the path (ExhaustedMapping/ExpectedMapping/Exhausted-/ExpectedList query errors) — all map to field-absent Noop; only malformed YAML folds to Serde (never a panic, never a silent loosen, T-02-05).
 - [Phase 2, 02-02]: week reset is DST-aware via from_local_datetime + explicit MappedLocalTime (Ambiguous->earliest deterministic); next_monday_midnight re-derives from the local Monday DATE + 7 days (transition week = 169h), never +7*24h (T-02-06; grep gate = 0).
 - [Phase 2, 02-02]: QuotaDecision.next_reset is always populated (upcoming Monday), and decide() applies the lazy week reset to an EFFECTIVE weekly_spent before charging — a stale spent=3 never blocks a fresh-week loosen; blocked reason carries the locked 'available again Monday' substring (RULE-04).
+- [Phase 2, 02-03]: true-time is behind a TrueTime trait — SntpTrueTime (real sntpc::sync::get_time over UdpSocketWrapper) in production, FakeTrueTime injected in tests; only the #[ignore] live test touches UDP. Every sntpc::Error (incl. #[non_exhaustive] variants via catch-all Err(_)) maps to NtpUnreachable — NO system/local clock fallback path exists (fail-closed, T-02-08). NtpUnreachable is both a zero-size type (for local matches!) and folds into MutationError via From (for ? propagation). Built-in NTP fallback list: cloudflare/google/pool, first success wins.
 
 ### Pending Todos
 
@@ -102,7 +104,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-05T11:30:00.000Z
-Stopped at: Phase 2 Plan 02 COMPLETE — classify.rs (RULE-01 per-field direction classifier), week.rs (RULE-03 DST-aware Monday reset), quota.rs (RULE-02/04 commit-rule token quota); all pure/I-O-free, 43 new tests green (full crate 47/47), no-naive-week grep gate = 0. NEXT: 02-03-PLAN.md (NTP true-time module).
+Last session: 2026-06-05T12:00:00.000Z
+Stopped at: Phase 2 Plan 03 COMPLETE — ntp.rs (RULE-05 true-time half): TrueTime trait + NtpTrueTime/NtpUnreachable + SntpTrueTime (sntpc::sync::get_time over sntpc-net-std) + FakeTrueTime test helper; any SNTP error -> NtpUnreachable, no clock fallback; 2 fake tests green + 1 #[ignore] live (full crate 49/49, live skipped). NEXT: 02-04-PLAN.md (fd-lock ordered commit + grace).
 Resume file: .planning/HANDOFF.md
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
