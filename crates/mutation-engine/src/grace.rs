@@ -22,43 +22,51 @@ use trust_kernel::atomic_write;
 
 use crate::commit::{with_commit_lock, CommitPaths};
 use crate::ntp::TrueTime;
-use crate::state::{GraceWindow, GuardState, MutationError};
+use crate::state::{GraceWindow, MutationError};
 
 /// The grace window length in seconds (8 minutes — design-spec "+8").
 const GRACE_SECS: i64 = 8 * 60;
 
 /// Grant a once-per-true-day 8-minute grace window, under the commit lock.
 ///
+/// The authoritative [`GuardState`](crate::state::GuardState) is re-read from `guard.json`
+/// INSIDE the lock (CR-02): a
+/// caller-supplied snapshot could be stale relative to a concurrent grant, so the
+/// already-used-today check must run against the fresh on-disk state the OS lock protects.
+///
 /// Steps (all inside [`with_commit_lock`]):
-///   1. `true_time.now()`; any [`crate::ntp::NtpUnreachable`] -> refuse (never the app clock).
-///   2. Derive `true_today` = the true-now instant's date in the configured `tz_name` tz.
-///   3. If `state.grace.date == true_today` -> refuse `GraceAlreadyUsedToday` (file unchanged).
-///   4. Else write `grace{date, window_start=now, window_end=now+8min}` onto a clone of the
+///   1. Re-read the authoritative `guard.json` state (fresh; guaranteed by the lock).
+///   2. `true_time.now()`; any [`crate::ntp::NtpUnreachable`] -> refuse (never the app clock).
+///   3. Derive `true_today` = the true-now instant's date in the configured `tz_name` tz.
+///   4. If `state.grace.date == true_today` -> refuse `GraceAlreadyUsedToday` (file unchanged).
+///   5. Else write `grace{date, window_start=now, window_end=now+8min}` onto a clone of the
 ///      state WITHOUT touching `weekly_spent`, re-sign `state_hmac` (A3), atomic_write
 ///      `guard.json`, and return the window.
 pub fn use_grace(
     paths: &CommitPaths,
-    state: &GuardState,
     true_time: &dyn TrueTime,
     tz_name: &str,
     key: &[u8; 32],
 ) -> Result<GraceWindow, MutationError> {
     with_commit_lock(&paths.lock_dir, || {
-        // (1) True time only — refuse on any NTP failure (fail-closed, no clock fallback).
+        // (1) Authoritative state, re-read inside the lock — never a stale caller snapshot.
+        let state = crate::commit::read_state(&paths.guard_json)?;
+
+        // (2) True time only — refuse on any NTP failure (fail-closed, no clock fallback).
         let now = true_time.now()?; // NtpUnreachable -> MutationError::NtpUnreachable via From
         let now_secs = now.unix_secs;
 
-        // (2) "today" in the configured tz, derived from the NTP instant (Pitfall 4).
+        // (3) "today" in the configured tz, derived from the NTP instant (Pitfall 4).
         let true_today = true_day(now_secs, tz_name);
 
-        // (3) Already used this true-day? Refuse, leaving guard.json untouched.
+        // (4) Already used this true-day? Refuse, leaving guard.json untouched.
         if let Some(existing) = &state.grace {
             if existing.date == true_today {
                 return Err(MutationError::GraceAlreadyUsedToday);
             }
         }
 
-        // (4) Build the window, set it WITHOUT changing weekly_spent, re-sign, write.
+        // (5) Build the window, set it WITHOUT changing weekly_spent, re-sign, write.
         let window = GraceWindow {
             date: true_today,
             window_start: now_secs,

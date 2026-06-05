@@ -149,11 +149,16 @@ pub fn commit_with_limit(
         return Err(MutationError::QuotaExhausted);
     }
 
+    // `sign_config` is pure (no I/O) so it may run outside the lock.
     let (new_config_hmac, new_canon) = sign_config(key, new_yaml);
-    let current = read_state(&paths.guard_json)?;
-    let new_state = build_new_state(&current, new_config_hmac, dirs, decision, key, true_now);
 
     with_commit_lock(&paths.lock_dir, || {
+        // Read the authoritative state INSIDE the lock so weekly_spent/anchor cannot be
+        // stale relative to a concurrent commit or grace grant (WR-04 / CR-02 TOCTOU).
+        let current = read_state(&paths.guard_json)?;
+        let new_state =
+            build_new_state(&current, new_config_hmac, dirs, decision, key, true_now);
+
         // Step 1: revert target FIRST.
         if max_steps >= 1 {
             atomic_write(&paths.sanctioned, &new_canon)?;
@@ -188,7 +193,10 @@ pub fn commit_change(
 }
 
 /// Read the current [`GuardState`] from `guard.json` (the commit's starting point).
-fn read_state(guard_json: &Path) -> Result<GuardState, MutationError> {
+///
+/// Crate-visible so [`crate::grace::use_grace`] can re-read the authoritative state INSIDE
+/// the single-writer lock (the freshness of the read is then guaranteed by the OS lock).
+pub(crate) fn read_state(guard_json: &Path) -> Result<GuardState, MutationError> {
     let bytes = std::fs::read(guard_json)
         .map_err(|e| MutationError::Io(format!("read guard.json: {e}")))?;
     let state = serde_json::from_slice(&bytes)?;

@@ -73,9 +73,9 @@ const NOON_JUN5_UTC: i64 = 1_780_653_600; // 2026-06-05T10:00:00Z
 fn grant_writes_window_and_costs_no_token() {
     let dir = scratch_dir("grant");
     let p = paths_in(&dir);
-    let seeded = seed_state(&p, base_state());
+    seed_state(&p, base_state());
 
-    let window = use_grace(&p, &seeded, &fake(NOON_JUN5_UTC), TZ, &KEY).expect("grace granted");
+    let window = use_grace(&p, &fake(NOON_JUN5_UTC), TZ, &KEY).expect("grace granted");
 
     assert_eq!(window.date, "2026-06-05", "true-day in the configured tz");
     assert_eq!(window.window_start, NOON_JUN5_UTC);
@@ -99,10 +99,10 @@ fn second_grant_same_true_day_is_refused_and_leaves_file_unchanged() {
         window_start: NOON_JUN5_UTC - 3600,
         window_end: NOON_JUN5_UTC - 3600 + 8 * 60,
     });
-    let seeded = seed_state(&p, state);
+    seed_state(&p, state);
     let before_bytes = fs::read(&p.guard_json).unwrap();
 
-    let result = use_grace(&p, &seeded, &fake(NOON_JUN5_UTC), TZ, &KEY);
+    let result = use_grace(&p, &fake(NOON_JUN5_UTC), TZ, &KEY);
     assert!(
         matches!(result, Err(MutationError::GraceAlreadyUsedToday)),
         "a second grant on the same true-day must be refused"
@@ -125,10 +125,10 @@ fn grant_on_a_new_true_day_succeeds_again() {
         window_start: NOON_JUN5_UTC - 86_400,
         window_end: NOON_JUN5_UTC - 86_400 + 8 * 60,
     });
-    let seeded = seed_state(&p, state);
+    seed_state(&p, state);
 
     // Now is the NEXT true-day.
-    let window = use_grace(&p, &seeded, &fake(NOON_JUN5_UTC), TZ, &KEY)
+    let window = use_grace(&p, &fake(NOON_JUN5_UTC), TZ, &KEY)
         .expect("a new true-day allows a fresh grant");
     assert_eq!(window.date, "2026-06-05");
     assert_eq!(read_state(&p).grace, Some(window));
@@ -138,10 +138,10 @@ fn grant_on_a_new_true_day_succeeds_again() {
 fn ntp_unreachable_refuses_and_leaves_file_unchanged() {
     let dir = scratch_dir("offline");
     let p = paths_in(&dir);
-    let seeded = seed_state(&p, base_state());
+    seed_state(&p, base_state());
     let before_bytes = fs::read(&p.guard_json).unwrap();
 
-    let result = use_grace(&p, &seeded, &FakeTrueTime::unreachable(), TZ, &KEY);
+    let result = use_grace(&p, &FakeTrueTime::unreachable(), TZ, &KEY);
     assert!(
         matches!(result, Err(MutationError::NtpUnreachable)),
         "grace must be refused when true time cannot be verified — never the app clock"
@@ -154,10 +154,11 @@ fn ntp_unreachable_refuses_and_leaves_file_unchanged() {
 }
 
 /// CR-02 regression: the already-used-today check MUST be made against the FRESH on-disk
-/// state read inside the commit lock, NOT a snapshot the caller captured earlier. Here the
-/// on-disk guard.json already has a grace granted today, but the caller passes a stale
-/// `grace = None` snapshot. The grant must be REFUSED because the in-lock re-read sees the
-/// used grace. Before the fix `use_grace` trusts the stale parameter and double-grants.
+/// state read inside the commit lock, NOT a snapshot captured earlier. The on-disk
+/// guard.json already has a grace granted today; the grant must be REFUSED because the
+/// in-lock re-read sees the used grace. Post-fix `use_grace` no longer accepts a caller
+/// snapshot at all — the on-disk state read inside the lock is the sole authority, which is
+/// exactly what closes the stale-snapshot double-grant window.
 #[test]
 fn use_grace_decides_against_fresh_on_disk_state_not_stale_snapshot() {
     let dir = scratch_dir("cr02-fresh-read");
@@ -173,13 +174,10 @@ fn use_grace_decides_against_fresh_on_disk_state_not_stale_snapshot() {
     seed_state(&p, on_disk);
     let before_bytes = fs::read(&p.guard_json).unwrap();
 
-    // STALE caller snapshot: claims no grace used yet.
-    let stale = base_state(); // grace == None
-
-    let result = use_grace(&p, &stale, &fake(NOON_JUN5_UTC), TZ, &KEY);
+    let result = use_grace(&p, &fake(NOON_JUN5_UTC), TZ, &KEY);
     assert!(
         matches!(result, Err(MutationError::GraceAlreadyUsedToday)),
-        "must refuse based on the fresh on-disk grace, not the stale grace=None snapshot"
+        "must refuse based on the fresh on-disk grace read inside the lock"
     );
     assert_eq!(
         fs::read(&p.guard_json).unwrap(),
@@ -192,13 +190,13 @@ fn use_grace_decides_against_fresh_on_disk_state_not_stale_snapshot() {
 fn true_day_is_derived_in_configured_tz_not_utc() {
     let dir = scratch_dir("tzboundary");
     let p = paths_in(&dir);
-    let seeded = seed_state(&p, base_state());
+    seed_state(&p, base_state());
 
     // 2026-06-05T22:30:00Z. In Europe/Amsterdam (summer, UTC+2) that is 2026-06-06 00:30
     // LOCAL — so the true-day is 2026-06-06, NOT the UTC date 2026-06-05.
     let near_boundary: i64 = 1_780_698_600; // 2026-06-05T22:30:00Z
     let window =
-        use_grace(&p, &seeded, &fake(near_boundary), TZ, &KEY).expect("grant near tz boundary");
+        use_grace(&p, &fake(near_boundary), TZ, &KEY).expect("grant near tz boundary");
     assert_eq!(
         window.date, "2026-06-06",
         "true-day must be the LOCAL (configured tz) date, not the UTC date"
