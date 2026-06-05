@@ -3,6 +3,12 @@ name = "mutation-engine"
 version = "0.1.0"
 edition = "2021"
 
+# state_interop_cli is the Rust side of the Phase 2 state_hmac cross-language gate
+# (driven by scripts/interop/run_state_interop_gate.ps1), closing Assumption A3 in-phase.
+[[bin]]
+name = "state_interop_cli"
+path = "src/bin/state_interop_cli.rs"
+
 [dependencies]
 trust-kernel = { path = "../trust-kernel" }
 chrono = "0.4"
