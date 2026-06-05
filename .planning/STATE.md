@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 2 Plan 04 COMPLETE — commit.rs (RULE-06): with_commit_lock (fd-lock exclusive) + ordered atomic re-signed commit (sanctioned -> guard.json -> live LAST), crash-convergence proven (commit_order.rs stop-after-N, N in {0,1,2,3}); grace.rs (RULE-05): use_grace once-per-true-day 8-min NTP-boxed window, refused on reuse-today or NtpUnreachable. 13 new tests (8 commit_order + 5 grace), full crate 62/62 (1 live ignored). NEXT: 02-05-PLAN.md (Rust<->PowerShell state_hmac parity gate)."
-last_updated: "2026-06-05T09:53:18.033Z"
+stopped_at: "Phase 2 COMPLETE (5/5). Plan 02-05: state_interop_cli Rust bin (emit/verify-state-hmac over a fixed GuardState, reusing the single locked A3 recipe, emitting exact pre-sign .signbytes) + PS 5.1 gate (state_interop.ps1 Get-StateHmacHex + run_state_interop_gate.ps1). Gate GREEN under Windows PowerShell 5.1.26100 — state_hmac byte-identical Rust<->PowerShell both directions, single-byte tamper rejected on both sides. Assumption A3 CLOSED in-phase. NEXT: Phase 3 (Enforcement Guard)."
+last_updated: "2026-06-05T10:05:00.000Z"
 last_activity: 2026-06-05
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
-  percent: 44
+  completed_plans: 8
+  percent: 50
 ---
 
 # Project State
@@ -25,13 +25,13 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 ## Current Position
 
-Phase: 02 (mutation-engine) — EXECUTING
-Plan: 5 of 5
-Next: 02-05-PLAN.md (Rust<->PowerShell state_hmac parity gate, A3 closed in-phase)
-Status: Ready to execute
+Phase: 02 (mutation-engine) — COMPLETE
+Plan: 5 of 5 (all complete)
+Next: Phase 03 (Enforcement Guard) — needs planning
+Status: Phase 02 complete; ready to plan Phase 03
 Last activity: 2026-06-05
 
-Phase progress: [██░░░░░░░░] 1/5 phases complete (Phase 02: 4/5 plans)
+Phase progress: [████░░░░░░] 2/5 phases complete (Phase 02: 5/5 plans)
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Phase progress: [██░░░░░░░░] 1/5 phases complete (Phase 02: 
 | Phase 2 P02-02 | 14 | 3 tasks | 6 files |
 | Phase 2 P02-03 | 6 | 1 task | 2 files |
 | Phase 2 P02-04 | 5 | 2 tasks | 4 files |
+| Phase 2 P02-05 | 11 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,7 @@ Recent decisions affecting current work:
 - [Phase 2, 02-02]: week reset is DST-aware via from_local_datetime + explicit MappedLocalTime (Ambiguous->earliest deterministic); next_monday_midnight re-derives from the local Monday DATE + 7 days (transition week = 169h), never +7*24h (T-02-06; grep gate = 0).
 - [Phase 2, 02-02]: QuotaDecision.next_reset is always populated (upcoming Monday), and decide() applies the lazy week reset to an EFFECTIVE weekly_spent before charging — a stale spent=3 never blocks a fresh-week loosen; blocked reason carries the locked 'available again Monday' substring (RULE-04).
 - [Phase 2, 02-03]: true-time is behind a TrueTime trait — SntpTrueTime (real sntpc::sync::get_time over UdpSocketWrapper) in production, FakeTrueTime injected in tests; only the #[ignore] live test touches UDP. Every sntpc::Error (incl. #[non_exhaustive] variants via catch-all Err(_)) maps to NtpUnreachable — NO system/local clock fallback path exists (fail-closed, T-02-08). NtpUnreachable is both a zero-size type (for local matches!) and folds into MutationError via From (for ? propagation). Built-in NTP fallback list: cloudflare/google/pool, first success wins.
+- [Phase 2, 02-05]: Assumption A3 CLOSED in-phase — state_hmac is byte-identical Rust<->PowerShell both directions, proven by run_state_interop_gate.ps1 (GREEN under Windows PowerShell 5.1.26100). The Rust bin emits the EXACT pre-sign canonical bytes (.signbytes); the PS side HMACs them verbatim (raw-bytes HMAC, no sign-time canonicalization) reusing the Phase 1 Get-FileHmacHex; shared key via DPAPI blob (PS protects, Rust load_or_create_key unprotects). state_interop_cli reuses the single locked GuardState::compute_state_hmac recipe (no duplicate). Tamper proven two-pronged: guard.json byte-flip -> Rust verify exit 2; .signbytes byte-flip -> PS tag differs. This is the template the Phase 3 PS guard's state-verification path follows.
 - [Phase 2, 02-04]: commit ordering LOCKED — sanctioned -> guard.json (re-signed, config_hmac=HMAC(NEW canonical bytes), state_hmac via A3) -> live config.yaml LAST (write_canonical_text, same canonical bytes). Crash converges to OLD or NEW, never a forged middle (commit_order.rs stop-after-N for N in {0,1,2,3} + a local copy of the guard's verify-and-revert rule). One fd-lock exclusive lock (with_commit_lock, LockFileEx) wraps BOTH commit_change and use_grace so they never interleave guard.json writes. commit trusts the supplied QuotaDecision (token++/ledger only when costs_token), it does not re-classify. Grace (RULE-05) derives true-day from the NTP instant in the configured tz (Pitfall 4, never Local::now()), costs no token, and is refused — leaving guard.json byte-unchanged — on same-true-day reuse (GraceAlreadyUsedToday) or NtpUnreachable.
 
 ### Pending Todos
@@ -106,7 +108,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-05T09:53:18.022Z
-Stopped at: Phase 2 Plan 04 COMPLETE — commit.rs (RULE-06): with_commit_lock (fd-lock exclusive, LockFileEx) + ordered atomic re-signed commit sanctioned -> guard.json -> live (LAST); crash-convergence proven (commit_order.rs stop-after-N, N in {0,1,2,3}). grace.rs (RULE-05): use_grace once-per-true-day 8-min NTP-boxed window, refused on reuse-today or NtpUnreachable, byte-unchanged on refusal. 13 new tests (8 commit_order + 5 grace); full crate 62/62 (1 live ignored). NEXT: 02-05-PLAN.md (Rust<->PowerShell state_hmac parity gate).
+Last session: 2026-06-05T10:05:00.000Z
+Stopped at: Phase 2 COMPLETE (5/5). Plan 02-05 closed Assumption A3 in-phase: state_interop_cli Rust bin (emit/verify-state-hmac, single locked A3 recipe, emits exact .signbytes) + PS 5.1 gate (state_interop.ps1 / run_state_interop_gate.ps1). Gate GREEN under Windows PowerShell 5.1.26100 — state_hmac byte-identical both directions, single-byte tamper rejected on both sides. Commits ef9da24 (Task 1), 026440e (Task 2). NEXT: plan Phase 3 (Enforcement Guard).
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).

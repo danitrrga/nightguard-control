@@ -22,7 +22,7 @@ instance wiring points the author's live LifeOS hook at the canonical config, cl
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Trust Kernel** - HMAC + DPAPI + atomic store with a Rust↔PowerShell interop round-trip as the exit gate (completed 2026-06-04)
-- [ ] **Phase 2: Mutation Engine** - Direction classifier, weekly token quota, NTP-true grace, atomic ordered commit
+- [x] **Phase 2: Mutation Engine** - Direction classifier, weekly token quota, NTP-true grace, atomic ordered commit (completed 2026-06-05)
 - [ ] **Phase 3: Enforcement Guard** - PowerShell verify→auto-revert with fail-closed paths and grace re-check
 - [ ] **Phase 4: UI (Moonlit Indigo)** - Status, token meter, +8 button, and live per-field editor feedback
 - [ ] **Phase 5: Instance Wiring** - Point the author's live hook at the canonical LifeOS config and initialize the instance
@@ -58,7 +58,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   - [x] 02-02-PLAN.md — Pure logic: direction classifier + token quota + DST-aware Monday reset (RULE-01, RULE-02, RULE-03, RULE-04)
   - [x] 02-03-PLAN.md — NTP true-time module behind a TrueTime trait (RULE-05)
   - [x] 02-04-PLAN.md — fd-lock ordered atomic re-signed commit + once-per-true-day grace (RULE-05, RULE-06)
-  - [ ] 02-05-PLAN.md — Rust↔PowerShell state_hmac parity gate (A3 closed in-phase) (RULE-06)
+  - [x] 02-05-PLAN.md — Rust↔PowerShell state_hmac parity gate (A3 closed in-phase) (RULE-06)
 
 ### Phase 3: Enforcement Guard
 **Goal**: The always-firing PowerShell guard makes the binding real — out-of-band edits silently revert, tampered state fails closed, grace is honored against the guard's own true time, and the guard cannot revert a legitimate in-app write.
@@ -102,7 +102,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Trust Kernel | 3/3 | Complete   | 2026-06-04 |
-| 2. Mutation Engine | 4/5 | In Progress|  |
+| 2. Mutation Engine | 5/5 | Complete   | 2026-06-05 |
 | 3. Enforcement Guard | 0/TBD | Not started | - |
 | 4. UI (Moonlit Indigo) | 0/TBD | Not started | - |
 | 5. Instance Wiring | 0/TBD | Not started | - |
