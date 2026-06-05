@@ -82,10 +82,12 @@ pub fn with_commit_lock<R>(
 
 /// Build the NEW signed state from the current state + the proposed commit.
 ///
-/// Sets `config_hmac = HMAC(canonical NEW bytes)`, increments `weekly_spent` iff the
-/// decision costs a token (a loosening commit), appends one ledger entry naming the
-/// loosened fields at `true_now`, applies the lazy week reset carried in the decision's
-/// effective accounting, and finally fills `state_hmac` via the locked A3 recipe.
+/// Sets `config_hmac = HMAC(canonical NEW bytes)`, applies the lazy week reset carried in the
+/// decision (sets `weekly_spent` to the decision's post-reset `effective_spent` and advances
+/// `week_anchor` to the decision's current-week Monday, so a stale anchor is durably rolled
+/// forward — CR-01), then increments `weekly_spent` iff the decision costs a token (a
+/// loosening commit), appends one ledger entry naming the loosened fields at `true_now`, and
+/// finally fills `state_hmac` via the locked A3 recipe.
 fn build_new_state(
     current: &GuardState,
     new_config_hmac: String,
@@ -96,6 +98,12 @@ fn build_new_state(
 ) -> GuardState {
     let mut next = current.clone();
     next.config_hmac = new_config_hmac;
+
+    // Persist the lazy reset FIRST: start from the post-reset effective spent and advance the
+    // anchor to the current week's Monday. Without this the stale anchor outlives the reset
+    // and decide() resets effective_spent to 0 on every later commit -> unlimited loosens.
+    next.weekly_spent = decision.effective_spent;
+    next.week_anchor = decision.week_anchor.clone();
 
     if decision.costs_token {
         // A loosening commit: spend one token and record the loosened fields in the ledger.

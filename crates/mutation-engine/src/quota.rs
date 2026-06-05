@@ -41,6 +41,13 @@ pub struct QuotaDecision {
     pub costs_token: bool,
     /// Whether the diff is a no-op (nothing to write).
     pub is_noop: bool,
+    /// The post-lazy-reset spent count this decision is based on (0 when the stored anchor
+    /// predates the current week, else the stored `weekly_spent`). `build_new_state` MUST
+    /// persist this (not the stale clone) so a reset is durably written (CR-01).
+    pub effective_spent: u8,
+    /// The CURRENT week's Monday ISO date "YYYY-MM-DD" (configured tz, DST-aware) to persist
+    /// as `week_anchor`, so a stale anchor advances and the reset is not recomputed forever.
+    pub week_anchor: String,
     /// The upcoming Monday 00:00 (configured tz, DST-aware) — always populated for the UI.
     pub next_reset: DateTime<Utc>,
 }
@@ -59,8 +66,11 @@ pub fn decide(
     let next_reset = next_monday_midnight(now_utc, tz_name);
 
     // (1) Lazy reset: if the stored anchor predates the current Monday, the week is fresh.
+    // `reset.new_anchor` is the CURRENT week's Monday ISO date — the value to persist so the
+    // anchor advances and the reset is not recomputed on every subsequent commit (CR-01).
     let reset = reset_decision(&state.week_anchor, now_utc, tz_name);
     let effective_spent = if reset.should_reset { 0 } else { state.weekly_spent };
+    let week_anchor = reset.new_anchor;
 
     // (2) All-noop -> nothing to write.
     let all_noop = dirs.iter().all(|(_, d)| *d == Direction::Noop);
@@ -70,6 +80,8 @@ pub fn decide(
             reason: None,
             costs_token: false,
             is_noop: true,
+            effective_spent,
+            week_anchor,
             next_reset,
         };
     }
@@ -81,6 +93,8 @@ pub fn decide(
             reason: None,
             costs_token: false,
             is_noop: false,
+            effective_spent,
+            week_anchor,
             next_reset,
         };
     }
@@ -92,6 +106,8 @@ pub fn decide(
             reason: None,
             costs_token: true,
             is_noop: false,
+            effective_spent,
+            week_anchor,
             next_reset,
         }
     } else {
@@ -103,6 +119,8 @@ pub fn decide(
             )),
             costs_token: false,
             is_noop: false,
+            effective_spent,
+            week_anchor,
             next_reset,
         }
     }

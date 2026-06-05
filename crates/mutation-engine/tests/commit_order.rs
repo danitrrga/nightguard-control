@@ -93,13 +93,26 @@ fn seed_old(p: &CommitPaths) {
     fs::write(&p.guard_json, serde_json::to_vec_pretty(&state).unwrap()).unwrap();
 }
 
+// The seeded states (seed_old) use weekly_spent=0, so a post-reset effective_spent of 0
+// keeps the existing assertions (loosen -> weekly_spent==1) intact. The anchor is the
+// current-week Monday for the decision's instant, mirroring what quota::decide produces.
+fn now_for_decision() -> chrono::DateTime<Utc> {
+    Utc.timestamp_opt(1_780_000_000, 0).unwrap()
+}
+
+fn current_week_anchor() -> String {
+    week::reset_decision("1970-01-01", now_for_decision(), TZ).new_anchor
+}
+
 fn loosening_decision() -> QuotaDecision {
     QuotaDecision {
         allowed: true,
         reason: None,
         costs_token: true,
         is_noop: false,
-        next_reset: week::next_monday_midnight(Utc.timestamp_opt(1_780_000_000, 0).unwrap(), TZ),
+        effective_spent: 0,
+        week_anchor: current_week_anchor(),
+        next_reset: week::next_monday_midnight(now_for_decision(), TZ),
     }
 }
 
@@ -109,7 +122,9 @@ fn tightening_decision() -> QuotaDecision {
         reason: None,
         costs_token: false,
         is_noop: false,
-        next_reset: week::next_monday_midnight(Utc.timestamp_opt(1_780_000_000, 0).unwrap(), TZ),
+        effective_spent: 0,
+        week_anchor: current_week_anchor(),
+        next_reset: week::next_monday_midnight(now_for_decision(), TZ),
     }
 }
 
