@@ -153,6 +153,41 @@ fn ntp_unreachable_refuses_and_leaves_file_unchanged() {
     );
 }
 
+/// CR-02 regression: the already-used-today check MUST be made against the FRESH on-disk
+/// state read inside the commit lock, NOT a snapshot the caller captured earlier. Here the
+/// on-disk guard.json already has a grace granted today, but the caller passes a stale
+/// `grace = None` snapshot. The grant must be REFUSED because the in-lock re-read sees the
+/// used grace. Before the fix `use_grace` trusts the stale parameter and double-grants.
+#[test]
+fn use_grace_decides_against_fresh_on_disk_state_not_stale_snapshot() {
+    let dir = scratch_dir("cr02-fresh-read");
+    let p = paths_in(&dir);
+
+    // ON DISK: grace already used today.
+    let mut on_disk = base_state();
+    on_disk.grace = Some(GraceWindow {
+        date: "2026-06-05".to_string(),
+        window_start: NOON_JUN5_UTC - 3600,
+        window_end: NOON_JUN5_UTC - 3600 + 8 * 60,
+    });
+    seed_state(&p, on_disk);
+    let before_bytes = fs::read(&p.guard_json).unwrap();
+
+    // STALE caller snapshot: claims no grace used yet.
+    let stale = base_state(); // grace == None
+
+    let result = use_grace(&p, &stale, &fake(NOON_JUN5_UTC), TZ, &KEY);
+    assert!(
+        matches!(result, Err(MutationError::GraceAlreadyUsedToday)),
+        "must refuse based on the fresh on-disk grace, not the stale grace=None snapshot"
+    );
+    assert_eq!(
+        fs::read(&p.guard_json).unwrap(),
+        before_bytes,
+        "a refused reuse must leave guard.json byte-unchanged"
+    );
+}
+
 #[test]
 fn true_day_is_derived_in_configured_tz_not_utc() {
     let dir = scratch_dir("tzboundary");
