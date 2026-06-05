@@ -15,11 +15,11 @@ use std::path::{Path, PathBuf};
 
 use mutation_engine::classify::Direction;
 use mutation_engine::commit::{commit_change, commit_with_limit, CommitPaths};
-use mutation_engine::quota::QuotaDecision;
+use mutation_engine::quota::{decide, QuotaDecision};
 use mutation_engine::state::GuardState;
 use mutation_engine::{sign, week};
 
-use chrono::{TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use trust_kernel::canon::canonicalize_bytes;
 use trust_kernel::hmac::{sign_bytes, tag_to_hex};
 
@@ -233,6 +233,85 @@ fn crash_after_guardjson_converges_to_new() {
 
     let converged = guard_verify_and_revert(&p);
     assert_eq!(converged, new_canon, "crash after guard.json must converge to NEW");
+}
+
+/// CR-01 regression: the lazy week reset MUST be persisted (weekly_spent zeroed AND
+/// week_anchor advanced) by a real commit, so a stale-anchor week does not grant an
+/// unlimited number of loosening commits.
+///
+/// Drives the FULL persisted round-trip: each commit re-reads guard.json from disk,
+/// runs the real `quota::decide` against it, and (when allowed) commits via the full
+/// `commit_change` path. Without the fix the anchor never advances, `decide` resets
+/// `effective_spent` to 0 on every call, and the 4th loosen is wrongly allowed.
+#[test]
+fn lazy_week_reset_is_persisted_and_enforces_weekly_cap() {
+    let dir = scratch_dir("cr01-persist-reset");
+    let p = paths_in(&dir);
+
+    // Seed an OLD-consistent state but with weekly_spent=3 and a PRIOR-week anchor.
+    let (old_hmac, old_canon) = sign::sign_config(&KEY, OLD_YAML);
+    fs::write(&p.config, &old_canon).unwrap();
+    fs::write(&p.sanctioned, &old_canon).unwrap();
+    let mut seeded = GuardState {
+        config_hmac: old_hmac,
+        state_hmac: String::new(),
+        weekly_spent: 3,
+        week_anchor: "2026-06-01".to_string(), // previous Monday (stale)
+        ledger: vec![],
+        grace: None,
+    };
+    seeded.state_hmac = seeded.compute_state_hmac(&KEY);
+    fs::write(&p.guard_json, serde_json::to_vec_pretty(&seeded).unwrap()).unwrap();
+
+    // "Now" = Tuesday 2026-06-09 12:00 UTC, week of Monday 2026-06-08.
+    let now: DateTime<Utc> = Utc.with_ymd_and_hms(2026, 6, 9, 12, 0, 0).single().unwrap();
+    let true_now = now.timestamp();
+    let dirs = vec![("curfew.start".to_string(), Direction::Loosen)];
+
+    // Helper: re-read guard.json, decide against the FRESH on-disk state.
+    let decide_now = |p: &CommitPaths| -> QuotaDecision {
+        let bytes = fs::read(&p.guard_json).unwrap();
+        let state: GuardState = serde_json::from_slice(&bytes).unwrap();
+        decide(&dirs, &state, now, TZ)
+    };
+
+    // --- Commit #1 (the reset week's first loosen) ---
+    let dec1 = decide_now(&p);
+    assert!(dec1.allowed, "fresh-week loosen #1 must be allowed");
+    commit_change(&p, NEW_YAML, &dirs, &dec1, &KEY, true_now).expect("commit #1");
+
+    let after1 = read_state(&p.guard_json);
+    assert_eq!(
+        after1.weekly_spent, 1,
+        "after the reset week's first loosen, weekly_spent must be 0->1, not 3->4"
+    );
+    assert_eq!(
+        after1.week_anchor, "2026-06-08",
+        "the lazy reset must advance week_anchor to the current week's Monday"
+    );
+
+    // --- Commit #2 and #3 (consume the rest of the weekly budget) ---
+    let dec2 = decide_now(&p);
+    assert!(dec2.allowed, "loosen #2 must be allowed");
+    commit_change(&p, NEW_YAML, &dirs, &dec2, &KEY, true_now).expect("commit #2");
+    assert_eq!(read_state(&p.guard_json).weekly_spent, 2);
+
+    let dec3 = decide_now(&p);
+    assert!(dec3.allowed, "loosen #3 must be allowed");
+    commit_change(&p, NEW_YAML, &dirs, &dec3, &KEY, true_now).expect("commit #3");
+    assert_eq!(read_state(&p.guard_json).weekly_spent, 3);
+
+    // --- Commit #4 (the cap): must be BLOCKED now that the anchor is current. ---
+    let dec4 = decide_now(&p);
+    assert!(
+        !dec4.allowed,
+        "the FOURTH loosen in the same week must be blocked (quota exhausted)"
+    );
+    let reason = dec4.reason.expect("blocked decision carries a reason");
+    assert!(
+        reason.contains("available again Monday"),
+        "blocked reason must contain the locked substring, got: {reason:?}"
+    );
 }
 
 #[test]
