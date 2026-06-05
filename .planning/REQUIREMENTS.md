@@ -18,8 +18,8 @@
 - [x] **RULE-02**: A commit that loosens anything costs exactly 1 of 3 weekly tokens; all-tighten/neutral commits are free; no-op commits do nothing.
 - [x] **RULE-03**: The weekly token budget resets at Monday 00:00 in the configured timezone, DST-aware (never naive +7×24h).
 - [x] **RULE-04**: A loosening commit is blocked with a clear reason ("available again Monday") when 0 tokens remain.
-- [ ] **RULE-05**: "+8" grants a once-per-true-day 8-minute grace window recorded in signed state; refused if already used today or if NTP is unreachable.
-- [ ] **RULE-06**: Every sanctioned commit atomically writes the sanctioned snapshot and signed state *before* the live config, re-signing all artifacts.
+- [x] **RULE-05**: "+8" grants a once-per-true-day 8-minute grace window recorded in signed state; refused if already used today or if NTP is unreachable.
+- [x] **RULE-06**: Every sanctioned commit atomically writes the sanctioned snapshot and signed state *before* the live config, re-signing all artifacts.
 
 ### Enforcement Guard
 
@@ -76,7 +76,7 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | RULE-02 | Phase 2 | Complete |
 | RULE-03 | Phase 2 | Complete |
 | RULE-04 | Phase 2 | Complete |
-| RULE-05 | Phase 2 | Pending |
+| RULE-05 | Phase 2 | Complete |
 | RULE-06 | Phase 2 | In progress (02-01 sign layer + guard.json state model; full ordered commit closes in 02-04) |
 | GARD-01 | Phase 3 | Pending |
 | GARD-02 | Phase 3 | Pending |

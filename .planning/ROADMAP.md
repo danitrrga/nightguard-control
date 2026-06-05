@@ -57,7 +57,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   - [x] 02-01-PLAN.md — Scaffold mutation-engine crate + guard.json serde model + canonical-bytes sign layer (RULE-06)
   - [x] 02-02-PLAN.md — Pure logic: direction classifier + token quota + DST-aware Monday reset (RULE-01, RULE-02, RULE-03, RULE-04)
   - [x] 02-03-PLAN.md — NTP true-time module behind a TrueTime trait (RULE-05)
-  - [ ] 02-04-PLAN.md — fd-lock ordered atomic re-signed commit + once-per-true-day grace (RULE-05, RULE-06)
+  - [x] 02-04-PLAN.md — fd-lock ordered atomic re-signed commit + once-per-true-day grace (RULE-05, RULE-06)
   - [ ] 02-05-PLAN.md — Rust↔PowerShell state_hmac parity gate (A3 closed in-phase) (RULE-06)
 
 ### Phase 3: Enforcement Guard
@@ -102,7 +102,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Trust Kernel | 3/3 | Complete   | 2026-06-04 |
-| 2. Mutation Engine | 3/5 | In progress | - |
+| 2. Mutation Engine | 4/5 | In Progress|  |
 | 3. Enforcement Guard | 0/TBD | Not started | - |
 | 4. UI (Moonlit Indigo) | 0/TBD | Not started | - |
 | 5. Instance Wiring | 0/TBD | Not started | - |

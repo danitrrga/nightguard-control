@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 2 Plan 03 (NTP true-time behind TrueTime trait) COMPLETE. 2 new fake-based tests green + 1 #[ignore] live test; full crate 49/49 (live ignored); RULE-05 time-half done. NEXT: 02-04-PLAN.md (fd-lock ordered commit + grace)."
-last_updated: "2026-06-05T10:00:00.000Z"
-last_activity: 2026-06-05 -- Phase 02 Plan 03 complete
+stopped_at: "Phase 2 Plan 04 COMPLETE — commit.rs (RULE-06): with_commit_lock (fd-lock exclusive) + ordered atomic re-signed commit (sanctioned -> guard.json -> live LAST), crash-convergence proven (commit_order.rs stop-after-N, N in {0,1,2,3}); grace.rs (RULE-05): use_grace once-per-true-day 8-min NTP-boxed window, refused on reuse-today or NtpUnreachable. 13 new tests (8 commit_order + 5 grace), full crate 62/62 (1 live ignored). NEXT: 02-05-PLAN.md (Rust<->PowerShell state_hmac parity gate)."
+last_updated: "2026-06-05T09:53:18.033Z"
+last_activity: 2026-06-05
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 8
-  completed_plans: 6
-  percent: 38
+  completed_plans: 7
+  percent: 44
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 02 (mutation-engine) — EXECUTING
-Plan: 4 of 5
-Next: 02-04-PLAN.md (fd-lock ordered atomic re-signed commit + once-per-true-day grace, RULE-05/06)
-Status: Executing Phase 02
-Last activity: 2026-06-05 -- Phase 02 Plan 03 complete
+Plan: 5 of 5
+Next: 02-05-PLAN.md (Rust<->PowerShell state_hmac parity gate, A3 closed in-phase)
+Status: Ready to execute
+Last activity: 2026-06-05
 
-Phase progress: [██░░░░░░░░] 1/5 phases complete (Phase 02: 3/5 plans)
+Phase progress: [██░░░░░░░░] 1/5 phases complete (Phase 02: 4/5 plans)
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Phase progress: [██░░░░░░░░] 1/5 phases complete (Phase 02: 
 | Phase 2 P02-01 | 8 | 2 tasks | 13 files |
 | Phase 2 P02-02 | 14 | 3 tasks | 6 files |
 | Phase 2 P02-03 | 6 | 1 task | 2 files |
+| Phase 2 P02-04 | 5 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,7 @@ Recent decisions affecting current work:
 - [Phase 2, 02-02]: week reset is DST-aware via from_local_datetime + explicit MappedLocalTime (Ambiguous->earliest deterministic); next_monday_midnight re-derives from the local Monday DATE + 7 days (transition week = 169h), never +7*24h (T-02-06; grep gate = 0).
 - [Phase 2, 02-02]: QuotaDecision.next_reset is always populated (upcoming Monday), and decide() applies the lazy week reset to an EFFECTIVE weekly_spent before charging — a stale spent=3 never blocks a fresh-week loosen; blocked reason carries the locked 'available again Monday' substring (RULE-04).
 - [Phase 2, 02-03]: true-time is behind a TrueTime trait — SntpTrueTime (real sntpc::sync::get_time over UdpSocketWrapper) in production, FakeTrueTime injected in tests; only the #[ignore] live test touches UDP. Every sntpc::Error (incl. #[non_exhaustive] variants via catch-all Err(_)) maps to NtpUnreachable — NO system/local clock fallback path exists (fail-closed, T-02-08). NtpUnreachable is both a zero-size type (for local matches!) and folds into MutationError via From (for ? propagation). Built-in NTP fallback list: cloudflare/google/pool, first success wins.
+- [Phase 2, 02-04]: commit ordering LOCKED — sanctioned -> guard.json (re-signed, config_hmac=HMAC(NEW canonical bytes), state_hmac via A3) -> live config.yaml LAST (write_canonical_text, same canonical bytes). Crash converges to OLD or NEW, never a forged middle (commit_order.rs stop-after-N for N in {0,1,2,3} + a local copy of the guard's verify-and-revert rule). One fd-lock exclusive lock (with_commit_lock, LockFileEx) wraps BOTH commit_change and use_grace so they never interleave guard.json writes. commit trusts the supplied QuotaDecision (token++/ledger only when costs_token), it does not re-classify. Grace (RULE-05) derives true-day from the NTP instant in the configured tz (Pitfall 4, never Local::now()), costs no token, and is refused — leaving guard.json byte-unchanged — on same-true-day reuse (GraceAlreadyUsedToday) or NtpUnreachable.
 
 ### Pending Todos
 
@@ -104,7 +106,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-05T12:00:00.000Z
-Stopped at: Phase 2 Plan 03 COMPLETE — ntp.rs (RULE-05 true-time half): TrueTime trait + NtpTrueTime/NtpUnreachable + SntpTrueTime (sntpc::sync::get_time over sntpc-net-std) + FakeTrueTime test helper; any SNTP error -> NtpUnreachable, no clock fallback; 2 fake tests green + 1 #[ignore] live (full crate 49/49, live skipped). NEXT: 02-04-PLAN.md (fd-lock ordered commit + grace).
-Resume file: .planning/HANDOFF.md
+Last session: 2026-06-05T09:53:18.022Z
+Stopped at: Phase 2 Plan 04 COMPLETE — commit.rs (RULE-06): with_commit_lock (fd-lock exclusive, LockFileEx) + ordered atomic re-signed commit sanctioned -> guard.json -> live (LAST); crash-convergence proven (commit_order.rs stop-after-N, N in {0,1,2,3}). grace.rs (RULE-05): use_grace once-per-true-day 8-min NTP-boxed window, refused on reuse-today or NtpUnreachable, byte-unchanged on refusal. 13 new tests (8 commit_order + 5 grace); full crate 62/62 (1 live ignored). NEXT: 02-05-PLAN.md (Rust<->PowerShell state_hmac parity gate).
+Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
