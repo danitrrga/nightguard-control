@@ -53,7 +53,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The weekly token budget resets at Monday 00:00 in the configured timezone, DST-aware (never naive +7×24h).
   4. "+8" grants a once-per-true-day 8-minute grace window recorded in signed state, refused if already used today or if NTP is unreachable.
   5. Every sanctioned commit atomically writes the sanctioned snapshot and signed state *before* the live config, re-signing all artifacts under a single-writer lock.
-**Plans**: TBD
+**Plans**: 5 plans
+  - [ ] 02-01-PLAN.md — Scaffold mutation-engine crate + guard.json serde model + canonical-bytes sign layer (RULE-06)
+  - [ ] 02-02-PLAN.md — Pure logic: direction classifier + token quota + DST-aware Monday reset (RULE-01, RULE-02, RULE-03, RULE-04)
+  - [ ] 02-03-PLAN.md — NTP true-time module behind a TrueTime trait (RULE-05)
+  - [ ] 02-04-PLAN.md — fd-lock ordered atomic re-signed commit + once-per-true-day grace (RULE-05, RULE-06)
+  - [ ] 02-05-PLAN.md — Rust↔PowerShell state_hmac parity gate (A3 closed in-phase) (RULE-06)
 
 ### Phase 3: Enforcement Guard
 **Goal**: The always-firing PowerShell guard makes the binding real — out-of-band edits silently revert, tampered state fails closed, grace is honored against the guard's own true time, and the guard cannot revert a legitimate in-app write.
@@ -97,7 +102,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Trust Kernel | 3/3 | Complete   | 2026-06-04 |
-| 2. Mutation Engine | 0/TBD | Not started | - |
+| 2. Mutation Engine | 0/5 | Not started | - |
 | 3. Enforcement Guard | 0/TBD | Not started | - |
 | 4. UI (Moonlit Indigo) | 0/TBD | Not started | - |
 | 5. Instance Wiring | 0/TBD | Not started | - |
