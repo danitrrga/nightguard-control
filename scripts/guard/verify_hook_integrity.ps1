@@ -33,9 +33,15 @@ $manifest = Join-Path $here 'guard.baseline.sha256'
 
 # --- The protected set: relative (forward-slash) paths of the guard scripts to baseline -------
 # Self-registers verify_hook_integrity.ps1 so editing EITHER script trips the check.
+# CR-02: nightguard_guard.ps1 dot-sources the interop scripts for every crypto primitive
+# (Unprotect-GuardKey, Get-FileHmacHex, Get-FileBytes, Write-RawBytes, ConvertTo-LowerHex), so
+# they are part of the trust surface. Register them too -- otherwise editing them subverts the
+# guard while this check still reports PASS (a hole in the GARD-06 / D-10 guarantee).
 $registered = @(
     'scripts/guard/nightguard_guard.ps1',
-    'scripts/guard/verify_hook_integrity.ps1'
+    'scripts/guard/verify_hook_integrity.ps1',
+    'scripts/interop/nightguard_interop.ps1',
+    'scripts/interop/state_interop.ps1'
 )
 
 function Get-GuardFileHash {

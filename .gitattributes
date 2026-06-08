@@ -7,3 +7,8 @@ config*.yaml -text
 # Git must never normalize their line endings, or a fresh autocrlf checkout would produce
 # CRLF working-tree files whose hash no longer matches the LF baseline (false drift).
 scripts/guard/*.ps1 -text
+
+# CR-02: the interop scripts are dot-sourced by the guard and SHA256-baselined alongside it.
+# Pin them -text for the same reason -- a fresh autocrlf checkout must not rewrite their line
+# endings (false drift) and any future here-string / byte literal in them must stay byte-stable.
+scripts/interop/*.ps1 -text
