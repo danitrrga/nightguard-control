@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 3 context gathered
-last_updated: "2026-06-08T09:48:53.780Z"
-last_activity: 2026-06-08 -- Phase 03 planning complete
+last_updated: "2026-06-08T10:22:48.076Z"
+last_activity: 2026-06-08
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 12
-  completed_plans: 8
+  completed_plans: 9
   percent: 40
 ---
 
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts.
-**Current focus:** Phase 02 — mutation-engine
+**Current focus:** Phase 03 — enforcement-guard
 
 ## Current Position
 
-Phase: 02 (mutation-engine) — COMPLETE
-Plan: 5 of 5 (all complete)
+Phase: 03 (enforcement-guard) — EXECUTING
+Plan: 2 of 4
 Next: Phase 03 (Enforcement Guard) — needs planning
 Status: Ready to execute
-Last activity: 2026-06-08 -- Phase 03 planning complete
+Last activity: 2026-06-08
 
 Phase progress: [████░░░░░░] 2/5 phases complete (Phase 02: 5/5 plans)
 
@@ -60,6 +60,7 @@ Phase progress: [████░░░░░░] 2/5 phases complete (Phase 02: 
 | Phase 2 P02-03 | 6 | 1 task | 2 files |
 | Phase 2 P02-04 | 5 | 2 tasks | 4 files |
 | Phase 2 P02-05 | 11 | 2 tasks | 4 files |
+| Phase 3 P01 | 6 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,8 @@ Recent decisions affecting current work:
 - [Phase 2, 02-03]: true-time is behind a TrueTime trait — SntpTrueTime (real sntpc::sync::get_time over UdpSocketWrapper) in production, FakeTrueTime injected in tests; only the #[ignore] live test touches UDP. Every sntpc::Error (incl. #[non_exhaustive] variants via catch-all Err(_)) maps to NtpUnreachable — NO system/local clock fallback path exists (fail-closed, T-02-08). NtpUnreachable is both a zero-size type (for local matches!) and folds into MutationError via From (for ? propagation). Built-in NTP fallback list: cloudflare/google/pool, first success wins.
 - [Phase 2, 02-05]: Assumption A3 CLOSED in-phase — state_hmac is byte-identical Rust<->PowerShell both directions, proven by run_state_interop_gate.ps1 (GREEN under Windows PowerShell 5.1.26100). The Rust bin emits the EXACT pre-sign canonical bytes (.signbytes); the PS side HMACs them verbatim (raw-bytes HMAC, no sign-time canonicalization) reusing the Phase 1 Get-FileHmacHex; shared key via DPAPI blob (PS protects, Rust load_or_create_key unprotects). state_interop_cli reuses the single locked GuardState::compute_state_hmac recipe (no duplicate). Tamper proven two-pronged: guard.json byte-flip -> Rust verify exit 2; .signbytes byte-flip -> PS tag differs. This is the template the Phase 3 PS guard's state-verification path follows.
 - [Phase 2, 02-04]: commit ordering LOCKED — sanctioned -> guard.json (re-signed, config_hmac=HMAC(NEW canonical bytes), state_hmac via A3) -> live config.yaml LAST (write_canonical_text, same canonical bytes). Crash converges to OLD or NEW, never a forged middle (commit_order.rs stop-after-N for N in {0,1,2,3} + a local copy of the guard's verify-and-revert rule). One fd-lock exclusive lock (with_commit_lock, LockFileEx) wraps BOTH commit_change and use_grace so they never interleave guard.json writes. commit trusts the supplied QuotaDecision (token++/ledger only when costs_token), it does not re-classify. Grace (RULE-05) derives true-day from the NTP instant in the configured tz (Pitfall 4, never Local::now()), costs no token, and is refused — leaving guard.json byte-unchanged — on same-true-day reuse (GraceAlreadyUsedToday) or NtpUnreachable.
+- [Phase ?]: [Phase 3, 03-01]: RUNTIME state_hmac re-derive proven green (Check 4) -- parse pretty guard.json, blank state_hmac, ConvertTo-Json -Compress -Depth 10, UTF-8 no BOM, append one 0x0A, HMAC; matches on-disk tag WITHOUT reading .signbytes. T-03-01 mitigated.
+- [Phase ?]: [Phase 3, 03-01]: fd-lock presence probe proven green (lock_probe.rs) -- [IO.File]::Open(p,'Open','ReadWrite','None') IOException == held against a live Rust with_commit_lock holder; lock file persists so existence != held; FREE after release. T-03-02 mitigated; plan 02 lifts this shape into Test-LockHeld.
 
 ### Pending Todos
 
@@ -108,7 +111,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-08T09:08:48.623Z
+Last session: 2026-06-08T10:21:47.340Z
 Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-enforcement-guard/03-CONTEXT.md
+Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
