@@ -19,6 +19,9 @@
 #                                reverted=false (revert skipped); release -> fire again -> reverted=true.
 #   GARD-06 override-ignored   : CR-01 production-safety -- without NIGHTGUARD_TEST_NTP_OVERRIDE=1 a passed
 #                                -NtpOverrideUnixSecs is IGNORED; the real SNTP+clock-tamper path runs (no allow).
+#   GARD-07 audit-chain-tamper : WR-01 / T-03-13 -- fire once (writes a record), flip one byte of
+#                                guard-audit.log, fire again -> verdict reports audit_chain_broken=true,
+#                                a chain-broken record is appended, and the curfew verdict is UNCHANGED.
 #
 # Fixture strategy (DEVIATION from the plan's "emit-state-hmac builds guard.json" text -- see the
 # SUMMARY): state_interop_cli emit-state-hmac writes a FIXED, arbitrary config_hmac that is NOT the
@@ -118,7 +121,7 @@ function Add-Check {
 }
 
 Write-Host ""
-Write-Host "=== Nightguard GUARD end-to-end exit gate (GARD-01/02/03/04/05/06) ==="
+Write-Host "=== Nightguard GUARD end-to-end exit gate (GARD-01/02/03/04/05/06/07) ==="
 Write-Host ("Guard: {0}" -f $guard)
 Write-Host ("CLI:   {0}" -f $cliExe)
 Write-Host ("Work:  {0}" -f $work)
@@ -359,6 +362,52 @@ try {
     Add-Check -Name 'GARD-06 override-ignored-in-prod' -Pass $false -Detail "exception: $_"
 }
 
+# === GARD-07: tamper guard-audit.log -> the chain verifier detects it next fire (WR-01/T-03-13) ==
+try {
+    # Fire 1 writes the FIRST audit record (chains off genesis). With a clean log the verifier must
+    # report audit_chain_broken=false. Then flip ONE byte inside that record (not the trailing LF)
+    # so its stored tag no longer re-derives; fire 2 must detect the break (audit_chain_broken=true)
+    # AND append a 'chain-broken' record, while the curfew verdict (deny here) is UNCHANGED.
+    $f = Build-Fixture -Name 'gard07' -WindowEnd $null
+    $auditLog = Join-Path $f.Dir 'guard-audit.log'
+
+    # Fire 1: clean run -> writes record 1. Curfew (no grace window), so decision=deny.
+    $r1 = Invoke-Guard -DataDir $f.Dir -NtpOverrideUnixSecs 1750002000
+    $cleanOk = ($null -ne $r1.Json) -and ($r1.Json.audit_chain_broken -eq $false) -and (Test-Path $auditLog)
+
+    # Capture the pre-tamper record count so we can assert a 'chain-broken' record was appended.
+    $beforeText  = [System.Text.Encoding]::UTF8.GetString((Get-FileBytes -Path $auditLog))
+    $beforeLines = @($beforeText -split "`n" | Where-Object { $_ -ne '' })
+    $beforeCount = $beforeLines.Count
+
+    # Tamper: flip one byte in the middle of the (single) record. Avoid the final byte (the LF) and
+    # stay inside the payload region so the line keeps its '|' tag separator -> a pure tag mismatch.
+    $ab = Get-FileBytes -Path $auditLog
+    $flipAt = [Math]::Floor($ab.Length / 2)
+    if ($flipAt -ge ($ab.Length - 1)) { $flipAt = 0 }
+    $ab[$flipAt] = $ab[$flipAt] -bxor 0x01
+    Write-RawBytes -Path $auditLog -Bytes $ab
+
+    # Fire 2: the verifier must catch the break BEFORE appending this fire's record.
+    $r2 = Invoke-Guard -DataDir $f.Dir -NtpOverrideUnixSecs 1750002000
+    $brokenReported = ($null -ne $r2.Json) -and ($r2.Json.audit_chain_broken -eq $true) -and ([int]$r2.Json.audit_chain_break_index -ge 0)
+    # Verdict must be UNCHANGED by the repudiation detection: still a curfew deny (never loosened).
+    $verdictUnchanged = ($null -ne $r2.Json) -and ($r2.Json.decision -eq 'deny') -and ($r2.Exit -ne 0)
+
+    # A 'chain-broken' record must have been appended (logged forward from the current last tag).
+    $afterText  = [System.Text.Encoding]::UTF8.GetString((Get-FileBytes -Path $auditLog))
+    $afterLines = @($afterText -split "`n" | Where-Object { $_ -ne '' })
+    $chainBrokenMatches = @($afterLines | Where-Object { $_ -match '\|chain-broken\|' })
+    $chainBrokenRecord = ($chainBrokenMatches.Count -ge 1)
+    $appendedForward = ($afterLines.Count -gt $beforeCount)
+
+    $pass = $cleanOk -and $brokenReported -and $verdictUnchanged -and $chainBrokenRecord -and $appendedForward
+    Add-Check -Name 'GARD-07 audit-chain-tamper-detected' -Pass $pass `
+        -Detail ("clean={0} broken={1}(idx={2}) verdictUnchanged={3} chainBrokenRecord={4} appendedForward={5}" -f $cleanOk, $brokenReported, ($(if($null -ne $r2.Json){$r2.Json.audit_chain_break_index}else{'?'})), $verdictUnchanged, $chainBrokenRecord, $appendedForward)
+} catch {
+    Add-Check -Name 'GARD-07 audit-chain-tamper-detected' -Pass $false -Detail "exception: $_"
+}
+
 # === Verdict ====================================================================================
 Write-Host ""
 Write-Host "=== Summary ==="
@@ -368,7 +417,7 @@ foreach ($c in $results) {
 }
 Write-Host ""
 if ($failed.Count -eq 0) {
-    Write-Host "ALL CHECKS PASSED -- GUARD gate is GREEN. GARD-01/02/03/04/05/06 hold end-to-end against real DPAPI/HMAC fixtures, a deterministic NTP seam, a live Rust fd-lock holder, and the CR-01 production-safety property (override ignored without the test env flag)." -ForegroundColor Green
+    Write-Host "ALL CHECKS PASSED -- GUARD gate is GREEN. GARD-01/02/03/04/05/06/07 hold end-to-end against real DPAPI/HMAC fixtures, a deterministic NTP seam, a live Rust fd-lock holder, the CR-01 production-safety property (override ignored without the test env flag), and the WR-01/T-03-13 audit-chain tamper detector (a one-byte edit of guard-audit.log is caught next fire, surfaced as audit_chain_broken, and logged forward as a chain-broken record without changing the verdict)." -ForegroundColor Green
     exit 0
 } else {
     Write-Host ("GUARD GATE FAILED -- {0} check(s) failed:" -f $failed.Count) -ForegroundColor Red

@@ -371,6 +371,92 @@ function Append-AuditRecord {
     [System.IO.File]::AppendAllText($LogPath, $line, $utf8NoBom)
 }
 
+# --- Verify-AuditChain: the D-08 / WR-01 / T-03-13 chain VERIFIER (the read-side detector) -------
+# Append-AuditRecord builds the chain; this recomputes it from genesis forward and reports the first
+# break, closing the repudiation gap (delete/edit/truncate guard-audit.log -> detected next run).
+#
+# For each on-disk line "<payload>|<record_tag>": split on the LAST '|' (the tag is fixed-form
+# lowercase hex with no '|'), then expected_tag = HMAC(key, prevTagBytes || payloadBytes), with
+# prevTag = $AuditGenesisTag for the first record and the prior record's STORED tag thereafter.
+# Compare expected vs stored with the SAME ConvertTo-LowerHex + -eq ordinal path the rest of the
+# guard uses (no weaker compare introduced). The first mismatch -> Ok=$false with its index + reason.
+#
+# Truncation-to-empty boundary (documented per the plan): an ABSENT log is genesis state -> Ok=$true
+# (nothing has ever been written, nothing to verify). A PRESENT-but-shorter/garbled log is a break:
+# any line missing its '|' tag separator, or whose stored tag does not re-derive, fails. We cannot
+# distinguish "honestly empty" from "truncated to zero bytes" without external state, so an absent
+# file is treated as Ok and a present file is verified record-by-record from genesis.
+function Verify-AuditChain {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][byte[]]$Key,
+        [Parameter(Mandatory)][string]$LogPath
+    )
+    $result = [PSCustomObject]@{
+        Ok            = $true
+        BrokenAtIndex = -1
+        Reason        = ''
+    }
+    # Absent log = genesis state. Nothing was ever appended -> nothing to verify (Ok).
+    if (-not (Test-Path $LogPath)) {
+        return $result
+    }
+    try {
+        $existing = [System.Text.Encoding]::UTF8.GetString((Get-FileBytes -Path $LogPath))
+    } catch {
+        # Present-but-unreadable log -> treat as a break (the bytes exist but cannot be parsed).
+        $result.Ok = $false
+        $result.BrokenAtIndex = 0
+        $result.Reason = 'audit log present but unreadable'
+        return $result
+    }
+    # @(...) forces an array so a single surviving line stays a whole record (not a char-indexable
+    # string). Drop empty splits (the trailing LF after the last record yields one).
+    $lines = @($existing -split "`n" | Where-Object { $_ -ne '' })
+    if ($lines.Count -eq 0) {
+        # Present file that holds no records (e.g. truncated to zero bytes / only newlines). We
+        # cannot prove it was truncated without external state, so this matches the absent case: Ok.
+        return $result
+    }
+
+    $hmac = [System.Security.Cryptography.HMACSHA256]::new($Key)
+    try {
+        $prevTag = $AuditGenesisTag
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $rec = $lines[$i]
+            # The record_tag is the field after the FINAL '|'; everything before it is the payload.
+            $sep = $rec.LastIndexOf('|')
+            if ($sep -lt 0) {
+                $result.Ok = $false
+                $result.BrokenAtIndex = $i
+                $result.Reason = "record $i has no tag separator (garbled/truncated line)"
+                return $result
+            }
+            $payload   = $rec.Substring(0, $sep)
+            $storedTag = $rec.Substring($sep + 1)
+
+            $prevBytes    = [System.Text.Encoding]::UTF8.GetBytes($prevTag)
+            $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
+            $chainInput   = New-Object byte[] ($prevBytes.Length + $payloadBytes.Length)
+            [Array]::Copy($prevBytes, 0, $chainInput, 0, $prevBytes.Length)
+            [Array]::Copy($payloadBytes, 0, $chainInput, $prevBytes.Length, $payloadBytes.Length)
+            $expectedTag = ConvertTo-LowerHex -Bytes $hmac.ComputeHash($chainInput)
+
+            if ($expectedTag -ne $storedTag) {
+                $result.Ok = $false
+                $result.BrokenAtIndex = $i
+                $result.Reason = "record $i tag mismatch (chain broken: delete/edit/truncate)"
+                return $result
+            }
+            # Chain forward off the STORED tag (== expected here) so a later edit is still caught.
+            $prevTag = $storedTag
+        }
+    } finally {
+        $hmac.Dispose()
+    }
+    return $result
+}
+
 # --- Resolve guard-side true-time (test seam OR real SNTP) --------------------------------------
 $decision      = 'deny'
 $reason        = 'curfew'
@@ -440,6 +526,38 @@ if ($null -ne $trueNow) {
 } else {
     $auditTs = 'NTP-UNREACHABLE'
 }
+
+# WR-01 / T-03-13: VERIFY the existing chain BEFORE appending this fire's record. A detected break
+# (delete/edit/truncate of guard-audit.log) is surfaced to the verdict and logged forward as its own
+# 'chain-broken' record. Repudiation detection NEVER changes the curfew verdict: the decision stays
+# exactly as computed above -- the break is recorded + surfaced, not used to loosen anything. A
+# verifier exception is itself treated as a break (fail-evident), never silently swallowed.
+$auditChainBroken = $false
+$auditChainBreakIndex = -1
+try {
+    $chainResult = Verify-AuditChain -Key $key -LogPath $auditLog
+    if (-not $chainResult.Ok) {
+        $auditChainBroken = $true
+        $auditChainBreakIndex = [int]$chainResult.BrokenAtIndex
+    }
+} catch {
+    $auditChainBroken = $true
+    $auditChainBreakIndex = -1
+}
+
+# If the chain is broken, emit a dedicated 'chain-broken' record FIRST so the event is logged forward
+# from the current last tag (the break itself becomes part of the now-continuing trail). This must
+# not crash the guard into a permissive state, so it is wrapped like the guard-fire append below.
+if ($auditChainBroken) {
+    try {
+        $breakDetail = "break_index=$auditChainBreakIndex reason=$($chainResult.Reason)"
+        Append-AuditRecord -Key $key -LogPath $auditLog -Timestamp $auditTs -EventType 'chain-broken' -Detail $breakDetail
+    } catch {
+        # A chain-broken append failure must not crash the guard. The break is still surfaced in the
+        # verdict JSON below (audit_chain_broken=true), so the signal is not lost.
+    }
+}
+
 $auditDetail = "decision=$decision reason=$reason grace_remaining_secs=$graceRemaining reverted=$reverted fail_closed=$failClosed"
 try {
     Append-AuditRecord -Key $key -LogPath $auditLog -Timestamp $auditTs -EventType 'guard-fire' -Detail $auditDetail
@@ -452,11 +570,13 @@ try {
 # Deliberately NOT the Claude-Code {continue,decision,reason} schema. The host decides what a deny
 # does; the guard is a pure verified-state oracle. exit 0 = allow, non-zero = deny.
 $verdict = [PSCustomObject]@{
-    decision             = $decision
-    reason               = $reason
-    grace_remaining_secs = $graceRemaining
-    reverted             = $reverted
-    fail_closed          = $failClosed
+    decision               = $decision
+    reason                 = $reason
+    grace_remaining_secs   = $graceRemaining
+    reverted               = $reverted
+    fail_closed            = $failClosed
+    audit_chain_broken     = $auditChainBroken
+    audit_chain_break_index = $auditChainBreakIndex
 }
 $verdict | ConvertTo-Json -Compress -Depth 5
 
