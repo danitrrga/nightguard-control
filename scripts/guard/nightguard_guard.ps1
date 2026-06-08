@@ -132,14 +132,129 @@ function Get-RuntimeStateHmac {
     }
 }
 
-# --- Verdict-input variables (Task 2 sets the config/state branches; plan 03 reads these) -------
+# --- Test-SanctionedValid: the LOCKED sanctioned-validity predicate (RESEARCH Open Q2) ----------
+# "sanctioned valid" = the file exists AND HMAC(its raw bytes) == guard.json.config_hmac. The
+# sanctioned snapshot is the revert target = the NEW canonical bytes config_hmac was signed over
+# (Phase 2 writes sanctioned FIRST, then re-signs config_hmac over those same bytes). So after a
+# hand-edit, live != sanctioned but sanctioned still matches config_hmac. A sanctioned that itself
+# was tampered (or is missing/unreadable) fails this predicate -> fall to maximal-lockout.
+function Test-SanctionedValid {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][byte[]]$Key,
+        [Parameter(Mandatory)][string]$SanctionedPath,
+        [Parameter(Mandatory)][string]$ExpectedConfigHmac
+    )
+    if ([string]::IsNullOrEmpty($ExpectedConfigHmac)) { return $false }  # untrustworthy target
+    if (-not (Test-Path $SanctionedPath)) { return $false }
+    try {
+        $sanctHmac = Get-FileHmacHex -KeyBytes $Key -Path $SanctionedPath
+    } catch {
+        return $false   # unreadable -> treat as invalid (fail-closed), never permissive
+    }
+    return ($sanctHmac -eq $ExpectedConfigHmac)
+}
+
+# --- Write-MaximalLockoutDefault: the hardcoded D-03 fail-closed default ------------------------
+# Written ONLY when BOTH live and sanctioned config are invalid (or config_hmac is untrustworthy).
+# Maximally restrictive: curfew always-on (24/7 via every schedule day = the full day),
+# block_when_offline on, clock_protection + watchdog on. Grace/tokens live in guard.json (which the
+# guard NEVER writes) -- the state-verify worst-case substitution handles "no grace, zero tokens"
+# at runtime. The literal is canonical bytes (UTF-8, no BOM, LF-only, exactly one trailing 0x0A)
+# so the existing minimal YAML parser (KERN-04 form) reads it. Uses Write-RawBytes (no Set-Content).
+function Write-MaximalLockoutDefault {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ConfigPath)
+    # ASCII, LF-joined, single trailing LF appended below. 24/7 lockout: every day fully guarded.
+    $lines = @(
+        '# MAXIMAL LOCKOUT DEFAULT -- written by nightguard_guard.ps1 (D-03 fail-closed).'
+        '# Both live and sanctioned config were invalid; this is the most restrictive config.'
+        '# Repair via the app (DPAPI-gated re-sign), then this file is replaced by a signed one.'
+        'curfew:'
+        '  enabled: true'
+        '  start: "00:00"'
+        '  end: "23:59"'
+        '  allow_commands: []'
+        '  block_when_offline: true'
+        '  schedule:'
+        '    monday: "00:00-23:59"'
+        '    tuesday: "00:00-23:59"'
+        '    wednesday: "00:00-23:59"'
+        '    thursday: "00:00-23:59"'
+        '    friday: "00:00-23:59"'
+        '    saturday: "00:00-23:59"'
+        '    sunday: "00:00-23:59"'
+        'clock_protection:'
+        '  enabled: true'
+        '  max_offset_minutes: 0'
+        'watchdog:'
+        '  enabled: true'
+        '  check_interval_seconds: 30'
+        '  apps: []'
+        'timezone: "Europe/Amsterdam"'
+    )
+    $text = ($lines -join "`n") + "`n"   # LF-only, exactly one trailing LF
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($text)   # UTF-8, no BOM
+    Write-RawBytes -Path $ConfigPath -Bytes $bytes
+}
+
+# --- Verdict-input variables (this plan sets the config/state branches; plan 03 reads these) ----
 $reverted    = $false
 $failClosed  = $false
 $weeklySpent = 3       # default to worst-case until state-verify proves otherwise (fail-closed)
 $graceUsed   = $true   # default to grace-as-used until state-verify proves otherwise
 
-# Task 2 fills the config-verify -> circuit-breaker -> revert/lockout path and the state-verify
-# substitution here, all BEFORE any clock-dependent logic.
+# --- State-verify (D-04): re-derive state_hmac; mismatch -> runtime worst-case (no write) -------
+# Done first so the config-verify branch can lean on $guardObj.config_hmac. A missing/unparseable
+# guard.json or any state_hmac mismatch leaves the worst-case defaults above in place.
+$stateResult = Get-RuntimeStateHmac -Key $key -GuardJson $guardJson
+$guardObj    = $stateResult.Obj
+$stateValid  = $stateResult.Valid -and ($stateResult.Tag -eq $stateResult.Expected)
+if ($stateValid) {
+    # State proven untampered: trust the on-disk values.
+    $weeklySpent = [int]$guardObj.weekly_spent
+    $graceUsed   = ($null -ne $guardObj.grace)   # an active grace window means grace is used today
+} else {
+    # D-04: tampered/unverifiable state -> worst-case (already set above). The guard NEVER re-signs
+    # guard.json -- re-blessing the worst-case for the week is the Rust DPAPI repair's job (D-05).
+    $weeklySpent = 3
+    $graceUsed   = $true
+}
+
+# --- Config-verify -> circuit-breaker -> revert / maximal-lockout (GARD-01/02/05) ---------------
+# Runs UNCONDITIONALLY every fire, BEFORE any clock-dependent logic. config_hmac is trustworthy
+# only when state-verify passed; otherwise we cannot trust the revert target and must fail closed.
+$configHmacTrusted = $stateValid -and -not [string]::IsNullOrEmpty([string]$guardObj.config_hmac)
+
+$liveHmac = $null
+if (Test-Path $cfgLive) {
+    try { $liveHmac = Get-FileHmacHex -KeyBytes $key -Path $cfgLive } catch { $liveHmac = $null }
+}
+
+if ($configHmacTrusted -and $liveHmac -eq [string]$guardObj.config_hmac) {
+    # Live config matches the signed snapshot: nothing to revert.
+    $reverted = $false
+} else {
+    # Mismatch (hand-edit), missing/unreadable live, or an untrustworthy config_hmac.
+    # D-06 circuit-breaker: if the app holds .nightguard.lock, a commit is in progress -- SKIP the
+    # revert this cycle (live-written-LAST converges moments later; the next fire re-checks).
+    if (Test-LockHeld -LockPath $lockPath) {
+        $reverted = $false
+    }
+    elseif ($configHmacTrusted -and (Test-SanctionedValid -Key $key -SanctionedPath $cfgSanctioned -ExpectedConfigHmac ([string]$guardObj.config_hmac))) {
+        # Sanctioned is the valid revert target (its HMAC == config_hmac). Idempotent byte copy;
+        # the next fire re-verifies. The guard NEVER re-signs -- this is a plain overwrite copy.
+        [System.IO.File]::Copy($cfgSanctioned, $cfgLive, $true)
+        $reverted = $true
+    }
+    else {
+        # D-03: both live and sanctioned invalid (or config_hmac untrustworthy) -> maximal-lockout.
+        # Corrupting both files buys the impulsive user nothing -- worst case is 24/7 curfew.
+        Write-MaximalLockoutDefault -ConfigPath $cfgLive
+        $reverted   = $true
+        $failClosed = $true
+    }
+}
 
 # Plan 03 replaces this tail with the SNTP verdict + audit log + JSON stdout (GARD-04 / D-02).
 exit 0
