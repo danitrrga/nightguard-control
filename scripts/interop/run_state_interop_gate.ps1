@@ -168,6 +168,39 @@ try {
     Add-Check -Name 'state_hmac Tamper' -Pass $false -Detail "exception: $_"
 }
 
+# === Check 4: state_hmac RUNTIME re-derive (parse pretty guard.json -> compact -> HMAC) =======
+# The .signbytes path (Checks 1-3) proves the SIGN-side recipe. The Phase 3 PowerShell guard,
+# however, never sees a .signbytes file at runtime -- it reads the pretty (to_vec_pretty)
+# guard.json off disk and must RE-DERIVE the same compact pre-sign bytes itself: blank
+# state_hmac, ConvertTo-Json -Compress -Depth 10 (serde to_string parity), UTF-8 no BOM, append
+# exactly one 0x0A (canon.rs trailing-LF), then HMAC. This check proves that runtime path equals
+# the on-disk guard.json.state_hmac for the untampered Rust-written guard.json from Check 1.
+# Deliberately does NOT read $signBytes -- it reconstructs the bytes from the pretty JSON alone.
+try {
+    $guardObj = ([System.Text.Encoding]::UTF8.GetString((Get-FileBytes -Path $guardJson))) | ConvertFrom-Json
+    $expectedTag = $guardObj.state_hmac
+    $guardObj.state_hmac = ''
+    # -Depth 10 is MANDATORY: the default depth of 2 truncates ledger[].fields to
+    # "System.Object[]", silently breaking the byte form. -Compress mirrors serde to_string.
+    $compact = $guardObj | ConvertTo-Json -Compress -Depth 10
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($compact)
+    # Append exactly one trailing 0x0A (canon.rs: no BOM, LF-only, one trailing newline).
+    $canon = New-Object byte[] ($bytes.Length + 1)
+    [Array]::Copy($bytes, $canon, $bytes.Length)
+    $canon[$bytes.Length] = 0x0A
+    $hmac = [System.Security.Cryptography.HMACSHA256]::new($knownKey)
+    try {
+        $runtimeTag = ConvertTo-LowerHex -Bytes $hmac.ComputeHash($canon)
+    } finally {
+        $hmac.Dispose()
+    }
+    $match = ($runtimeTag.Length -eq 64) -and ($runtimeTag -eq $expectedTag)
+    Add-Check -Name 'state_hmac RUNTIME re-derive' -Pass $match `
+        -Detail ("runtime={0}... ondisk={1}... identical={2}" -f $runtimeTag.Substring(0, [Math]::Min(16, $runtimeTag.Length)), $expectedTag.Substring(0, [Math]::Min(16, $expectedTag.Length)), ($runtimeTag -eq $expectedTag))
+} catch {
+    Add-Check -Name 'state_hmac RUNTIME re-derive' -Pass $false -Detail "exception: $_"
+}
+
 # === Verdict =================================================================================
 Write-Host ""
 Write-Host "=== Summary ==="
