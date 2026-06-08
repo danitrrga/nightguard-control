@@ -32,7 +32,8 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use mutation_engine::state::{GraceWindow, GuardState, LedgerEntry};
+use mutation_engine::commit::with_commit_lock;
+use mutation_engine::state::{GraceWindow, GuardState, LedgerEntry, MutationError};
 use trust_kernel::canon::canonicalize_bytes;
 use trust_kernel::key::load_or_create_key;
 
@@ -46,9 +47,10 @@ fn main() -> ExitCode {
     let result: Result<u8, String> = match cmd {
         "emit-state-hmac" => cmd_emit_state_hmac(args.get(2), args.get(3)),
         "verify-state-hmac" => cmd_verify_state_hmac(args.get(2), args.get(3), args.get(4)),
+        "hold-commit-lock" => cmd_hold_commit_lock(args.get(2), args.get(3), args.get(4)),
         other => Err(format!(
             "unknown or missing subcommand: '{other}'\n\
-             usage: state_interop_cli <emit-state-hmac|verify-state-hmac> ..."
+             usage: state_interop_cli <emit-state-hmac|verify-state-hmac|hold-commit-lock> ..."
         )),
     };
 
@@ -155,4 +157,46 @@ fn cmd_verify_state_hmac(
         );
         Ok(EXIT_VERIFY_FAILED)
     }
+}
+
+/// `hold-commit-lock <lock_dir> <ready_path> <release_path>`
+///
+/// The GARD-05 live lock holder for `run_guard_gate.ps1`. Acquires the REAL cross-process
+/// `with_commit_lock` on `<lock_dir>` (the same `fd_lock::RwLock::write()` / Windows
+/// `LockFileEx` + `LOCKFILE_EXCLUSIVE_LOCK` an app commit takes), then signals readiness by
+/// creating `<ready_path>` so the gate knows the lock is genuinely held before it fires the
+/// guard. It then BLOCKS inside the critical section until the gate creates `<release_path>`,
+/// at which point it returns (dropping the lock -> UnlockFile). This lets the gate assert the
+/// guard's `Test-LockHeld` circuit-breaker observes a held lock and skips the revert (D-06),
+/// then observes a free lock after release. A 30s safety timeout prevents a wedged gate from
+/// hanging the holder forever.
+fn cmd_hold_commit_lock(
+    lock_dir: Option<&String>,
+    ready_path: Option<&String>,
+    release_path: Option<&String>,
+) -> Result<u8, String> {
+    let lock_dir =
+        lock_dir.ok_or("hold-commit-lock requires <lock_dir> <ready_path> <release_path>")?;
+    let ready_path =
+        ready_path.ok_or("hold-commit-lock requires <lock_dir> <ready_path> <release_path>")?;
+    let release_path =
+        release_path.ok_or("hold-commit-lock requires <lock_dir> <ready_path> <release_path>")?;
+
+    let release = release_path.clone();
+    let ready = ready_path.clone();
+    let held: Result<(), MutationError> = with_commit_lock(Path::new(lock_dir), move || {
+        // Signal the gate that the lock is now genuinely held (created AFTER acquisition).
+        std::fs::write(&ready, b"ready").map_err(|e| MutationError::Io(format!("write ready: {e}")))?;
+        // Block inside the critical section until the gate asks us to release (or we time out).
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while !Path::new(&release).exists() {
+            if std::time::Instant::now() >= deadline {
+                break; // safety valve: never hang forever if the gate wedges
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        Ok(())
+    });
+    held.map_err(|e| e.to_string())?;
+    Ok(0)
 }

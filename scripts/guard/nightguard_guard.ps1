@@ -382,7 +382,14 @@ if ($NtpOverrideUnixSecs -ge 0) {
     $trueNow = [int64]$NtpOverrideUnixSecs
     $usedOverride = $true
 } else {
-    $trueNow = Get-GuardNtpUnixSecs
+    # Production uses the built-in public NTP server. $env:NIGHTGUARD_NTP_SERVER lets the exit gate
+    # point the SNTP query at an unroutable address (RFC 5737 TEST-NET) to exercise the D-07
+    # fail-closed offline path deterministically; it is NEVER set in normal operation.
+    if (-not [string]::IsNullOrWhiteSpace($env:NIGHTGUARD_NTP_SERVER)) {
+        $trueNow = Get-GuardNtpUnixSecs -Server $env:NIGHTGUARD_NTP_SERVER
+    } else {
+        $trueNow = Get-GuardNtpUnixSecs
+    }
     $usedOverride = $false
 }
 
