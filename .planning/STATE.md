@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 3 context gathered
-last_updated: "2026-06-08T10:22:48.076Z"
+last_updated: "2026-06-08T13:56:55.067Z"
 last_activity: 2026-06-08
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 40
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 03 (enforcement-guard) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Next: Phase 03 (Enforcement Guard) — needs planning
 Status: Ready to execute
 Last activity: 2026-06-08
@@ -61,6 +61,7 @@ Phase progress: [████░░░░░░] 2/5 phases complete (Phase 02: 
 | Phase 2 P02-04 | 5 | 2 tasks | 4 files |
 | Phase 2 P02-05 | 11 | 2 tasks | 4 files |
 | Phase 3 P01 | 6 | 2 tasks | 2 files |
+| Phase 3 P02 | 12 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,7 @@ Recent decisions affecting current work:
 - [Phase 2, 02-04]: commit ordering LOCKED — sanctioned -> guard.json (re-signed, config_hmac=HMAC(NEW canonical bytes), state_hmac via A3) -> live config.yaml LAST (write_canonical_text, same canonical bytes). Crash converges to OLD or NEW, never a forged middle (commit_order.rs stop-after-N for N in {0,1,2,3} + a local copy of the guard's verify-and-revert rule). One fd-lock exclusive lock (with_commit_lock, LockFileEx) wraps BOTH commit_change and use_grace so they never interleave guard.json writes. commit trusts the supplied QuotaDecision (token++/ledger only when costs_token), it does not re-classify. Grace (RULE-05) derives true-day from the NTP instant in the configured tz (Pitfall 4, never Local::now()), costs no token, and is refused — leaving guard.json byte-unchanged — on same-true-day reuse (GraceAlreadyUsedToday) or NtpUnreachable.
 - [Phase ?]: [Phase 3, 03-01]: RUNTIME state_hmac re-derive proven green (Check 4) -- parse pretty guard.json, blank state_hmac, ConvertTo-Json -Compress -Depth 10, UTF-8 no BOM, append one 0x0A, HMAC; matches on-disk tag WITHOUT reading .signbytes. T-03-01 mitigated.
 - [Phase ?]: [Phase 3, 03-01]: fd-lock presence probe proven green (lock_probe.rs) -- [IO.File]::Open(p,'Open','ReadWrite','None') IOException == held against a live Rust with_commit_lock holder; lock file persists so existence != held; FREE after release. T-03-02 mitigated; plan 02 lifts this shape into Test-LockHeld.
+- [Phase ?]: [Phase 3, 03-02]: Guard config_hmac is trusted ONLY when state-verify passes; a forged/unverifiable guard.json folds to maximal-lockout rather than trusting its config_hmac (fail-closed vs T-03-06/07/08). Revert is [IO.File]::Copy(sanctioned,live) gated by Test-LockHeld; maximal-lockout is a hardcoded 24/7-curfew canonical-bytes literal via Write-RawBytes; guard NEVER writes guard.json (re-sign is the Rust DPAPI repair, D-05).
 
 ### Pending Todos
 
@@ -111,7 +113,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-08T10:21:47.340Z
+Last session: 2026-06-08T13:56:32.375Z
 Stopped at: Phase 3 context gathered
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).

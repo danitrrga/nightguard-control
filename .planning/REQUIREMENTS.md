@@ -23,8 +23,8 @@
 
 ### Enforcement Guard
 
-- [ ] **GARD-01**: On SessionStart + UserPromptSubmit, the guard verifies the config HMAC and auto-reverts to the sanctioned snapshot on mismatch (direction-agnostic).
-- [ ] **GARD-02**: If the sanctioned snapshot is also invalid, the guard writes a hardcoded strict default and logs the event (fail-closed).
+- [x] **GARD-01**: On SessionStart + UserPromptSubmit, the guard verifies the config HMAC and auto-reverts to the sanctioned snapshot on mismatch (direction-agnostic).
+- [x] **GARD-02**: If the sanctioned snapshot is also invalid, the guard writes a hardcoded strict default and logs the event (fail-closed).
 - [x] **GARD-03**: If signed state is invalid/tampered, the guard treats `weekly_spent=3` and grace-as-used until the app re-syncs, with a DPAPI-gated in-app repair path (fail-closed).
 - [ ] **GARD-04**: The curfew gate honors an active grace window — re-checked with the guard's own NTP and tamper-checked first — and re-locks after it expires.
 - [x] **GARD-05**: The guard never reverts a legitimate in-app write (atomic write ordering + single-writer lock + revert circuit-breaker prevent the sign-vs-write race).
@@ -78,8 +78,8 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | RULE-04 | Phase 2 | Complete |
 | RULE-05 | Phase 2 | Complete |
 | RULE-06 | Phase 2 | In progress (02-01 sign layer + guard.json state model; full ordered commit closes in 02-04) |
-| GARD-01 | Phase 3 | Pending |
-| GARD-02 | Phase 3 | Pending |
+| GARD-01 | Phase 3 | Complete |
+| GARD-02 | Phase 3 | Complete |
 | GARD-03 | Phase 3 | Complete |
 | GARD-04 | Phase 3 | Pending |
 | GARD-05 | Phase 3 | Complete |
