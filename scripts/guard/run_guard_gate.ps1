@@ -17,6 +17,8 @@
 #                                   unreachable SNTP server -> deny + fail_closed (D-07).
 #   GARD-05 lock-held->skip    : a live Rust with_commit_lock holder holds .nightguard.lock; tamper while held ->
 #                                reverted=false (revert skipped); release -> fire again -> reverted=true.
+#   GARD-06 override-ignored   : CR-01 production-safety -- without NIGHTGUARD_TEST_NTP_OVERRIDE=1 a passed
+#                                -NtpOverrideUnixSecs is IGNORED; the real SNTP+clock-tamper path runs (no allow).
 #
 # Fixture strategy (DEVIATION from the plan's "emit-state-hmac builds guard.json" text -- see the
 # SUMMARY): state_interop_cli emit-state-hmac writes a FIXED, arbitrary config_hmac that is NOT the
@@ -73,18 +75,27 @@ function Invoke-Guard {
     # Fire the guard under test against a fixture data dir, optionally injecting NTP true-now via
     # the -NtpOverrideUnixSecs seam. Returns the exit code + parsed verdict JSON. Relax EAP and
     # gate on $LASTEXITCODE (the guard exits 1 on deny, which is a normal non-error result here).
+    # -AllowOverride controls the CR-01 test-only env gate (NIGHTGUARD_TEST_NTP_OVERRIDE). It
+    # defaults TRUE so the existing GARD checks keep injecting deterministic true-time; the
+    # production-safety check below passes -AllowOverride:$false to prove a passed override is
+    # IGNORED when the env flag is absent.
     param(
         [Parameter(Mandatory)][string]$DataDir,
         [Int64]$NtpOverrideUnixSecs = -1,
-        [string]$NtpServer
+        [string]$NtpServer,
+        [bool]$AllowOverride = $true
     )
     $savedEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     $guardArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $guard, '-DataDir', $DataDir)
     if ($NtpOverrideUnixSecs -ge 0) { $guardArgs += @('-NtpOverrideUnixSecs', $NtpOverrideUnixSecs) }
     if ($PSBoundParameters.ContainsKey('NtpServer')) { $env:NIGHTGUARD_NTP_SERVER = $NtpServer }
+    # CR-01: the override only takes effect when this test-only signal is present. Production never
+    # sets it, so a host-supplied -NtpOverrideUnixSecs cannot inject true-time / skip clock-tamper.
+    if ($AllowOverride) { $env:NIGHTGUARD_TEST_NTP_OVERRIDE = '1' }
     $out  = & powershell @guardArgs 2>&1
     $code = $LASTEXITCODE
+    if ($AllowOverride) { Remove-Item Env:\NIGHTGUARD_TEST_NTP_OVERRIDE -ErrorAction SilentlyContinue }
     if ($PSBoundParameters.ContainsKey('NtpServer')) { Remove-Item Env:\NIGHTGUARD_NTP_SERVER -ErrorAction SilentlyContinue }
     $ErrorActionPreference = $savedEAP
     $jsonText = ($out | Out-String).Trim()
@@ -107,7 +118,7 @@ function Add-Check {
 }
 
 Write-Host ""
-Write-Host "=== Nightguard GUARD end-to-end exit gate (GARD-01/02/03/04/05) ==="
+Write-Host "=== Nightguard GUARD end-to-end exit gate (GARD-01/02/03/04/05/06) ==="
 Write-Host ("Guard: {0}" -f $guard)
 Write-Host ("CLI:   {0}" -f $cliExe)
 Write-Host ("Work:  {0}" -f $work)
@@ -329,6 +340,25 @@ try {
     Add-Check -Name 'GARD-05 lock-held->skip' -Pass $false -Detail "exception: $_"
 }
 
+# === GARD-06: CR-01 production-safety -- without the test env flag, a passed override is IGNORED ==
+try {
+    # Active window covering the override: WITH the test flag this allows (proven by GARD-04).
+    # WITHOUT the flag (-AllowOverride:$false) the override must be ignored and the REAL SNTP path
+    # run instead. We point SNTP at an unroutable TEST-NET address so the real path deterministically
+    # denies (D-07 fail_closed). If the override were still honored we'd see allow -> this check
+    # catches any regression that re-exposes the bypass to a production-shaped invocation.
+    $we = 1750001480
+    $f = Build-Fixture -Name 'gard06' -WindowEnd $we
+    # Override would allow (inside window) BUT the env flag is absent -> override ignored, real SNTP
+    # path runs against an unroutable server -> deny + fail_closed (never allow).
+    $r = Invoke-Guard -DataDir $f.Dir -NtpOverrideUnixSecs ($we - 100) -NtpServer '192.0.2.1' -AllowOverride:$false
+    $ignored = ($r.Exit -ne 0) -and ($null -ne $r.Json) -and ($r.Json.decision -ne 'allow') -and ($r.Json.fail_closed -eq $true)
+    Add-Check -Name 'GARD-06 override-ignored-in-prod' -Pass $ignored `
+        -Detail ("decision={0} fail_closed={1} exit={2} (override passed, env flag absent -> real SNTP)" -f ($(if($null -ne $r.Json){$r.Json.decision}else{'?'})), ($(if($null -ne $r.Json){$r.Json.fail_closed}else{'?'})), $r.Exit)
+} catch {
+    Add-Check -Name 'GARD-06 override-ignored-in-prod' -Pass $false -Detail "exception: $_"
+}
+
 # === Verdict ====================================================================================
 Write-Host ""
 Write-Host "=== Summary ==="
@@ -338,7 +368,7 @@ foreach ($c in $results) {
 }
 Write-Host ""
 if ($failed.Count -eq 0) {
-    Write-Host "ALL CHECKS PASSED -- GUARD gate is GREEN. GARD-01/02/03/04/05 hold end-to-end against real DPAPI/HMAC fixtures, a deterministic NTP seam, and a live Rust fd-lock holder." -ForegroundColor Green
+    Write-Host "ALL CHECKS PASSED -- GUARD gate is GREEN. GARD-01/02/03/04/05/06 hold end-to-end against real DPAPI/HMAC fixtures, a deterministic NTP seam, a live Rust fd-lock holder, and the CR-01 production-safety property (override ignored without the test env flag)." -ForegroundColor Green
     exit 0
 } else {
     Write-Host ("GUARD GATE FAILED -- {0} check(s) failed:" -f $failed.Count) -ForegroundColor Red

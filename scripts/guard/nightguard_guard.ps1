@@ -376,7 +376,12 @@ $decision      = 'deny'
 $reason        = 'curfew'
 $graceRemaining = 0
 
-if ($NtpOverrideUnixSecs -ge 0) {
+# CR-01: the override seam injects true-time AND skips clock-tamper detection, which would let any
+# invoker force decision=allow against the anti-me model. Gate it behind a test-only env signal the
+# production host never sets. Without NIGHTGUARD_TEST_NTP_OVERRIDE=1 a passed override is IGNORED and
+# the real SNTP + clock-tamper path runs.
+$overrideAllowed = ($env:NIGHTGUARD_TEST_NTP_OVERRIDE -eq '1')
+if (($NtpOverrideUnixSecs -ge 0) -and $overrideAllowed) {
     # Test seam (mirrors Rust FakeTrueTime): inject a deterministic true-now. Skips the SNTP query
     # AND the clock-tamper check so verdict tests stay deterministic regardless of the host clock.
     $trueNow = [int64]$NtpOverrideUnixSecs
