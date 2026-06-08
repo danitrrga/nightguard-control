@@ -256,5 +256,196 @@ if ($configHmacTrusted -and $liveHmac -eq [string]$guardObj.config_hmac) {
     }
 }
 
-# Plan 03 replaces this tail with the SNTP verdict + audit log + JSON stdout (GARD-04 / D-02).
-exit 0
+# ================================================================================================
+# CLOCK-DEPENDENT HALF (plan 03 / GARD-04 / D-01 / D-02 / D-07 / D-08): guard-side SNTP true-time,
+# clock-tamper detection, the grace/curfew verdict against guard.json.grace.window_end, an
+# HMAC-chained audit record per fire, and the host-agnostic JSON+exit-code output. Fail-closed
+# everywhere: no verifiable true time, an expired window, or a skewed clock -> deny.
+# ================================================================================================
+
+# NTP epoch (1900-01-01) to unix epoch (1970-01-01) offset in seconds. Subtract it from an NTP
+# transmit-timestamp seconds field to get unix seconds. (70 years incl. 17 leap days.)
+$NtpToUnixOffset = 2208988800
+
+# Genesis tag for the FIRST audit record (no predecessor). A fixed, well-known constant so the
+# very first record_tag = HMAC(key, GENESIS || payload) is deterministic and the chain is
+# verifiable from record 1 forward. ASCII, 64 hex zeros (one HMAC-SHA256 tag width).
+$AuditGenesisTag = '0000000000000000000000000000000000000000000000000000000000000000'
+
+# --- Get-GuardNtpUnixSecs: the guard's OWN SNTP true-time query (fail-closed, D-07) -------------
+# Builds a 48-byte SNTP client packet (byte 0 = 0x1B: LI=0, VN=3, Mode=3), sends it over UDP to a
+# public NTP server, reads the transmit-timestamp seconds (bytes 40..43, big-endian), and converts
+# NTP(1900) -> unix(1970) by subtracting 2208988800. On ANY exception returns $null; the caller
+# treats $null as NtpUnreachable and DENIES. NEVER falls back to Get-Date / the local clock --
+# mirrors ntp.rs (every sntpc error -> NtpUnreachable, no SystemTime::now() path).
+function Get-GuardNtpUnixSecs {
+    [CmdletBinding()]
+    param(
+        [string]$Server = 'time.cloudflare.com',
+        [int]$TimeoutMs = 2000
+    )
+    $sock = $null
+    try {
+        $packet = New-Object byte[] 48
+        $packet[0] = 0x1B   # LI=0, VN=3, Mode=3 (client)
+        $sock = New-Object System.Net.Sockets.Socket('InterNetwork', 'Dgram', 'Udp')
+        $sock.ReceiveTimeout = $TimeoutMs
+        $sock.SendTimeout = $TimeoutMs
+        $sock.Connect($Server, 123)
+        [void]$sock.Send($packet)
+        [void]$sock.Receive($packet)
+        # Transmit-timestamp seconds = bytes 40..43, big-endian.
+        $secs = ([uint32]$packet[40] -shl 24) -bor ([uint32]$packet[41] -shl 16) `
+              -bor ([uint32]$packet[42] -shl 8) -bor [uint32]$packet[43]
+        return [int64]$secs - $NtpToUnixOffset
+    } catch {
+        return $null   # fail-closed: any SNTP failure -> NtpUnreachable -> caller denies
+    } finally {
+        if ($null -ne $sock) { try { $sock.Close() } catch { } }
+    }
+}
+
+# --- Append-AuditRecord: the tamper-evident HMAC-chained audit log (D-08) ------------------------
+# Each fire appends exactly ONE record. The chain is record_tag = HMAC(key, prevTagBytes ||
+# payloadBytes); the first record chains off $AuditGenesisTag. Deleting/editing/truncating the log
+# breaks the chain and is detectable next run (the recomputed tag will not match). The on-disk line
+# form is "<payload>|<record_tag>\n"; payload fields are pipe-delimited with newlines/pipes escaped
+# so the delimiter is unambiguous. Written with [IO.File]::AppendAllText (UTF-8, no BOM) so the
+# append is byte-exact and never normalizes EOLs.
+function Append-AuditRecord {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][byte[]]$Key,
+        [Parameter(Mandatory)][string]$LogPath,
+        [Parameter(Mandatory)][string]$Timestamp,
+        [Parameter(Mandatory)][string]$EventType,
+        [Parameter(Mandatory)][string]$Detail
+    )
+    # Escape the field separator and record/line separators so a payload field cannot forge a
+    # record boundary: backslash first (so our own escapes are unambiguous), then | and newlines.
+    $escape = {
+        param([string]$s)
+        $s = $s -replace '\\', '\\\\'
+        $s = $s -replace '\|', '\p'
+        $s = $s -replace "`r", '\r'
+        $s = $s -replace "`n", '\n'
+        return $s
+    }
+    $payload = (& $escape $Timestamp) + '|' + (& $escape $EventType) + '|' + (& $escape $Detail)
+
+    # Previous tag = the record_tag of the LAST line (field after the final unescaped '|'), or the
+    # genesis constant if the log is empty/absent. We read raw bytes (no Get-Content normalization).
+    $prevTag = $AuditGenesisTag
+    if (Test-Path $LogPath) {
+        try {
+            $existing = [System.Text.Encoding]::UTF8.GetString((Get-FileBytes -Path $LogPath))
+            # @(...) forces an array: a single surviving line must NOT collapse to a scalar string,
+            # else $lines[0] would index a CHARACTER instead of the whole record line.
+            $lines = @($existing -split "`n" | Where-Object { $_ -ne '' })
+            if ($lines.Count -gt 0) {
+                $lastLine = $lines[$lines.Count - 1]
+                $sep = $lastLine.LastIndexOf('|')
+                if ($sep -ge 0) { $prevTag = $lastLine.Substring($sep + 1) }
+            }
+        } catch {
+            # Unreadable log -> chain off genesis (the broken predecessor is itself the evidence).
+            $prevTag = $AuditGenesisTag
+        }
+    }
+
+    $prevBytes    = [System.Text.Encoding]::UTF8.GetBytes($prevTag)
+    $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
+    $chainInput   = New-Object byte[] ($prevBytes.Length + $payloadBytes.Length)
+    [Array]::Copy($prevBytes, 0, $chainInput, 0, $prevBytes.Length)
+    [Array]::Copy($payloadBytes, 0, $chainInput, $prevBytes.Length, $payloadBytes.Length)
+
+    $hmac = [System.Security.Cryptography.HMACSHA256]::new($Key)
+    try {
+        $recordTag = ConvertTo-LowerHex -Bytes $hmac.ComputeHash($chainInput)
+    } finally {
+        $hmac.Dispose()
+    }
+
+    $line = $payload + '|' + $recordTag + "`n"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::AppendAllText($LogPath, $line, $utf8NoBom)
+}
+
+# --- Resolve guard-side true-time (test seam OR real SNTP) --------------------------------------
+$decision      = 'deny'
+$reason        = 'curfew'
+$graceRemaining = 0
+
+if ($NtpOverrideUnixSecs -ge 0) {
+    # Test seam (mirrors Rust FakeTrueTime): inject a deterministic true-now. Skips the SNTP query
+    # AND the clock-tamper check so verdict tests stay deterministic regardless of the host clock.
+    $trueNow = [int64]$NtpOverrideUnixSecs
+    $usedOverride = $true
+} else {
+    $trueNow = Get-GuardNtpUnixSecs
+    $usedOverride = $false
+}
+
+if ($null -eq $trueNow) {
+    # D-07: no verifiable true time -> deny + fail_closed. The config revert above already ran (it
+    # needs no clock); we simply never honor a grace window we cannot time. Never trust last-known.
+    $decision   = 'deny'
+    $reason     = 'ntp unreachable'
+    $failClosed = $true
+}
+elseif ((-not $usedOverride) -and ([Math]::Abs($trueNow - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) -gt 300)) {
+    # A4 clock-tamper: the local clock is >5 min off verified true-now. The grace window is only
+    # 8 min, so a skew this large is treated as tamper -> deny + fail_closed (only checked against
+    # real SNTP; the override seam bypasses it so tests are clock-independent).
+    $decision   = 'deny'
+    $reason     = 'clock tamper'
+    $failClosed = $true
+}
+else {
+    # Verified true time in hand. Honor an ACTIVE grace window only when state-verify TRUSTED the
+    # state ($stateValid) AND the on-disk window covers true-now; otherwise re-lock (curfew). A
+    # worst-case state (state_hmac mismatch -> $stateValid=false) can never produce an allow: the
+    # guard refuses the window regardless of what the tampered guard.json claims (T-03-15, GARD-03).
+    # In the trusted branch $graceUsed == ($null -ne grace), so a present window is the live grant;
+    # $stateValid is the load-bearing gate, the grace presence + window_end > trueNow is the grant.
+    if ($stateValid -and ($null -ne $guardObj) -and ($null -ne $guardObj.grace) `
+            -and ([int64]$guardObj.grace.window_end -gt $trueNow)) {
+        $decision       = 'allow'
+        $reason         = 'grace active'
+        $graceRemaining = [int64]$guardObj.grace.window_end - $trueNow
+    } else {
+        $decision       = 'deny'
+        $reason         = 'curfew'
+        $graceRemaining = 0
+    }
+}
+
+# --- D-08 audit: append exactly one HMAC-chained record for this fire ---------------------------
+# Timestamp = ISO-8601 true-time where available (else the verifiable-time-absent marker). The
+# detail carries the decision + reverted/fail_closed summary so the log is a self-describing trail.
+if ($null -ne $trueNow) {
+    $auditTs = [System.DateTimeOffset]::FromUnixTimeSeconds([int64]$trueNow).UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ssZ')
+} else {
+    $auditTs = 'NTP-UNREACHABLE'
+}
+$auditDetail = "decision=$decision reason=$reason grace_remaining_secs=$graceRemaining reverted=$reverted fail_closed=$failClosed"
+try {
+    Append-AuditRecord -Key $key -LogPath $auditLog -Timestamp $auditTs -EventType 'guard-fire' -Detail $auditDetail
+} catch {
+    # An audit-append failure must not crash the guard into a permissive state. The verdict still
+    # stands (deny-leaning); surface nothing to stdout beyond the verdict JSON below.
+}
+
+# --- D-01 / D-02 output: host-agnostic verdict JSON on stdout + exit code -----------------------
+# Deliberately NOT the Claude-Code {continue,decision,reason} schema. The host decides what a deny
+# does; the guard is a pure verified-state oracle. exit 0 = allow, non-zero = deny.
+$verdict = [PSCustomObject]@{
+    decision             = $decision
+    reason               = $reason
+    grace_remaining_secs = $graceRemaining
+    reverted             = $reverted
+    fail_closed          = $failClosed
+}
+$verdict | ConvertTo-Json -Compress -Depth 5
+
+if ($decision -eq 'allow') { exit 0 } else { exit 1 }
