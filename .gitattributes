@@ -2,3 +2,8 @@
 # The config and key files are signed over raw bytes — Git must never normalize them.
 config*.yaml -text
 *.guardkey -text
+
+# Guard scripts are SHA256-baselined (verify_hook_integrity.ps1 / GARD-06) over raw bytes.
+# Git must never normalize their line endings, or a fresh autocrlf checkout would produce
+# CRLF working-tree files whose hash no longer matches the LF baseline (false drift).
+scripts/guard/*.ps1 -text
