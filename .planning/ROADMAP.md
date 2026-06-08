@@ -73,7 +73,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 4 plans
   - [x] 03-01-PLAN.md — Parity & probe gate: runtime state-verify check + fd-lock presence probe spike (GARD-03, GARD-05)
   - [x] 03-02-PLAN.md — Guard core: config verify/circuit-breaker/revert/maximal-lockout + state worst-case (GARD-01, GARD-02, GARD-03, GARD-05)
-  - [ ] 03-03-PLAN.md — Grace/curfew verdict + guard-side SNTP + audit log + JSON output + end-to-end gate (GARD-01, GARD-02, GARD-03, GARD-04, GARD-05)
+  - [x] 03-03-PLAN.md — Grace/curfew verdict + guard-side SNTP + audit log + JSON output + end-to-end gate (GARD-01, GARD-02, GARD-03, GARD-04, GARD-05)
   - [ ] 03-04-PLAN.md — Integrity baseline: verify_hook_integrity.ps1 + self-registered SHA256 manifest (GARD-06)
 
 ### Phase 4: UI (Moonlit Indigo)
@@ -107,6 +107,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Trust Kernel | 3/3 | Complete   | 2026-06-04 |
 | 2. Mutation Engine | 5/5 | Complete   | 2026-06-05 |
-| 3. Enforcement Guard | 2/4 | In Progress|  |
+| 3. Enforcement Guard | 3/4 | In Progress|  |
 | 4. UI (Moonlit Indigo) | 0/TBD | Not started | - |
 | 5. Instance Wiring | 0/TBD | Not started | - |

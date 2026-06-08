@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 3 context gathered
-last_updated: "2026-06-08T13:56:55.067Z"
+last_updated: "2026-06-08T14:11:37.208Z"
 last_activity: 2026-06-08
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 40
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 03 (enforcement-guard) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Next: Phase 03 (Enforcement Guard) — needs planning
 Status: Ready to execute
 Last activity: 2026-06-08
@@ -62,6 +62,7 @@ Phase progress: [████░░░░░░] 2/5 phases complete (Phase 02: 
 | Phase 2 P02-05 | 11 | 2 tasks | 4 files |
 | Phase 3 P01 | 6 | 2 tasks | 2 files |
 | Phase 3 P02 | 12 | 2 tasks | 1 files |
+| Phase 3 P03 | 22 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 3, 03-01]: RUNTIME state_hmac re-derive proven green (Check 4) -- parse pretty guard.json, blank state_hmac, ConvertTo-Json -Compress -Depth 10, UTF-8 no BOM, append one 0x0A, HMAC; matches on-disk tag WITHOUT reading .signbytes. T-03-01 mitigated.
 - [Phase ?]: [Phase 3, 03-01]: fd-lock presence probe proven green (lock_probe.rs) -- [IO.File]::Open(p,'Open','ReadWrite','None') IOException == held against a live Rust with_commit_lock holder; lock file persists so existence != held; FREE after release. T-03-02 mitigated; plan 02 lifts this shape into Test-LockHeld.
 - [Phase ?]: [Phase 3, 03-02]: Guard config_hmac is trusted ONLY when state-verify passes; a forged/unverifiable guard.json folds to maximal-lockout rather than trusting its config_hmac (fail-closed vs T-03-06/07/08). Revert is [IO.File]::Copy(sanctioned,live) gated by Test-LockHeld; maximal-lockout is a hardcoded 24/7-curfew canonical-bytes literal via Write-RawBytes; guard NEVER writes guard.json (re-sign is the Rust DPAPI repair, D-05).
+- [Phase 3, 03-03]: Guard clock-half COMPLETE. Guard-side SNTP (48-byte packet, byte0=0x1B, parse bytes 40..43 BE, NTP1900->unix via -2208988800; $null on ANY error -> deny+fail_closed, NEVER Get-Date / D-07). A4 clock-tamper: |trueNow-local|>300s -> deny (skipped under override seam). Grace honored gated on $stateValid (NOT (-not $graceUsed) -- plan-02 sets graceUsed=window-present, so the plan's literal condition was unreachable; a state_hmac mismatch -> $stateValid=false -> never allow / T-03-15) AND grace.window_end>trueNow. HMAC-chained audit (record_tag=HMAC(key, prev_tag||payload), 64-zero genesis, AppendAllText UTF-8 no-BOM, pipe-delim escaped payload / D-08; @() forces array so a single line never collapses to a scalar char-index). D-02 JSON {decision,reason,grace_remaining_secs,reverted,fail_closed} + exit 0=allow/1=deny. run_guard_gate.ps1 GREEN proving GARD-01/02/03/04/05 end-to-end vs real DPAPI/HMAC fixtures, -NtpOverrideUnixSecs seam, Rust verify-state-hmac cross-check, and a live with_commit_lock holder (new state_interop_cli hold-commit-lock subcommand). Gate self-signs guard.json in PS (config_hmac=real HMAC(config.yaml), state_hmac via A3) because emit-state-hmac's fixed dummy config_hmac can't drive a byte-exact revert.
 
 ### Pending Todos
 
@@ -113,7 +115,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-08T13:56:32.375Z
-Stopped at: Phase 3 context gathered
+Last session: 2026-06-08T14:11:37.198Z
+Stopped at: Completed 03-03-PLAN.md (guard clock-half + end-to-end GARD gate green)
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
