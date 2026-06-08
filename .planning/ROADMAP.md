@@ -23,7 +23,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Trust Kernel** - HMAC + DPAPI + atomic store with a Rust↔PowerShell interop round-trip as the exit gate (completed 2026-06-04)
 - [x] **Phase 2: Mutation Engine** - Direction classifier, weekly token quota, NTP-true grace, atomic ordered commit (completed 2026-06-05)
-- [ ] **Phase 3: Enforcement Guard** - PowerShell verify→auto-revert with fail-closed paths and grace re-check
+- [x] **Phase 3: Enforcement Guard** - PowerShell verify→auto-revert with fail-closed paths and grace re-check (completed 2026-06-08)
 - [ ] **Phase 4: UI (Moonlit Indigo)** - Status, token meter, +8 button, and live per-field editor feedback
 - [ ] **Phase 5: Instance Wiring** - Point the author's live hook at the canonical LifeOS config and initialize the instance
 
@@ -74,7 +74,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   - [x] 03-01-PLAN.md — Parity & probe gate: runtime state-verify check + fd-lock presence probe spike (GARD-03, GARD-05)
   - [x] 03-02-PLAN.md — Guard core: config verify/circuit-breaker/revert/maximal-lockout + state worst-case (GARD-01, GARD-02, GARD-03, GARD-05)
   - [x] 03-03-PLAN.md — Grace/curfew verdict + guard-side SNTP + audit log + JSON output + end-to-end gate (GARD-01, GARD-02, GARD-03, GARD-04, GARD-05)
-  - [ ] 03-04-PLAN.md — Integrity baseline: verify_hook_integrity.ps1 + self-registered SHA256 manifest (GARD-06)
+  - [x] 03-04-PLAN.md — Integrity baseline: verify_hook_integrity.ps1 + self-registered SHA256 manifest (GARD-06)
 
 ### Phase 4: UI (Moonlit Indigo)
 **Goal**: The non-authoritative display + edit-intent layer reflects hook-enforced reality and gives live per-field feedback, in the Moonlit Indigo aesthetic.
