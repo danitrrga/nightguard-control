@@ -18,7 +18,16 @@ findings:
   info: 4
   total: 11
 status: issues_found
+criticals_resolved: 2
+criticals_resolved_in: [87b1eb0, e22ae72]
+warnings_open: 5
 ---
+
+> **Update 2026-06-08:** Both Critical findings (CR-01 NTP-override bypass, CR-02
+> unbaselined interop crypto kernel) were fixed and verified — commits `87b1eb0`,
+> `e22ae72`. Gate now exits 0 with GARD-01..06 PASS; integrity check covers all 4
+> guard/interop scripts. The 5 Warning findings (WR-01..05) remain open as tracked
+> follow-up debt.
 
 # Phase 3: Enforcement Guard - Code Review Report
 
