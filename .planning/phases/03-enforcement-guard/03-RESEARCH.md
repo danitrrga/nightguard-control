@@ -345,19 +345,24 @@ function Get-GuardNtpUnixSecs {
 | A4 | Clock-tamper detection = compare NTP true-time vs local clock skew threshold | Pitfall 5 | MEDIUM — exact threshold is a design choice; too-tight false-positives offline, too-loose lets small drift through. Recommend a generous threshold (e.g. >5 min) since the grace window is only 8 min. |
 | A5 | The guard's circuit-breaker only needs lock *presence* detection, not acquisition | D-06 | LOW — D-06 explicitly says "checks fd-lock presence"; on Windows, attempting a non-blocking `LockFileEx`/open-with-share-deny probe reveals if the app holds it. Verify the exact probe mechanism at integration (a `.lock` file that merely *exists* is NOT the signal — the app holds an OS lock on it via `fd_lock`; presence of the file alone is insufficient). |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three questions were answered during Phase 3 planning; resolutions are inlined below and locked in the cited plan tasks.
 
 1. **fd-lock presence probe mechanism (D-06).**
+   - **RESOLVED (plan 03-01 Task 2):** spike proves the probe is `[IO.File]::Open($path,'Open','ReadWrite','None')` — an `IOException` means the app holds the OS exclusive lock → skip revert; a clean open means the lock is free. Wired into the phase exit gate.
    - What we know: Phase 2's `with_commit_lock` opens `.nightguard.lock` and takes `fd_lock::RwLock::write()` = Windows `LockFileEx` + `LOCKFILE_EXCLUSIVE_LOCK`. The file always *exists* once created; existence is NOT the signal.
    - What's unclear: how PowerShell detects the OS-held exclusive lock. Likely: attempt to open the file with an exclusive share mode (`[IO.File]::Open($path,'Open','ReadWrite','None')`) — if it throws `IOException`, the app holds the lock → skip revert; if it opens, the lock is free.
    - Recommendation: planner spikes this probe against a live `cargo test` holding the lock (or a small Rust harness). This is the one runtime mechanism not yet proven cross-language. Add to the phase exit gate.
 
 2. **Sanctioned-snapshot validity test (GARD-02).**
+   - **RESOLVED (plan 03-02 Task 2):** "sanctioned valid" = file exists AND parses as the minimal YAML AND `Get-FileHmacHex(sanctioned) == guard.json.config_hmac`. If sanctioned fails this predicate (or guard.json is itself unverifiable), fall straight to maximal-lockout (D-03).
    - What we know: `config.sanctioned.yaml` is the canonical config bytes; there is NO separate sanctioned HMAC stored. The Phase 2 commit writes sanctioned = the same bytes config_hmac was signed over.
    - What's unclear: how the guard decides the sanctioned snapshot is "also invalid" (D-03 trigger). Candidate: `HMAC(sanctioned) == guard.json.config_hmac`? No — after a hand-edit, live≠sanctioned but sanctioned should still match guard.json.config_hmac (sanctioned is the revert target = NEW bytes). So "sanctioned invalid" = `HMAC(sanctioned) != guard.json.config_hmac` (sanctioned itself was tampered) OR sanctioned is missing/unparseable.
    - Recommendation: define "sanctioned valid" = `HMAC(canon(sanctioned)) == guard.json.config_hmac AND it parses as the minimal YAML`. If guard.json itself is also unverifiable, fall straight to maximal-lockout. Planner locks this predicate.
 
 3. **HMAC-chain construction for the audit log (D-08).**
+   - **RESOLVED (plan 03-03 Task 1):** `record_tag = HMAC(key, prev_tag || record_payload)`; `prev_tag` is the previous line's tag, the first record chains over a fixed genesis constant.
    - What we know: append-only, each record chained with HMAC so deletion/edit/truncation is detectable.
    - What's unclear: exact chain recipe (prev-tag-in-next-record is suggested in CONTEXT as discretion).
    - Recommendation: `record_tag = HMAC(key, prev_tag || record_payload)`; store `prev_tag` implicitly (last line's tag). First record chains over a fixed genesis constant. Planner picks the delimiter/escaping.
