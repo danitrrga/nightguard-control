@@ -13,14 +13,16 @@
 //! Evaluating "locked at `now`" for a given config + advisory instant:
 //!
 //! 1. **`curfew.enabled` gate.** If `curfew.enabled` reads `false`, the curfew is OFF: the
-//!    result is `locked = false`, `boundary_kind = "next_lock"`. An *absent* or *malformed*
-//!    `enabled` does NOT count as `false` — it falls through to the fail-safe rule (4).
+//!    result is `locked = false`, `boundary_kind = "none"`, `boundary_unix = NO_UPCOMING_LOCK`
+//!    (there is no upcoming lock at all — CR-02). An *absent* or *malformed* `enabled` does NOT
+//!    count as `false` — it falls through to the fail-safe rule (4).
 //! 2. **Effective window per day.** Convert `now` into the configured `timezone` (defaulting
 //!    to UTC on a bad/absent tz, never panicking — mirrors `week::parse_tz`), then derive the
 //!    local weekday + minute-of-day. The day's effective window is resolved by precedence:
 //!      - if `curfew.schedule.<weekday>` is **present**, it OVERRIDES `curfew.start`/`curfew.end`:
 //!          - value `off` (case-insensitive) => no curfew that day => `locked = false`,
-//!            `boundary_kind = "next_lock"`.
+//!            `boundary_kind = "none"`, `boundary_unix = NO_UPCOMING_LOCK` (the advisory
+//!            display does not scan future days, so today-off reports "no upcoming lock" — CR-02).
 //!          - value `HH:MM-HH:MM` => that window applies for the day (overnight-wrap allowed).
 //!      - if `schedule.<weekday>` is **absent**, fall back to `curfew.start`-`curfew.end`.
 //! 3. **Inside-window verdict (overnight-wrap aware).** A window `start..end` where
@@ -40,7 +42,7 @@
 //!
 //! `grace_active` is always `false` here; the live grace window lives in the signed
 //! `guard.json` that `get_state` reads, so the command overlays it (the simpler seam — this
-//! pure fn never touches state). `boundary_kind` is one of `"curfew_end" | "next_lock"`
+//! pure fn never touches state). `boundary_kind` is one of `"curfew_end" | "next_lock" | "none"`
 //! (`"grace_end"` is set by `get_state` when it overlays grace).
 
 use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Timelike, Utc};
@@ -61,10 +63,19 @@ pub struct LockStatus {
     /// Always `false` here — `get_state` overlays the signed grace window from `guard.json`.
     pub grace_active: bool,
     /// The next state-change instant, unix seconds (window end if locked, next start if open).
+    /// For an OPEN status with no resolvable upcoming lock this is [`NO_UPCOMING_LOCK`] paired
+    /// with `boundary_kind = "none"` — never `now` or a naive today/tomorrow start (CR-02).
     pub boundary_unix: i64,
-    /// One of `"curfew_end" | "next_lock"` (`"grace_end"` is set later by `get_state`).
+    /// One of `"curfew_end" | "next_lock" | "none"` (`"grace_end"` is set later by `get_state`).
     pub boundary_kind: String,
 }
+
+/// Sentinel `boundary_unix` for an OPEN status with no resolvable upcoming lock (curfew
+/// disabled, or today is `off` and we do not scan future days — D-04). The UI renders this
+/// (paired with `boundary_kind = "none"`) as "no upcoming lock" rather than a `00:00:00`
+/// countdown. `i64::MAX` is deliberately far in the future so it can never read as `<= now`
+/// (an OPEN status must never advertise a boundary at or behind the present — CR-02).
+pub const NO_UPCOMING_LOCK: i64 = i64::MAX;
 
 impl LockStatus {
     /// Fail-safe LOCKED: a missing/malformed field is never a silent unlock (D-04 / A2).
@@ -78,13 +89,28 @@ impl LockStatus {
         }
     }
 
-    /// OPEN with the next lock boundary (used for enabled=false and off-days).
+    /// OPEN with a concrete next-lock instant (the normal not-inside-window path). The caller
+    /// passes a strictly-future start, so this never advertises a boundary at/behind `now`.
     fn open(boundary_unix: i64) -> Self {
         LockStatus {
             locked: false,
             grace_active: false,
             boundary_unix,
             boundary_kind: "next_lock".to_string(),
+        }
+    }
+
+    /// OPEN with NO resolvable upcoming lock (curfew disabled, or today is `off`). Uses the
+    /// [`NO_UPCOMING_LOCK`] sentinel + `boundary_kind = "none"` so the UI shows "no upcoming
+    /// lock" instead of a stuck `00:00:00` countdown derived from `now` or a false today/
+    /// tomorrow start (CR-02). A full multi-day schedule scan is out of scope for the advisory
+    /// display (D-04), so an off day honestly reports "no known upcoming lock".
+    fn no_upcoming_lock() -> Self {
+        LockStatus {
+            locked: false,
+            grace_active: false,
+            boundary_unix: NO_UPCOMING_LOCK,
+            boundary_kind: "none".to_string(),
         }
     }
 }
@@ -110,13 +136,11 @@ pub fn lock_status(config_yaml: &str, now: DateTime<Utc>) -> LockStatus {
     // (1) enabled gate: only an explicit `false` disables; absent/garbage falls through to fail-safe.
     match read(&doc, &["curfew", "enabled"]).flatten().as_deref() {
         Some("false") | Some("False") | Some("FALSE") => {
-            // Curfew off: OPEN, boundary is the next start if start/end resolve, else just now.
-            let start = effective_start_minute(&doc, weekday);
-            let b = match start {
-                Some(s) => next_start_unix(local_date, minute, s, tz),
-                None => now.timestamp(),
-            };
-            return LockStatus::open(b);
+            // Curfew DISABLED entirely: there is no upcoming lock — not today, not tomorrow.
+            // Emit the "no upcoming lock" sentinel (never a `curfew.start`-derived today/tomorrow
+            // instant, which would be a lock the guard never enforces, nor `now`, which renders a
+            // stuck 00:00:00 countdown). CR-02.
+            return LockStatus::no_upcoming_lock();
         }
         Some("true") | Some("True") | Some("TRUE") => {}
         // Absent or malformed enabled -> fail-safe LOCKED (A2: absent != unlock).
@@ -129,13 +153,11 @@ pub fn lock_status(config_yaml: &str, now: DateTime<Utc>) -> LockStatus {
 
     let (start_min, end_min) = match schedule_val {
         Some(v) if v.eq_ignore_ascii_case("off") => {
-            // schedule.<day> = off OVERRIDES start/end -> unlocked this day.
-            let start = effective_start_minute(&doc, weekday); // only for an advisory next_lock
-            let b = match start {
-                Some(s) => next_start_unix(local_date, minute, s, tz),
-                None => now.timestamp(),
-            };
-            return LockStatus::open(b);
+            // schedule.<day> = off OVERRIDES start/end -> unlocked this day. The advisory display
+            // does NOT scan future days (D-04), and today's `curfew.start` would resolve to a lock
+            // instant the guard will never enforce on an off day, so report "no upcoming lock"
+            // rather than a false today/tomorrow start or `now` (CR-02).
+            return LockStatus::no_upcoming_lock();
         }
         Some(v) => match parse_window(&v) {
             Some(w) => w,
@@ -214,20 +236,6 @@ fn local_minute_unix(date: NaiveDate, minute_of_day: i64, tz: Tz) -> i64 {
             .unwrap_or_else(|| tz.from_utc_datetime(&naive)),
     };
     local_dt.with_timezone(&Utc).timestamp()
-}
-
-/// The `curfew.start` minute-of-day for an advisory `next_lock` boundary on an off/disabled day.
-/// Prefers a present `schedule.<day>` window's start, else `curfew.start`; `None` if unresolvable.
-fn effective_start_minute(doc: &Document, weekday: chrono::Weekday) -> Option<i64> {
-    let key = weekday_key(weekday);
-    if let Some(v) = read(doc, &["curfew", "schedule", key]).flatten() {
-        if !v.eq_ignore_ascii_case("off") {
-            if let Some((s, _e)) = parse_window(&v) {
-                return Some(s);
-            }
-        }
-    }
-    read(doc, &["curfew", "start"]).flatten().as_deref().and_then(parse_hhmm)
 }
 
 /// Map a chrono weekday to the lowercase schedule key the config uses.

@@ -11,7 +11,7 @@
 
 use chrono::{DateTime, TimeZone, Utc};
 
-use mutation_engine::lock_status::lock_status;
+use mutation_engine::lock_status::{lock_status, NO_UPCOMING_LOCK};
 
 const TZ: &str = "Europe/Amsterdam";
 
@@ -111,7 +111,15 @@ fn enabled_false_is_never_locked() {
     let s = lock_status(&cfg, now);
     assert!(!s.locked, "enabled=false must never be locked");
     assert!(!s.grace_active);
-    assert_eq!(s.boundary_kind, "next_lock");
+    // CR-02: a DISABLED curfew has no upcoming lock — the boundary must be the "no upcoming lock"
+    // sentinel, NEVER a `curfew.start`-derived today/tomorrow instant and NEVER `now` (which would
+    // render a stuck 00:00:00 countdown under an OPEN word).
+    assert_eq!(s.boundary_kind, "none");
+    assert_eq!(s.boundary_unix, NO_UPCOMING_LOCK);
+    assert!(
+        s.boundary_unix > now.timestamp(),
+        "an OPEN status must never advertise a boundary at or behind now"
+    );
 }
 
 // ---- Test 6: schedule.<day> precedence over start/end -------------------------------------
@@ -125,7 +133,16 @@ fn schedule_off_day_overrides_startend_and_is_unlocked() {
     let now = utc(2026, 6, 7, 22, 30);
     let s = lock_status(&cfg, now);
     assert!(!s.locked, "schedule.monday=off overrides start/end -> unlocked Monday");
-    assert_eq!(s.boundary_kind, "next_lock");
+    // CR-02: an `off` day does not scan future days for the advisory display, and today's
+    // `curfew.start` would resolve to a lock instant the guard never enforces on an off day.
+    // The boundary must be the "no upcoming lock" sentinel, never a false today/tomorrow start
+    // and never `now`.
+    assert_eq!(s.boundary_kind, "none");
+    assert_eq!(s.boundary_unix, NO_UPCOMING_LOCK);
+    assert!(
+        s.boundary_unix > now.timestamp(),
+        "an OPEN status must never advertise a boundary at or behind now"
+    );
 }
 
 #[test]

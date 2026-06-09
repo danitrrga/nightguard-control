@@ -134,6 +134,11 @@ function render(s: StateDto): void {
     word = "🌙 LOCKED · grace";
   } else if (s.locked) {
     word = "🌙 LOCKED";
+  } else if (s.boundary_kind === "none") {
+    // CR-02: curfew disabled, or today is `off` and we do not scan future days — there is no
+    // resolvable upcoming lock. Show "no upcoming lock" rather than a `00:00:00` countdown.
+    word = "OPEN";
+    caption = "no upcoming lock";
   } else {
     word = "OPEN";
     caption = `next lock at ${fmtClock(s.boundary_unix)}`;
@@ -194,6 +199,12 @@ function render(s: StateDto): void {
  * watch-driven `refresh()` (T-04-14). This is the only thing the 1s tick calls.
  */
 function renderCountdownOnly(s: StateDto): void {
+  // CR-02: "none" is the no-upcoming-lock sentinel (curfew disabled / today off) — render a
+  // neutral dash instead of a frozen 00:00:00 countdown derived from a sentinel boundary.
+  if (s.boundary_kind === "none") {
+    countdownEl().textContent = "--:--:--";
+    return;
+  }
   const remaining = s.boundary_unix - nowUnix();
   countdownEl().textContent = fmtRemaining(remaining);
 }
