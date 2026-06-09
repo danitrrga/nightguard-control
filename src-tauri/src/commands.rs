@@ -23,7 +23,7 @@ use mutation_engine::ntp::{SntpTrueTime, TrueTime};
 use mutation_engine::quota;
 use mutation_engine::state::GuardState;
 use trust_kernel::canon::canonicalize_bytes;
-use trust_kernel::hmac::verify_bytes;
+use trust_kernel::hmac::{verify_bytes, verify_tag_hex};
 use trust_kernel::key::load_or_create_key;
 
 /// IPC error surfaced across the `invoke` boundary.
@@ -215,10 +215,12 @@ fn build_state_dto(ctx: &AppCtx) -> Result<StateDto, IpcError> {
         None => false,
     };
 
-    // (4) Re-verify state_hmac via the locked A3 recipe (recompute over the blanked clone).
-    //     The recipe is a string hex compare of the recomputed tag (state.rs:49) — this is
-    //     the established recipe, NOT a `==` on a raw config tag.
-    let state_verified = gs.compute_state_hmac(&ctx.key) == gs.state_hmac;
+    // (4) Re-verify state_hmac via the locked A3 recipe (recompute over the blanked clone),
+    //     then CONSTANT-TIME compare the recomputed tag against the stored one. The two tags
+    //     are hex strings, so compare them with the kernel's `verify_tag_hex` (decodes + `subtle`
+    //     ConstantTimeEq) — NEVER `String ==`, which is a timing side-channel explicitly
+    //     forbidden by the project's "What NOT to Use". A malformed stored hex fails closed.
+    let state_verified = verify_tag_hex(&gs.compute_state_hmac(&ctx.key), &gs.state_hmac);
 
     // (5) Advisory now: app-side time is never authoritative (D-04). No SNTP on this hot path.
     let now_utc = Utc::now();

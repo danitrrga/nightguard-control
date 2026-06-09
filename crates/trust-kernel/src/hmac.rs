@@ -13,6 +13,7 @@
 
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+use subtle::ConstantTimeEq;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -42,4 +43,22 @@ pub fn verify_bytes(key: &[u8; 32], msg: &[u8], tag: &[u8; 32]) -> bool {
 /// Lowercase hex encoding of a tag (64 chars), for `guard.json` + PowerShell parity.
 pub fn tag_to_hex(tag: &[u8; 32]) -> String {
     hex::encode(tag)
+}
+
+/// Constant-time equality of two hex-encoded HMAC tags.
+///
+/// Decodes both hex strings to raw bytes and compares with `subtle::ConstantTimeEq` —
+/// NEVER `String ==` (which short-circuits on the first differing byte and is a timing
+/// side-channel; explicitly forbidden by the project's "What NOT to Use"). A malformed or
+/// length-mismatched hex string fails closed (`false`): a tag we cannot decode can never
+/// be treated as verified.
+pub fn verify_tag_hex(a_hex: &str, b_hex: &str) -> bool {
+    let (a, b) = match (hex::decode(a_hex.trim()), hex::decode(b_hex.trim())) {
+        (Ok(a), Ok(b)) => (a, b),
+        _ => return false,
+    };
+    if a.len() != b.len() {
+        return false;
+    }
+    a.ct_eq(&b).into()
 }
