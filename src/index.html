@@ -51,6 +51,43 @@
           <div id="token-meter" aria-label="Weekly loosen tokens"></div>
           <p id="token-caption" class="token-caption type-label"></p>
           <p id="grace-caption" class="grace-caption type-label"></p>
+
+          <!-- "+8 minutes" grace grant (Secondary CTA, UI-03 / D-10): enabled ONLY during an
+               active lock when grace is available; the `disabled` attribute makes the gate real. -->
+          <button type="button" id="grace-btn" class="action-btn" disabled>+8 minutes</button>
+        </section>
+
+        <!-- Edit view: ONE --surface panel (the single justified container, UI-SPEC §Layout).
+             Per-field curfew inputs + live tighten/loosen feedback + the gated Commit button.
+             Hidden by default; the Edit rail item toggles it. -->
+        <section id="edit-view" aria-live="polite" hidden>
+          <div class="edit-panel">
+            <h2 class="type-heading edit-title">Curfew</h2>
+
+            <div class="edit-field">
+              <label class="type-body" for="field-enabled">Curfew enabled</label>
+              <input type="checkbox" id="field-enabled" class="field-input" />
+              <span class="field-feedback type-label" id="fb-curfew.enabled"></span>
+            </div>
+
+            <div class="edit-field">
+              <label class="type-body" for="field-start">Start</label>
+              <input type="time" id="field-start" class="field-input" />
+              <span class="field-feedback type-label" id="fb-curfew.start"></span>
+            </div>
+
+            <div class="edit-field">
+              <label class="type-body" for="field-end">End</label>
+              <input type="time" id="field-end" class="field-input" />
+              <span class="field-feedback type-label" id="fb-curfew.end"></span>
+            </div>
+
+            <p class="edit-reason type-label" id="edit-reason"></p>
+
+            <button type="button" id="commit-btn" class="action-btn type-body">
+              Commit changes
+            </button>
+          </div>
         </section>
       </main>
     </div>

@@ -35,6 +35,17 @@ export interface StateDto {
   grace_remaining_secs: number;
 }
 
+/**
+ * Live classify + quota-preview result for the edit panel (UI-04). Mirrors `ClassifyDto` in
+ * src-tauri/src/commands.rs field-for-field. `fields` carries one verdict per classified field.
+ */
+export interface ClassifyDto {
+  fields: { field: string; direction: string }[]; // direction: "tighten" | "loosen" | "noop"
+  allowed: boolean;
+  reason: string | null;
+  costs_token: boolean;
+}
+
 const WEEKLY_TOKENS = 3;
 
 // The last re-verified DTO. The 1s tick reads this to re-render countdown digits only; it is
@@ -56,6 +67,17 @@ const dividerEl = () => el<HTMLElement>("meter-divider");
 const tokenMeterEl = () => el<HTMLElement>("token-meter");
 const tokenCaptionEl = () => el<HTMLElement>("token-caption");
 const graceCaptionEl = () => el<HTMLElement>("grace-caption");
+
+// Edit view handles.
+const editView = () => el<HTMLElement>("edit-view");
+const railStatusEl = () => el<HTMLButtonElement>("rail-status");
+const railEditEl = () => el<HTMLButtonElement>("rail-edit");
+const fieldEnabledEl = () => el<HTMLInputElement>("field-enabled");
+const fieldStartEl = () => el<HTMLInputElement>("field-start");
+const fieldEndEl = () => el<HTMLInputElement>("field-end");
+const commitBtnEl = () => el<HTMLButtonElement>("commit-btn");
+const editReasonEl = () => el<HTMLElement>("edit-reason");
+const fbEl = (field: string) => el<HTMLElement>(`fb-${field}`);
 
 // ── formatting helpers (advisory display only — D-04) ──
 function nowUnix(): number {
@@ -217,8 +239,196 @@ async function startWatch(): Promise<void> {
   }
 }
 
+// ── Edit view (D-07/D-08/D-09) ──
+//
+// The Edit view is the ONLY sanctioned editor for config.yaml. It loads the live config text
+// once, lets the user edit the visible curfew.* fields, runs classify_change DEBOUNCED on every
+// input (live tighten/loosen/noop feedback), disables Commit with the locked reason when a
+// loosen is pending at 0 tokens (UI-04), and confirms ONCE on a loosening commit (D-08). After a
+// successful commit it re-renders the Status view from the returned re-verified StateDto (D-09) —
+// never an optimistic local mutation.
+
+/** The live config.yaml text loaded from disk — the classifier's `old` side and the edit base. */
+let baseConfig = "";
+/** The most recent ClassifyDto, used by the commit handler to decide confirm + gating. */
+let lastClassify: ClassifyDto | null = null;
+
+/** Replace (or note absence of) a top-level-ish `curfew.<key>: value` line in the YAML text.
+ *  The classifier reads fields via yamlpath, so a per-field line edit on the visible curfew
+ *  fields is a faithful, format-preserving way to compose the proposed `new_yaml`. */
+function setYamlField(yaml: string, key: string, value: string): string {
+  // Match an indented `key:` line (e.g. `  start: 23:00`) and replace its value, preserving
+  // the original indentation and key. Anchored per-line; only the first match is rewritten.
+  const re = new RegExp(`^(\\s*${key}\\s*:).*$`, "m");
+  if (re.test(yaml)) {
+    return yaml.replace(re, `$1 ${value}`);
+  }
+  return yaml; // field absent in the source — leave untouched (absent != loosen, server decides)
+}
+
+/** Compose the proposed new YAML from `baseConfig` + the current input values. */
+function composeNewYaml(): string {
+  let y = baseConfig;
+  y = setYamlField(y, "enabled", fieldEnabledEl().checked ? "true" : "false");
+  // HH:MM values; <input type=time> yields "HH:MM" (empty string if cleared — keep as-is).
+  const start = fieldStartEl().value;
+  const end = fieldEndEl().value;
+  if (start) y = setYamlField(y, "start", start);
+  if (end) y = setYamlField(y, "end", end);
+  return y;
+}
+
+/** Seed the inputs from the loaded config text (best-effort line reads of the visible fields). */
+function seedInputsFromConfig(): void {
+  const read = (key: string): string | null => {
+    const m = baseConfig.match(new RegExp(`^\\s*${key}\\s*:\\s*(.+?)\\s*$`, "m"));
+    return m ? m[1].trim() : null;
+  };
+  const enabled = read("enabled");
+  fieldEnabledEl().checked = enabled === null ? true : enabled.toLowerCase() !== "false";
+  const start = read("start");
+  if (start) fieldStartEl().value = start.replace(/^["']|["']$/g, "");
+  const end = read("end");
+  if (end) fieldEndEl().value = end.replace(/^["']|["']$/g, "");
+}
+
+/** Clear all per-field feedback badges. */
+function clearFieldFeedback(): void {
+  for (const field of ["curfew.enabled", "curfew.start", "curfew.end"]) {
+    const node = fbEl(field);
+    node.textContent = "";
+    node.classList.remove("tighten", "loosen");
+  }
+}
+
+/** Render per-field feedback + gate the Commit button from a ClassifyDto (D-07). */
+function applyClassify(c: ClassifyDto): void {
+  lastClassify = c;
+  clearFieldFeedback();
+
+  let hasLoosen = false;
+  for (const f of c.fields) {
+    if (f.direction === "noop") continue; // noop is silent (UI-SPEC line 150)
+    const node = document.getElementById(`fb-${f.field}`);
+    if (!node) continue;
+    if (f.direction === "tighten") {
+      node.textContent = "Tightens curfew · free";
+      node.classList.add("tighten");
+    } else if (f.direction === "loosen") {
+      node.textContent = "Loosens curfew · costs 1 token";
+      node.classList.add("loosen");
+      hasLoosen = true;
+    }
+  }
+
+  // Commit label: "Commit (spends 1 token)" when the pending diff loosens (UI-SPEC line 138).
+  const commit = commitBtnEl();
+  commit.textContent = hasLoosen ? "Commit (spends 1 token)" : "Commit changes";
+  commit.classList.toggle("loosen", hasLoosen);
+
+  // Gating: a loosen at 0 tokens (allowed===false) disables Commit with the locked reason.
+  if (hasLoosen && !c.allowed) {
+    commit.disabled = true;
+    editReasonEl().textContent =
+      c.reason ?? "Out of weekly tokens — available again Monday.";
+  } else {
+    commit.disabled = false;
+    editReasonEl().textContent = "";
+  }
+}
+
+let classifyTimer: number | undefined;
+
+/** Debounced (~250ms) per-input classify — invokes classify_change with the composed new YAML. */
+function scheduleClassify(): void {
+  window.clearTimeout(classifyTimer);
+  classifyTimer = window.setTimeout(() => void runClassify(), 250);
+}
+
+async function runClassify(): Promise<void> {
+  if (!baseConfig) return;
+  const newYaml = composeNewYaml();
+  try {
+    const c = await invoke<ClassifyDto>("classify_change", {
+      oldYaml: baseConfig,
+      newYaml,
+    });
+    applyClassify(c);
+  } catch (err) {
+    // A classify failure (e.g. malformed YAML) surfaces inline; leave the edit intact.
+    editReasonEl().textContent = `Could not classify: ${String(err)}`;
+  }
+}
+
+/** Commit handler: confirm ONCE on a loosening diff (D-08), then commit + re-render truth (D-09). */
+async function onCommit(): Promise<void> {
+  const c = lastClassify;
+  if (!c) return;
+  const loosens = c.fields.some((f) => f.direction === "loosen");
+
+  // One-step confirm on loosening commits (D-08). Tighten-only/neutral commits skip this.
+  if (loosens) {
+    const ok = window.confirm(
+      "Spend a weekly token?\n\nThis loosens your curfew and uses 1 of your 3 weekly tokens.",
+    );
+    if (!ok) return; // "Keep current"
+  }
+
+  const newYaml = composeNewYaml();
+  try {
+    const s = await invoke<StateDto>("commit_change", { newYaml });
+    // D-09: re-render the Status view from the returned re-verified StateDto — no local mutation.
+    last = s;
+    render(s);
+    // Reflect the freshly-committed config as the new base, switch back to Status.
+    baseConfig = newYaml;
+    lastClassify = null;
+    clearFieldFeedback();
+    editReasonEl().textContent = "";
+    commitBtnEl().textContent = "Commit changes";
+    commitBtnEl().classList.remove("loosen");
+    showView("status");
+  } catch (err) {
+    // A server-side refusal (0-token loosen re-check, ntp unreachable) surfaces inline; the edit
+    // stays intact so the user can adjust. The displayed Status state is unchanged.
+    editReasonEl().textContent = String(err);
+  }
+}
+
+/** Switch the main container between the Status and Edit views (toggle visibility + aria). */
+function showView(view: "status" | "edit"): void {
+  const isEdit = view === "edit";
+  statusView().hidden = isEdit;
+  editView().hidden = !isEdit;
+  railStatusEl().setAttribute("aria-current", isEdit ? "false" : "page");
+  railEditEl().setAttribute("aria-current", isEdit ? "page" : "false");
+}
+
+async function initEdit(): Promise<void> {
+  // Load the live config text once (the classifier's `old` side + the input seed).
+  try {
+    baseConfig = await invoke<string>("read_config");
+    seedInputsFromConfig();
+  } catch {
+    // No config yet (NotInitialized) — the Edit view stays inert until a config exists.
+    baseConfig = "";
+  }
+
+  // Debounced live classify on any field input.
+  fieldEnabledEl().addEventListener("change", scheduleClassify);
+  fieldStartEl().addEventListener("input", scheduleClassify);
+  fieldEndEl().addEventListener("input", scheduleClassify);
+
+  commitBtnEl().addEventListener("click", () => void onCommit());
+
+  // Left-rail view switching (Status is the default).
+  railStatusEl().addEventListener("click", () => showView("status"));
+  railEditEl().addEventListener("click", () => showView("edit"));
+}
+
 async function init(): Promise<void> {
   await refresh();
+  await initEdit();
   await startWatch();
   // 1-second tick: re-render ONLY the countdown digits from the last verified DTO. It never
   // calls invoke and never recomputes `locked` (D-05 / T-04-14).

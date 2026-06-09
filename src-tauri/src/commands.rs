@@ -349,6 +349,19 @@ pub fn data_dir(state: tauri::State<'_, AppCtx>) -> String {
     state.data_dir.to_string_lossy().into_owned()
 }
 
+/// Surface the current `config.yaml` text to the frontend so the Edit view can build the
+/// `old`/`new` YAML pair for `classify_change` / `commit_change`.
+///
+/// Read-only and carries no secret — it returns the same human-readable config the guard reads
+/// (re-verification of its HMAC happens server-side in `get_state` / `commit_change`). The Edit
+/// view loads this once to seed the per-field inputs and to compose the edited YAML (the
+/// classifier reads individual fields via yamlpath, so a per-field line edit is sufficient). On
+/// an uninitialized data dir (no `config.yaml`) it maps to [`IpcError::NotInitialized`].
+#[tauri::command]
+pub fn read_config(state: tauri::State<'_, AppCtx>) -> Result<String, IpcError> {
+    std::fs::read_to_string(&state.paths.config).map_err(|_| IpcError::NotInitialized)
+}
+
 /// Classify a proposed edit + preview the quota verdict (no write).
 ///
 /// Wraps `classify::classify_change` for the per-field tighten/loosen/noop directions and
