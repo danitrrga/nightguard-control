@@ -27,7 +27,12 @@ findings:
   warning: 6
   info: 5
   total: 13
-status: issues_found
+resolved:
+  critical: 2
+  warning: 6
+  info: 0
+  note: "CR-01, CR-02, WR-01..WR-06 fixed (commits c754f45..4254114); IN-01..IN-05 left as tracked debt"
+status: resolved
 ---
 
 # Phase 4: Code Review Report
