@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_plan
-stopped_at: Phase 03 complete (4/4) — ready to discuss Phase 4
-last_updated: 2026-06-08T15:02:16.240Z
+status: planning
+stopped_at: Phase 4 context gathered
+last_updated: "2026-06-09T06:26:53.135Z"
 last_activity: 2026-06-08
 progress:
   total_phases: 5
@@ -117,7 +117,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-08T14:17:00.000Z
-Stopped at: Completed 03-04-PLAN.md (GARD-06 in-repo SHA256 integrity baseline; Phase 3 complete)
-Resume file: None
+Last session: 2026-06-09T06:26:53.124Z
+Stopped at: Phase 4 context gathered
+Resume file: .planning/phases/04-ui-moonlit-indigo/04-CONTEXT.md
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
