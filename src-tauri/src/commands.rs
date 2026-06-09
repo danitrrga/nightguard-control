@@ -15,8 +15,11 @@ use std::path::PathBuf;
 use chrono::Utc;
 use serde::Serialize;
 
-use mutation_engine::commit::CommitPaths;
+use mutation_engine::classify::{self, Direction};
+use mutation_engine::commit::{self, CommitPaths};
+use mutation_engine::grace;
 use mutation_engine::lock_status::lock_status;
+use mutation_engine::ntp::{SntpTrueTime, TrueTime};
 use mutation_engine::quota;
 use mutation_engine::state::GuardState;
 use trust_kernel::canon::canonicalize_bytes;
@@ -33,7 +36,11 @@ pub enum IpcError {
     /// Any engine-side failure, folded to its message string.
     #[error("{0}")]
     Engine(String),
-    /// An HMAC re-verification failed (fail-closed read path).
+    /// An HMAC re-verification failed (fail-closed read path). Reserved contract surface:
+    /// `get_state` surfaces verification failure IN the DTO (`config_verified`/`state_verified`
+    /// false + `maximal_lockout`) rather than erroring, so the UI can still render the
+    /// worst-cased state; this variant stays for callers that prefer a hard error.
+    #[allow(dead_code)]
     #[error("verify failed")]
     VerifyFailed,
     /// The app context could not be established (e.g. no data dir / no key).
@@ -63,7 +70,10 @@ impl From<mutation_engine::MutationError> for IpcError {
 pub struct AppCtx {
     /// The 32-byte DPAPI-unwrapped signing key (host-memory only; never serialized).
     pub key: [u8; 32],
-    /// The single base data dir (mirrors the guard's `NIGHTGUARD_DIR` resolution).
+    /// The single base data dir (mirrors the guard's `NIGHTGUARD_DIR` resolution). Reserved
+    /// contract surface — the commands derive paths from `paths`; plan 03's fs:scope tightening
+    /// reads this to scope the watcher to the resolved dir (kept to honor the frozen AppCtx).
+    #[allow(dead_code)]
     pub data_dir: PathBuf,
     /// The four fixed paths a commit touches (config / sanctioned / guard.json / lock dir).
     pub paths: CommitPaths,
@@ -299,6 +309,23 @@ fn today_in_tz(tz_name: &str, now_secs: i64) -> String {
         .unwrap_or_default()
 }
 
+/// Read the current `GuardState` from `guard.json`, mapping absence/parse failures to
+/// [`IpcError`]. Used by `classify_change` (which needs the live state for the quota preview).
+fn read_guard_state(ctx: &AppCtx) -> Result<GuardState, IpcError> {
+    let raw = std::fs::read_to_string(&ctx.paths.guard_json)
+        .map_err(|_| IpcError::NotInitialized)?;
+    serde_json::from_str(&raw).map_err(|e| IpcError::Engine(format!("guard.json parse: {e}")))
+}
+
+/// Map an engine [`Direction`] to the locked DTO string (`"tighten" | "loosen" | "noop"`).
+fn direction_str(d: Direction) -> &'static str {
+    match d {
+        Direction::Tighten => "tighten",
+        Direction::Loosen => "loosen",
+        Direction::Noop => "noop",
+    }
+}
+
 /// Read + re-verify the signed artifacts and derive the display state (D-03).
 ///
 /// Re-reads `config.yaml` + `guard.json` from the resolved data dir, re-verifies BOTH HMACs
@@ -313,36 +340,96 @@ pub fn get_state(state: tauri::State<'_, AppCtx>) -> Result<StateDto, IpcError> 
 
 /// Classify a proposed edit + preview the quota verdict (no write).
 ///
-/// STUB (this plan): returns an empty, allowed-noop preview. Plan 04 wraps
-/// `classify::classify_change` + `quota::decide`.
+/// Wraps `classify::classify_change` for the per-field tighten/loosen/noop directions and
+/// `quota::decide` for the allow/reason/cost preview so the edit panel can disable-with-reason
+/// at 0 tokens (UI-04). Read-only: no file is written here.
+///
+/// The managed `state: tauri::State<AppCtx>` is injected by the Tauri runtime (it does NOT
+/// change the JS `invoke('classify_change', { oldYaml, newYaml })` call shape); `decide` needs
+/// the live `GuardState` + configured tz, so the body reads them — a sanctioned body-fill.
 #[tauri::command]
-pub fn classify_change(old_yaml: String, new_yaml: String) -> Result<ClassifyDto, IpcError> {
-    let _ = (old_yaml, new_yaml);
+pub fn classify_change(
+    old_yaml: String,
+    new_yaml: String,
+    state: tauri::State<'_, AppCtx>,
+) -> Result<ClassifyDto, IpcError> {
+    // Per-field directions (engine error -> IpcError::Engine via From).
+    let dirs = classify::classify_change(&old_yaml, &new_yaml)?;
+
+    // Quota preview against the live signed state (advisory now for the week math).
+    let gs = read_guard_state(&state)?;
+    let decision = quota::decide(&dirs, &gs, Utc::now(), &state.tz);
+
+    let fields = dirs
+        .iter()
+        .map(|(field, dir)| FieldDirection {
+            field: field.clone(),
+            direction: direction_str(*dir).to_string(),
+        })
+        .collect();
+
     Ok(ClassifyDto {
-        fields: Vec::new(),
-        allowed: true,
-        reason: None,
-        costs_token: false,
+        fields,
+        allowed: decision.allowed,
+        reason: decision.reason,
+        costs_token: decision.costs_token,
     })
 }
 
 /// Gate + atomically commit a sanctioned edit, then re-read the freshly-signed state.
 ///
-/// STUB (this plan): not yet wired. Plan 05 wraps `commit::commit_change` (D-09 re-read).
+/// Classifies `new_yaml` against the live `config.yaml`, re-checks the quota decision in-command
+/// (defense in depth, mirroring `commit.rs:148` — a 0-token loosen never reaches the writer),
+/// obtains TRUE NTP time fail-closed for the ledger, then commits via the engine's ONLY
+/// sanctioned writer `commit::commit_change` (ordered, fd-locked — never hand-rolled). After the
+/// commit it RE-READS the freshly-signed state (D-09) through the shared `build_state_dto` path,
+/// so the returned DTO is verified truth, not an optimistic local mutation.
 #[tauri::command]
 pub fn commit_change(
     new_yaml: String,
     state: tauri::State<'_, AppCtx>,
 ) -> Result<StateDto, IpcError> {
-    let _ = (new_yaml, state.data_dir.as_path());
-    Err(IpcError::NotInitialized)
+    // The current live config is the classifier's `old` side.
+    let old_yaml = std::fs::read_to_string(&state.paths.config)
+        .map_err(|_| IpcError::NotInitialized)?;
+
+    // Classify + decide against the live signed state.
+    let dirs = classify::classify_change(&old_yaml, &new_yaml)?;
+    let gs = read_guard_state(&state)?;
+    let decision = quota::decide(&dirs, &gs, Utc::now(), &state.tz);
+
+    // Defense in depth: a disallowed (0-token loosen) decision NEVER reaches the writer.
+    if !decision.allowed {
+        return Err(IpcError::Engine(
+            decision.reason.unwrap_or_else(|| "commit blocked".to_string()),
+        ));
+    }
+
+    // TRUE time for the ledger — fail-closed on NTP failure (no system-clock fallback).
+    let true_now = SntpTrueTime::default()
+        .now()
+        .map(|t| t.unix_secs)
+        .map_err(|_| IpcError::Engine("ntp unreachable: cannot verify true time".to_string()))?;
+
+    // The ONLY write path: the engine's ordered, fd-locked, re-signing commit (RULE-06 / GARD-05).
+    commit::commit_change(&state.paths, &new_yaml, &dirs, &decision, &state.key, true_now)?;
+
+    // Re-read the freshly-signed state (D-09) — verified truth, never an optimistic echo.
+    build_state_dto(&state)
 }
 
 /// Grant the once-daily timed grace window, then re-read the freshly-signed state.
 ///
-/// STUB (this plan): not yet wired. Plan 05 wraps `grace::use_grace` (D-09 re-read).
+/// Wraps the engine's `grace::use_grace`, which (inside the same commit lock) sources TRUE NTP
+/// time and refuses fail-closed on `NtpUnreachable` / `GraceAlreadyUsedToday` — both fold to
+/// [`IpcError`] via `From<MutationError>`. On success it RE-READS the freshly-signed state (D-09)
+/// through the shared `build_state_dto` path, so the returned DTO reflects the active window as
+/// verified truth (`grace_active=true`, `boundary_kind="grace_end"`), never an optimistic echo.
 #[tauri::command]
 pub fn use_grace(state: tauri::State<'_, AppCtx>) -> Result<StateDto, IpcError> {
-    let _ = state.tz.as_str();
-    Err(IpcError::NotInitialized)
+    // Grant via the engine (NtpUnreachable / GraceAlreadyUsedToday -> IpcError via From).
+    grace::use_grace(&state.paths, &SntpTrueTime::default(), &state.tz, &state.key)?;
+
+    // Re-read the freshly-signed state (D-09) — the overlay surfaces the active grace window.
+    build_state_dto(&state)
 }
