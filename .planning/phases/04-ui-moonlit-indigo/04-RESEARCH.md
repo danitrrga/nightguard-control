@@ -505,7 +505,9 @@ let window = grace::use_grace(&paths, &SntpTrueTime::default(), &tz, &key)?; // 
 | A5 | The new `lock_status` evaluator can faithfully mirror the guard's curfew/schedule semantics from `config.yaml` alone | Pitfall 1 / Open Q1 | **Medium-High** — this is net-new logic with no reference impl in Rust; divergence makes the UI lie. Mitigate with a diff-table unit test + cross-check against guard behavior. |
 | A6 | WebView2 present on the target Win11 host (no bundling) | Stack | Low — CLAUDE.md states evergreen preinstalled on Win11. |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> RESOLVED at planning (Phase 4 plans): Q1 → Plan 04-02 (dedicated `lock_status` TDD evaluator in `mutation-engine`); Q2 → Plan 04-05 Task 1 (curfew.* visible field set, Claude's Discretion); Q3 → Plan 04-02 (`lock_status` lives in `mutation-engine`, not `src-tauri`).
 
 1. **Lock-window evaluation has no existing implementation.** (HIGHEST RISK)
    - What we know: The engine has the classifier's private `parse_window` only; the *guard* computes the live curfew verdict in PowerShell, but D-03 forbids calling it. So `locked` / `grace_active` / `boundary_unix` must be computed fresh in Rust from `config.yaml` + advisory time.
