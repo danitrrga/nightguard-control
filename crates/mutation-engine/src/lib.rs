@@ -18,6 +18,7 @@
 pub mod classify;
 pub mod commit;
 pub mod grace;
+pub mod lock_status;
 pub mod ntp;
 pub mod quota;
 pub mod sign;

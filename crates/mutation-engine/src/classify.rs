@@ -267,7 +267,10 @@ fn parse_int(s: &str) -> Option<i64> {
 }
 
 /// Parse `HH:MM` into minutes-since-midnight.
-fn parse_hhmm(s: &str) -> Option<i64> {
+///
+/// `pub(crate)` so [`crate::lock_status`] reuses the EXACT same bounds-checked parser —
+/// there is intentionally ONE `HH:MM` parser in the engine, never a divergent second copy.
+pub(crate) fn parse_hhmm(s: &str) -> Option<i64> {
     let (h, m) = s.split_once(':')?;
     let h: i64 = h.trim().parse().ok()?;
     let m: i64 = m.trim().parse().ok()?;
@@ -359,7 +362,9 @@ fn classify_schedule(old: &str, new: &str) -> Direction {
 }
 
 /// Parse a `HH:MM-HH:MM` window into (start_minutes, end_minutes).
-fn parse_window(s: &str) -> Option<(i64, i64)> {
+///
+/// `pub(crate)` so [`crate::lock_status`] shares this exact window parser (single source).
+pub(crate) fn parse_window(s: &str) -> Option<(i64, i64)> {
     let (start, end) = s.split_once('-')?;
     Some((parse_hhmm(start.trim())?, parse_hhmm(end.trim())?))
 }
