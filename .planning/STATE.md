@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_plan
-stopped_at: Phase 04 complete (5/5) — ready to discuss Phase 5
-last_updated: 2026-06-09T10:50:22.649Z
+status: planning
+stopped_at: Phase 5 context gathered
+last_updated: "2026-06-09T15:28:12.159Z"
 last_activity: 2026-06-09
 progress:
   total_phases: 5
@@ -128,7 +128,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-09T10:07:18.276Z
-Stopped at: Phase 04 plan 05 complete — Phase 04 ready for verification
-Resume file: None
+Last session: 2026-06-09T15:28:12.150Z
+Stopped at: Phase 5 context gathered
+Resume file: .planning/phases/05-instance-wiring/05-CONTEXT.md
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
