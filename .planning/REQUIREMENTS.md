@@ -32,10 +32,10 @@
 
 ### UI (Moonlit Indigo)
 
-- [ ] **UI-01**: The main screen shows lock status (🌙 LOCKED / OPEN) and a live countdown reflecting hook-enforced reality (never app-local optimism).
-- [ ] **UI-02**: The main screen shows the 3-dot weekly token meter with next-reset, and today's grace availability.
-- [ ] **UI-03**: The "+8 minutes" button is enabled only during an active lock when grace is available, and grants the window on press.
-- [ ] **UI-04**: The edit panel shows per-field inputs with live tighten/loosen feedback and disables commit with a reason when loosening at 0 tokens.
+- [x] **UI-01**: The main screen shows lock status (🌙 LOCKED / OPEN) and a live countdown reflecting hook-enforced reality (never app-local optimism).
+- [x] **UI-02**: The main screen shows the 3-dot weekly token meter with next-reset, and today's grace availability.
+- [x] **UI-03**: The "+8 minutes" button is enabled only during an active lock when grace is available, and grants the window on press.
+- [x] **UI-04**: The edit panel shows per-field inputs with live tighten/loosen feedback and disables commit with a reason when loosening at 0 tokens.
 - [ ] **UI-05**: The interface implements the Moonlit Indigo palette + Roboto + left-icon-rail / flat-card layout.
 
 ### Instance Wiring (author's deployment)
@@ -84,10 +84,10 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | GARD-04 | Phase 3 | Complete |
 | GARD-05 | Phase 3 | Complete |
 | GARD-06 | Phase 3 | Complete |
-| UI-01 | Phase 4 | Pending |
-| UI-02 | Phase 4 | Pending |
-| UI-03 | Phase 4 | Pending |
-| UI-04 | Phase 4 | Pending |
+| UI-01 | Phase 4 | Complete |
+| UI-02 | Phase 4 | Complete |
+| UI-03 | Phase 4 | Complete |
+| UI-04 | Phase 4 | Complete |
 | UI-05 | Phase 4 | Pending |
 | WIRE-01 | Phase 5 | Pending |
 | WIRE-02 | Phase 5 | Pending |
