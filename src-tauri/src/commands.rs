@@ -264,10 +264,12 @@ fn build_state_dto(ctx: &AppCtx) -> Result<StateDto, IpcError> {
     // `grace_available_today` mirrors the guard (`$graceUsed = ($null -ne grace)`): grace is
     // available today iff there is no recorded window, or the recorded window is for a prior
     // day (advisory: compared against today's date in the configured tz).
-    let today = today_in_tz(&ctx.tz, now_secs);
-    let grace_available_today = match &gs.grace {
-        None => true,
-        Some(g) => g.date != today,
+    // WR-01: an unresolvable "today" must fail CLOSED — never report grace as available again
+    // off the back of an empty-string date comparing unequal to a real recorded window.
+    let grace_available_today = match (&gs.grace, today_in_tz(&ctx.tz, now_secs)) {
+        (None, _) => true,
+        (Some(_), None) => false, // cannot resolve today -> assume grace already used (fail-closed)
+        (Some(g), Some(today)) => g.date != today,
     };
 
     // Overlay an ACTIVE grace window on top of lock_status: if a window is present and not yet
@@ -301,13 +303,17 @@ fn build_state_dto(ctx: &AppCtx) -> Result<StateDto, IpcError> {
 
 /// The advisory "YYYY-MM-DD" date of `now_secs` in the configured tz (defensive UTC default,
 /// mirroring the engine's `parse_tz`/`true_day` discipline — never panics on a bad tz name).
-fn today_in_tz(tz_name: &str, now_secs: i64) -> String {
+///
+/// Returns `None` when the instant cannot be resolved to a single local date (a non-`Single`
+/// `timestamp_opt` result). WR-01: callers MUST treat `None` as fail-closed — an unresolvable
+/// "today" must never become an empty string that compares unequal to a recorded grace window
+/// and thereby re-arms the once-daily grace.
+fn today_in_tz(tz_name: &str, now_secs: i64) -> Option<String> {
     use chrono::TimeZone;
     let tz: chrono_tz::Tz = tz_name.parse().unwrap_or(chrono_tz::UTC);
     tz.timestamp_opt(now_secs, 0)
         .single()
         .map(|dt| dt.format("%Y-%m-%d").to_string())
-        .unwrap_or_default()
 }
 
 /// Read the current `GuardState` from `guard.json`, mapping absence/parse failures to
