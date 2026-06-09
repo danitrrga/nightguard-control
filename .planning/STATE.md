@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 04 plan 04 complete
-last_updated: "2026-06-09T09:57:03.365Z"
+status: verifying
+stopped_at: Phase 04 plan 05 complete — phase ready for verification
+last_updated: "2026-06-09T10:07:18.289Z"
 last_activity: 2026-06-09
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 17
-  completed_plans: 16
-  percent: 60
+  completed_plans: 17
+  percent: 80
 ---
 
 # Project State
@@ -25,13 +25,13 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 ## Current Position
 
-Phase: 04 (ui-moonlit-indigo) — EXECUTING
-Plan: 5 of 5
-Next: 04-05 — Edit panel + actions (per-field tighten/loosen feedback, +8 grace, commit with token confirm)
-Status: Executing Phase 04 (plan 04 complete)
-Last activity: 2026-06-09 -- Phase 04 plan 04 complete (Status view renders the re-verified StateDto: hero countdown + 🌙 LOCKED/OPEN + 3-dot token meter; plugin-fs watch + 1s tick keep it live; Moonlit Indigo hand CSS + local Roboto)
+Phase: 04 (ui-moonlit-indigo) — READY FOR VERIFICATION
+Plan: 5 of 5 (all plans complete)
+Next: Phase 04 verification, then Phase 05 — Instance Wiring
+Status: Phase 04 complete — all 5 plans executed; ready for verification
+Last activity: 2026-06-09 -- Phase 04 plan 05 complete (Edit view: single --surface per-field editor with debounced classify feedback + 0-token disable-with-reason + loosen confirm + commit re-render; +8 grace button enabled only when locked && grace_available_today, use_grace + re-render — vertical slice complete)
 
-Phase progress: [██████░░░░] 3/5 phases complete (Phase 04: 4/5 plans)
+Phase progress: [████████░░] 4/5 phases complete (Phase 04: 5/5 plans)
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Phase progress: [██████░░░░] 3/5 phases complete (Phase 04: 
 | Phase 04 P02 | 14 | 1 tasks | 4 files |
 | Phase 04 P03 | 5 | 2 tasks | 1 files |
 | Phase 04 P04 | 6 | 2 tasks | 8 files |
+| Phase 04 P05 | 8 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -103,6 +104,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 4, 04-01]: src-tauri added as the third workspace member (single root [workspace]); the four IPC commands (get_state/classify_change/commit_change/use_grace) registered with FINAL signatures as stubs over a fixed StateDto/ClassifyDto/IpcError contract (D-01). AppCtx::load resolves NIGHTGUARD_DIR like the guard and loads .guardkey once (Scope::User, single key path); placeholder get_state ships fail-closed (maximal_lockout, 0 tokens) so the scaffold never looks less locked than the guard; fs:scope left broad with a plan-03 tighten TODO.
 - [Phase ?]: [Phase 4, 04-02]: lock_status is a pure (config_yaml, now) -> LockStatus curfew evaluator in mutation-engine. Precedence: curfew.enabled=false => not locked; schedule.<day> overrides start/end (off => unlocked, HH:MM-HH:MM => that window); overnight-wrap inside = minute>=start||minute<end with the boundary on the CORRECT calendar day (next day for a late-entered wrap, never naive +24h, DST-aware via explicit MappedLocalTime like week.rs); absent/malformed field => fail-safe LOCKED (D-04/A2, never a silent unlock). grace_active=false here -- get_state overlays the signed guard.json grace window. Reuses classify::parse_hhmm/parse_window made pub(crate) -- exactly ONE HH:MM parser. 11 offline tests green.
 - [Phase 4, 04-04]: Status view + liveness shipped (UI-01/UI-02/UI-05). render() derives every assertion from a fresh get_state DTO (D-03); !state_verified||maximal_lockout -> fully-locked "State unverified" warm-tone copy, never optimism. Hero countdown is 64px tabular-nums (Display); status word 🌙 LOCKED / · grace / OPEN ("next lock at {time}"); 3-dot accent token meter ("{n} of 3 tokens · resets Monday {date}") + grace caption; NotInitialized -> empty state. plugin-fs watch(dataDir, refresh, {delayMs:250}) re-invokes get_state on any data-dir change (D-05/D-09); 1s setInterval re-renders ONLY countdown digits and never the status word (T-04-14). New additive data_dir IPC command surfaces the absolute watch target (AppCtx.data_dir consumed, its #[allow(dead_code)] removed). fs:scope narrowed off bare ** to $HOME/.nightguard + $APPDATA/nightguard (least-privilege T-04-17; residual: non-conventional NIGHTGUARD_DIR is out of watch scope -> tick+load-fetch+re-read-on-action still keep displayed state correct). Roboto 400/500 woff2 bundled locally from fontsource mirror, no runtime CDN (T-04-16). Moonlit Indigo hand CSS (palette tokens + 4-size type scale + 8pt spacing + 56px aria-labelled inline-SVG left rail), no UI framework/icon package. tsc clean, vite build green (fonts in dist/assets), cargo build zero warnings.
+- [Phase 4, 04-05]: Edit view shipped (UI-03/UI-04/UI-05) — vertical slice complete. Single --surface per-field editor (curfew.enabled/start/end) runs classify_change debounced (~250ms) per field -> exact UI-SPEC feedback ("Tightens curfew · free"=accent / "Loosens curfew · costs 1 token"=warn / noop silent); Commit disabled with the locked "available again Monday" reason on a 0-token loosen (UI-04) + "Commit (spends 1 token)" loosen label; one-step "Spend a weekly token?" confirm ONLY on loosening commits (D-08, tighten-only skips). commit_change/use_grace re-render Status ONLY from the returned re-verified StateDto (D-09 — no optimistic token decrement / grace flip; grep-clean). +8 button enabled IFF locked && grace_available_today with the REAL disabled attribute (D-10, not styling-only) + accent .enabled fill; use_grace -> re-render (boundary retargets to grace_end), NtpUnreachable/GraceAlreadyUsedToday surfaced inline amber non-punitively. Added a read-only read_config IPC seam (Rule 3 blocking — the edit classify old/new pair needs the live config text); new_yaml composed by per-field line edit on the loaded config (yamlpath-faithful, comment/format-preserving), absent field left untouched. Reuses plan-04 tokens/scale (no second design system). tsc clean, vite build green, cargo check zero warnings. Task 3 human-verify checkpoint auto-approved under AUTO_MODE; live tauri-dev walkthrough deferred to the phase verifier.
 - [Phase ?]: [Phase 4, 04-03]: four IPC commands real + signature-frozen. get_state/commit_change/use_grace all return ONE build_state_dto helper re-verifying config_hmac (constant-time verify_bytes over canonicalize_bytes) + state_hmac (A3 compute_state_hmac), worst-casing on tamper EXACTLY like the guard (weekly_spent=3/tokens=0/grace_available=false/maximal_lockout) in one place; lock/boundary from lock_status with active guard.json grace overlaid (boundary_kind=grace_end). classify_change wraps classify+quota::decide (disable-at-0-tokens preview; took a managed AppCtx body-fill, JS shape unchanged). commit_change gates decision.allowed in-command -> true NTP fail-closed -> engine ordered fd-locked commit::commit_change -> re-read (D-09); use_grace -> grace::use_grace -> re-read. No hand-rolled writer, no == on a config tag.
 
 ### Pending Todos
@@ -125,7 +127,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-09T09:57:03.353Z
-Stopped at: Phase 04 plan 02 complete
+Last session: 2026-06-09T10:07:18.276Z
+Stopped at: Phase 04 plan 05 complete — Phase 04 ready for verification
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).

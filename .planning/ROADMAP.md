@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Trust Kernel** - HMAC + DPAPI + atomic store with a Rust↔PowerShell interop round-trip as the exit gate (completed 2026-06-04)
 - [x] **Phase 2: Mutation Engine** - Direction classifier, weekly token quota, NTP-true grace, atomic ordered commit (completed 2026-06-05)
 - [x] **Phase 3: Enforcement Guard** - PowerShell verify→auto-revert with fail-closed paths and grace re-check (completed 2026-06-08)
-- [ ] **Phase 4: UI (Moonlit Indigo)** - Status, token meter, +8 button, and live per-field editor feedback
+- [x] **Phase 4: UI (Moonlit Indigo)** - Status, token meter, +8 button, and live per-field editor feedback (completed 2026-06-09)
 - [ ] **Phase 5: Instance Wiring** - Point the author's live hook at the canonical LifeOS config and initialize the instance
 
 ## Phase Details
@@ -91,7 +91,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   - [x] 04-02-PLAN.md — TDD: pure lock_status curfew-window evaluator in mutation-engine (highest-risk net-new logic) (UI-01)
   - [x] 04-03-PLAN.md — Real IPC command bodies: get_state read/re-verify/worst-case + classify/commit/grace wrappers (UI-01, UI-02, UI-03, UI-04)
   - [x] 04-04-PLAN.md — Status view: hero countdown + 🌙 LOCKED/OPEN + 3-dot token meter + plugin-fs watch + 1s tick, Moonlit Indigo styling (UI-01, UI-02, UI-05)
-  - [ ] 04-05-PLAN.md — Edit panel (live per-field classify + gated/confirmed commit) + "+8 minutes" grace button (UI-03, UI-04, UI-05)
+  - [x] 04-05-PLAN.md — Edit panel (live per-field classify + gated/confirmed commit) + "+8 minutes" grace button (UI-03, UI-04, UI-05)
 **UI hint**: yes
 
 ### Phase 5: Instance Wiring
@@ -113,5 +113,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Trust Kernel | 3/3 | Complete   | 2026-06-04 |
 | 2. Mutation Engine | 5/5 | Complete   | 2026-06-05 |
 | 3. Enforcement Guard | 3/4 | In Progress|  |
-| 4. UI (Moonlit Indigo) | 4/5 | In Progress|  |
+| 4. UI (Moonlit Indigo) | 5/5 | Complete   | 2026-06-09 |
 | 5. Instance Wiring | 0/TBD | Not started | - |
