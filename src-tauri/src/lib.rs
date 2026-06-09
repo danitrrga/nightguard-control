@@ -7,7 +7,7 @@
 
 mod commands;
 
-use commands::{classify_change, commit_change, get_state, use_grace, AppCtx};
+use commands::{classify_change, commit_change, data_dir, get_state, use_grace, AppCtx};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -20,6 +20,7 @@ pub fn run() {
         .manage(ctx)
         .invoke_handler(tauri::generate_handler![
             get_state,
+            data_dir,
             classify_change,
             commit_change,
             use_grace

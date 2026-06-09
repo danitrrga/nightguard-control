@@ -70,10 +70,9 @@ impl From<mutation_engine::MutationError> for IpcError {
 pub struct AppCtx {
     /// The 32-byte DPAPI-unwrapped signing key (host-memory only; never serialized).
     pub key: [u8; 32],
-    /// The single base data dir (mirrors the guard's `NIGHTGUARD_DIR` resolution). Reserved
-    /// contract surface — the commands derive paths from `paths`; plan 03's fs:scope tightening
-    /// reads this to scope the watcher to the resolved dir (kept to honor the frozen AppCtx).
-    #[allow(dead_code)]
+    /// The single base data dir (mirrors the guard's `NIGHTGUARD_DIR` resolution). Surfaced to
+    /// the frontend by the `data_dir` command so the webview can target `plugin-fs` `watch()`
+    /// at the exact enforced directory (D-05); also the `fs:scope` watch target.
     pub data_dir: PathBuf,
     /// The four fixed paths a commit touches (config / sanctioned / guard.json / lock dir).
     pub paths: CommitPaths,
@@ -336,6 +335,18 @@ fn direction_str(d: Direction) -> &'static str {
 #[tauri::command]
 pub fn get_state(state: tauri::State<'_, AppCtx>) -> Result<StateDto, IpcError> {
     build_state_dto(&state)
+}
+
+/// Surface the absolute resolved data dir to the frontend so it can target `plugin-fs`
+/// `watch()` at the exact directory the guard enforces (D-05 liveness).
+///
+/// This is read-only and carries no secret (the key never leaves `AppCtx`). It exists because
+/// the data dir is resolved at startup from `NIGHTGUARD_DIR` and the webview otherwise has no
+/// way to know the absolute path to watch (Pitfall 5). The returned path also matches the
+/// `fs:scope` allow entry in `capabilities/default.json`.
+#[tauri::command]
+pub fn data_dir(state: tauri::State<'_, AppCtx>) -> String {
+    state.data_dir.to_string_lossy().into_owned()
 }
 
 /// Classify a proposed edit + preview the quota verdict (no write).
