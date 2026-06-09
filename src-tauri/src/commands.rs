@@ -12,9 +12,15 @@
 
 use std::path::PathBuf;
 
+use chrono::Utc;
 use serde::Serialize;
 
 use mutation_engine::commit::CommitPaths;
+use mutation_engine::lock_status::lock_status;
+use mutation_engine::quota;
+use mutation_engine::state::GuardState;
+use trust_kernel::canon::canonicalize_bytes;
+use trust_kernel::hmac::verify_bytes;
 use trust_kernel::key::load_or_create_key;
 
 /// IPC error surfaced across the `invoke` boundary.
@@ -151,30 +157,158 @@ pub struct ClassifyDto {
     pub costs_token: bool,
 }
 
-/// Read + re-verify the signed artifacts and derive the display state.
+/// The maximum loosening commits allowed per week (mirrors `quota::WEEKLY_TOKENS`); used to
+/// derive `tokens_remaining` from the effective spent count.
+const WEEKLY_TOKENS: u8 = 3;
+
+/// Decode a 64-char hex HMAC string into a fixed 32-byte tag, or `None` if malformed.
+fn hex_to_tag32(hex_str: &str) -> Option<[u8; 32]> {
+    let bytes = hex::decode(hex_str.trim()).ok()?;
+    <[u8; 32]>::try_from(bytes.as_slice()).ok()
+}
+
+/// Read both signed artifacts from disk and assemble the re-verified [`StateDto`].
 ///
-/// STUB (this plan): returns a fail-closed placeholder. Plan 03 fills the real
-/// read/verify/derive path (T-04-03 — placeholder ships ONLY in this scaffold plan).
+/// This is the ONE place the read → re-verify → derive → worst-case path lives, so
+/// `get_state`, `commit_change`, and `use_grace` all return identically-verified truth and
+/// the worst-casing parity (the guard's `nightguard_guard.ps1:217-222` substitution) is
+/// applied in exactly one location (T-04-08 / T-04-09).
+///
+/// Fail-closed contract:
+///   - missing `config.yaml` or `guard.json` -> [`IpcError::NotInitialized`].
+///   - `config.yaml` tampered (config_hmac mismatch) -> `config_verified=false`,
+///     `maximal_lockout=true`.
+///   - `guard.json` tampered (state_hmac mismatch) -> WORST-CASE the token/grace fields
+///     exactly like the guard: `weekly_spent=3, tokens_remaining=0,
+///     grace_available_today=false, grace_active=false`, plus `maximal_lockout=true`.
+///   - app-side time is advisory only (D-04): `time_unverified` is always `true` and NO
+///     blocking SNTP call happens on this read path (the guard re-validates true time).
+fn build_state_dto(ctx: &AppCtx) -> Result<StateDto, IpcError> {
+    // (1) Read both signed artifacts. Either absent => not initialized (never an optimistic DTO).
+    let raw_config = match std::fs::read(&ctx.paths.config) {
+        Ok(bytes) => bytes,
+        Err(_) => return Err(IpcError::NotInitialized),
+    };
+    let raw_guard = match std::fs::read_to_string(&ctx.paths.guard_json) {
+        Ok(s) => s,
+        Err(_) => return Err(IpcError::NotInitialized),
+    };
+
+    // (2) Deserialize guard.json into the signed-state model (serde error -> engine message).
+    let gs: GuardState = serde_json::from_str(&raw_guard)
+        .map_err(|e| IpcError::Engine(format!("guard.json parse: {e}")))?;
+
+    // (3) Re-verify config_hmac: canonicalize the RAW config bytes (the exact form it was
+    //     signed over) and constant-time verify against the stored tag. NEVER `==` on tags.
+    let canon = canonicalize_bytes(&raw_config);
+    let config_verified = match hex_to_tag32(&gs.config_hmac) {
+        Some(tag) => verify_bytes(&ctx.key, &canon, &tag),
+        None => false,
+    };
+
+    // (4) Re-verify state_hmac via the locked A3 recipe (recompute over the blanked clone).
+    //     The recipe is a string hex compare of the recomputed tag (state.rs:49) — this is
+    //     the established recipe, NOT a `==` on a raw config tag.
+    let state_verified = gs.compute_state_hmac(&ctx.key) == gs.state_hmac;
+
+    // (5) Advisory now: app-side time is never authoritative (D-04). No SNTP on this hot path.
+    let now_utc = Utc::now();
+    let now_secs = now_utc.timestamp();
+    let config_yaml = String::from_utf8_lossy(&raw_config).to_string();
+
+    // (6) Curfew lock verdict + boundary from the pure evaluator over the (advisory) now.
+    let ls = lock_status(&config_yaml, now_utc);
+
+    // (7) Pure read of effective spent / next reset (empty diff = no proposed change).
+    let decision = quota::decide(&[], &gs, now_utc, &ctx.tz);
+
+    let maximal_lockout = !config_verified || !state_verified;
+
+    // (8) Assemble. On ANY state-verify failure, worst-case the token/grace fields to mirror
+    //     the guard — the app must never look LESS locked than the guard enforces.
+    if !state_verified {
+        return Ok(StateDto {
+            config_verified,
+            state_verified,
+            maximal_lockout: true,
+            // Lock/boundary still come from lock_status (a tampered guard.json never relaxes
+            // the curfew window), but the token/grace surface is worst-cased.
+            locked: ls.locked,
+            grace_active: false,
+            boundary_unix: ls.boundary_unix,
+            boundary_kind: ls.boundary_kind,
+            time_unverified: true,
+            tokens_remaining: 0,
+            weekly_spent: WEEKLY_TOKENS, // 3 — the guard's worst-case substitution
+            next_reset_unix: decision.next_reset.timestamp(),
+            grace_available_today: false,
+            grace_remaining_secs: 0,
+        });
+    }
+
+    // (9) Verified state: real token meter + grace overlay.
+    let weekly_spent = decision.effective_spent;
+    let tokens_remaining = WEEKLY_TOKENS.saturating_sub(weekly_spent);
+
+    // `grace_available_today` mirrors the guard (`$graceUsed = ($null -ne grace)`): grace is
+    // available today iff there is no recorded window, or the recorded window is for a prior
+    // day (advisory: compared against today's date in the configured tz).
+    let today = today_in_tz(&ctx.tz, now_secs);
+    let grace_available_today = match &gs.grace {
+        None => true,
+        Some(g) => g.date != today,
+    };
+
+    // Overlay an ACTIVE grace window on top of lock_status: if a window is present and not yet
+    // expired (window_end in the advisory future), the next boundary is the grace end.
+    let (grace_active, boundary_unix, boundary_kind, grace_remaining_secs) = match &gs.grace {
+        Some(g) if g.window_end > now_secs => (
+            true,
+            g.window_end,
+            "grace_end".to_string(),
+            g.window_end - now_secs,
+        ),
+        _ => (ls.grace_active, ls.boundary_unix, ls.boundary_kind, 0),
+    };
+
+    Ok(StateDto {
+        config_verified,
+        state_verified,
+        maximal_lockout,
+        locked: ls.locked,
+        grace_active,
+        boundary_unix,
+        boundary_kind,
+        time_unverified: true,
+        tokens_remaining,
+        weekly_spent,
+        next_reset_unix: decision.next_reset.timestamp(),
+        grace_available_today,
+        grace_remaining_secs,
+    })
+}
+
+/// The advisory "YYYY-MM-DD" date of `now_secs` in the configured tz (defensive UTC default,
+/// mirroring the engine's `parse_tz`/`true_day` discipline — never panics on a bad tz name).
+fn today_in_tz(tz_name: &str, now_secs: i64) -> String {
+    use chrono::TimeZone;
+    let tz: chrono_tz::Tz = tz_name.parse().unwrap_or(chrono_tz::UTC);
+    tz.timestamp_opt(now_secs, 0)
+        .single()
+        .map(|dt| dt.format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
+}
+
+/// Read + re-verify the signed artifacts and derive the display state (D-03).
+///
+/// Re-reads `config.yaml` + `guard.json` from the resolved data dir, re-verifies BOTH HMACs
+/// via the kernel (`verify_bytes` for config, `compute_state_hmac` for state), and derives
+/// the full [`StateDto`] through the shared [`build_state_dto`] helper — worst-casing exactly
+/// like the guard on any verification failure. Uninitialized (either file absent) maps to
+/// [`IpcError::NotInitialized`], which drives the empty state in the UI.
 #[tauri::command]
 pub fn get_state(state: tauri::State<'_, AppCtx>) -> Result<StateDto, IpcError> {
-    // Touch the managed ctx so the wiring is exercised (key stays in-host, never returned).
-    let _ = state.key.len();
-    Ok(StateDto {
-        config_verified: false,
-        state_verified: false,
-        // Placeholder is fail-closed: never look LESS locked than the guard (Pitfall 2).
-        maximal_lockout: true,
-        locked: true,
-        grace_active: false,
-        boundary_unix: 0,
-        boundary_kind: "next_lock".to_string(),
-        time_unverified: true,
-        tokens_remaining: 0,
-        weekly_spent: 3,
-        next_reset_unix: 0,
-        grace_available_today: false,
-        grace_remaining_secs: 0,
-    })
+    build_state_dto(&state)
 }
 
 /// Classify a proposed edit + preview the quota verdict (no write).
