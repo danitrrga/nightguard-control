@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 04 plan 02 complete
-last_updated: "2026-06-09T09:34:57.050Z"
+stopped_at: Phase 04 plan 03 complete
+last_updated: "2026-06-09T09:46:46.061Z"
 last_activity: 2026-06-09
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 17
-  completed_plans: 14
+  completed_plans: 15
   percent: 60
 ---
 
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 04 (ui-moonlit-indigo) — EXECUTING
-Plan: 3 of 5
-Next: 04-03 — get_state IPC command (reads + re-verifies signed artifacts, overlays grace on lock_status)
-Status: Executing Phase 04 (plan 02 complete)
-Last activity: 2026-06-09 -- Phase 04 plan 02 complete (pure lock_status curfew evaluator, TDD)
+Plan: 4 of 5
+Next: 04-04 — Status view (render the verified StateDto: hero countdown, lock badge, token meter, grace indicator)
+Status: Executing Phase 04 (plan 03 complete)
+Last activity: 2026-06-09 -- Phase 04 plan 03 complete (four IPC command bodies real; get_state re-verifies both HMACs + worst-cases like the guard)
 
 Phase progress: [██████░░░░] 3/5 phases complete (Phase 03: 4/4 plans)
 
@@ -66,6 +66,7 @@ Phase progress: [██████░░░░] 3/5 phases complete (Phase 03: 
 | Phase 3 P04 | 4 | 1 task | 3 files |
 | Phase 04 P01 | 7 | 2 tasks | 15 files |
 | Phase 04 P02 | 14 | 1 tasks | 4 files |
+| Phase 04 P03 | 5 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -100,6 +101,7 @@ Recent decisions affecting current work:
 - [Phase 3, 03-03]: Guard clock-half COMPLETE. Guard-side SNTP (48-byte packet, byte0=0x1B, parse bytes 40..43 BE, NTP1900->unix via -2208988800; $null on ANY error -> deny+fail_closed, NEVER Get-Date / D-07). A4 clock-tamper: |trueNow-local|>300s -> deny (skipped under override seam). Grace honored gated on $stateValid (NOT (-not $graceUsed) -- plan-02 sets graceUsed=window-present, so the plan's literal condition was unreachable; a state_hmac mismatch -> $stateValid=false -> never allow / T-03-15) AND grace.window_end>trueNow. HMAC-chained audit (record_tag=HMAC(key, prev_tag||payload), 64-zero genesis, AppendAllText UTF-8 no-BOM, pipe-delim escaped payload / D-08; @() forces array so a single line never collapses to a scalar char-index). D-02 JSON {decision,reason,grace_remaining_secs,reverted,fail_closed} + exit 0=allow/1=deny. run_guard_gate.ps1 GREEN proving GARD-01/02/03/04/05 end-to-end vs real DPAPI/HMAC fixtures, -NtpOverrideUnixSecs seam, Rust verify-state-hmac cross-check, and a live with_commit_lock holder (new state_interop_cli hold-commit-lock subcommand). Gate self-signs guard.json in PS (config_hmac=real HMAC(config.yaml), state_hmac via A3) because emit-state-hmac's fixed dummy config_hmac can't drive a byte-exact revert.
 - [Phase ?]: [Phase 4, 04-01]: src-tauri added as the third workspace member (single root [workspace]); the four IPC commands (get_state/classify_change/commit_change/use_grace) registered with FINAL signatures as stubs over a fixed StateDto/ClassifyDto/IpcError contract (D-01). AppCtx::load resolves NIGHTGUARD_DIR like the guard and loads .guardkey once (Scope::User, single key path); placeholder get_state ships fail-closed (maximal_lockout, 0 tokens) so the scaffold never looks less locked than the guard; fs:scope left broad with a plan-03 tighten TODO.
 - [Phase ?]: [Phase 4, 04-02]: lock_status is a pure (config_yaml, now) -> LockStatus curfew evaluator in mutation-engine. Precedence: curfew.enabled=false => not locked; schedule.<day> overrides start/end (off => unlocked, HH:MM-HH:MM => that window); overnight-wrap inside = minute>=start||minute<end with the boundary on the CORRECT calendar day (next day for a late-entered wrap, never naive +24h, DST-aware via explicit MappedLocalTime like week.rs); absent/malformed field => fail-safe LOCKED (D-04/A2, never a silent unlock). grace_active=false here -- get_state overlays the signed guard.json grace window. Reuses classify::parse_hhmm/parse_window made pub(crate) -- exactly ONE HH:MM parser. 11 offline tests green.
+- [Phase ?]: [Phase 4, 04-03]: four IPC commands real + signature-frozen. get_state/commit_change/use_grace all return ONE build_state_dto helper re-verifying config_hmac (constant-time verify_bytes over canonicalize_bytes) + state_hmac (A3 compute_state_hmac), worst-casing on tamper EXACTLY like the guard (weekly_spent=3/tokens=0/grace_available=false/maximal_lockout) in one place; lock/boundary from lock_status with active guard.json grace overlaid (boundary_kind=grace_end). classify_change wraps classify+quota::decide (disable-at-0-tokens preview; took a managed AppCtx body-fill, JS shape unchanged). commit_change gates decision.allowed in-command -> true NTP fail-closed -> engine ordered fd-locked commit::commit_change -> re-read (D-09); use_grace -> grace::use_grace -> re-read. No hand-rolled writer, no == on a config tag.
 
 ### Pending Todos
 
@@ -121,7 +123,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-09T09:34:57.039Z
+Last session: 2026-06-09T09:46:01.273Z
 Stopped at: Phase 04 plan 02 complete
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).

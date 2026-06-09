@@ -89,7 +89,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 5 plans
   - [x] 04-01-PLAN.md — Scaffold Tauri v2 (vanilla-TS + Vite) shell as 3rd workspace member + fixed IPC contract (4 commands + DTOs + IpcError + AppCtx) (UI-01, UI-02, UI-03, UI-04)
   - [x] 04-02-PLAN.md — TDD: pure lock_status curfew-window evaluator in mutation-engine (highest-risk net-new logic) (UI-01)
-  - [ ] 04-03-PLAN.md — Real IPC command bodies: get_state read/re-verify/worst-case + classify/commit/grace wrappers (UI-01, UI-02, UI-03, UI-04)
+  - [x] 04-03-PLAN.md — Real IPC command bodies: get_state read/re-verify/worst-case + classify/commit/grace wrappers (UI-01, UI-02, UI-03, UI-04)
   - [ ] 04-04-PLAN.md — Status view: hero countdown + 🌙 LOCKED/OPEN + 3-dot token meter + plugin-fs watch + 1s tick, Moonlit Indigo styling (UI-01, UI-02, UI-05)
   - [ ] 04-05-PLAN.md — Edit panel (live per-field classify + gated/confirmed commit) + "+8 minutes" grace button (UI-03, UI-04, UI-05)
 **UI hint**: yes
@@ -113,5 +113,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Trust Kernel | 3/3 | Complete   | 2026-06-04 |
 | 2. Mutation Engine | 5/5 | Complete   | 2026-06-05 |
 | 3. Enforcement Guard | 3/4 | In Progress|  |
-| 4. UI (Moonlit Indigo) | 2/5 | In Progress|  |
+| 4. UI (Moonlit Indigo) | 3/5 | In Progress|  |
 | 5. Instance Wiring | 0/TBD | Not started | - |
