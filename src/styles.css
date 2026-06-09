@@ -1,0 +1,232 @@
+/* Nightguard Control — Moonlit Indigo design system (hand-rolled, no UI framework).
+ *
+ * Minimalist, typographic, whitespace-led (D-11/D-12): the hero countdown dominates,
+ * everything else recedes. No cards — groups are separated by whitespace with at most a
+ * single hairline divider. Palette + Roboto are locked by CLAUDE.md / UI-SPEC (UI-05).
+ *
+ * Fonts are bundled LOCALLY (src/assets/roboto-{400,500}.woff2) — no CDN fetch at runtime
+ * (Pitfall 6, T-04-16). The two @font-face rules below are the only font sources.
+ */
+
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/roboto-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/roboto-500.woff2") format("woff2");
+}
+
+/* ── Moonlit Indigo palette (LOCKED — CLAUDE.md / UI-SPEC §Color) ── */
+:root {
+  --bg: #0c0e14; /* dominant 60% — the field the countdown floats on */
+  --surface: #161a24; /* secondary 30% — left-rail backing, sole edit panel */
+  --border: #242a38; /* hairline dividers (replaces cards, D-11) */
+  --text: #e8eaf0; /* primary text: countdown, status word, values */
+  --dim: #8b91a3; /* labels, captions, inactive token dots, caveats */
+  --accent: #7aa2ff; /* RESERVED: filled token dots, active rail icon, +8 fill, tighten */
+  --warn: #f0a35e; /* warm amber: loosen warning, 0-token reason, fail-closed caveat */
+
+  /* 8-point spacing scale (UI-SPEC §Spacing) */
+  --sp-xs: 4px;
+  --sp-sm: 8px;
+  --sp-md: 16px;
+  --sp-lg: 24px;
+  --sp-xl: 32px;
+  --sp-2xl: 48px;
+  --sp-3xl: 64px;
+
+  --rail-w: 56px; /* fixed left icon-rail width (UI-SPEC layout contract) */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ── 4-size type scale, 2 weights (UI-SPEC §Typography) ── */
+.type-display {
+  font-size: 64px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+}
+
+.type-heading {
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.type-body {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.type-label {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+/* Tabular numerals everywhere a number appears — no width jitter on the 1s tick (Pitfall 6). */
+.tabular-nums,
+#countdown,
+.token-caption,
+.grace-caption {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Shell: 56px left icon-rail + main field ── */
+#shell {
+  display: flex;
+  height: 100%;
+}
+
+#rail {
+  width: var(--rail-w);
+  flex: 0 0 var(--rail-w);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-lg);
+  padding: var(--sp-md) 0;
+}
+
+.rail-item {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.rail-item:hover {
+  color: var(--text);
+}
+
+/* The active rail icon is the ONE accent use here (reserved list #4). */
+.rail-item[aria-current="page"] {
+  color: var(--accent);
+}
+
+.rail-item svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+/* ── Status view: vertically centered, whitespace-led, NO cards ── */
+#main {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-3xl) var(--sp-xl);
+  overflow: auto;
+}
+
+#status-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 520px;
+}
+
+/* status word (Heading) above the hero */
+#status-word {
+  color: var(--text);
+  margin: 0 0 var(--sp-2xl) 0;
+}
+
+/* the hero countdown — the single Display element, the visual center */
+#countdown {
+  color: var(--text);
+  margin: 0;
+}
+
+/* OPEN caption ("next lock at …") + verify/time caveats, dim, below the hero */
+#status-caption {
+  color: var(--dim);
+  margin: var(--sp-md) 0 0 0;
+  min-height: 1.4em;
+}
+
+#status-caption.warn {
+  color: var(--warn);
+}
+
+/* single hairline divider above the token meter — the only allowed separator (D-11) */
+#meter-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--border);
+  border: none;
+  margin: var(--sp-2xl) 0 var(--sp-lg) 0;
+}
+
+/* 3-dot weekly token meter */
+#token-meter {
+  display: flex;
+  gap: var(--sp-sm);
+  align-items: center;
+  justify-content: center;
+}
+
+.token-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--dim); /* spent / empty */
+}
+
+.token-dot.filled {
+  background: var(--accent); /* remaining (reserved accent use #1) */
+}
+
+.token-caption {
+  color: var(--dim);
+  margin: var(--sp-sm) 0 0 0;
+}
+
+.grace-caption {
+  color: var(--dim);
+  margin: var(--sp-xs) 0 0 0;
+}
+
+/* the "State unverified" / fail-closed copy reads in the warm caveat tone */
+.verify-fail #status-word,
+.verify-fail #status-caption {
+  color: var(--warn);
+}

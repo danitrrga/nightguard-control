@@ -4,9 +4,57 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nightguard Control</title>
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main id="app"></main>
+    <div id="shell">
+      <!-- Sparse 56px left icon-rail: two items only (Status active, Edit in plan 05). -->
+      <nav id="rail" aria-label="Primary">
+        <button
+          type="button"
+          class="rail-item"
+          id="rail-status"
+          aria-label="Status"
+          aria-current="page"
+          title="Status"
+        >
+          <!-- hand-drawn moon/status glyph (inline SVG stroke — no icon library) -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="rail-item"
+          id="rail-edit"
+          aria-label="Edit"
+          title="Edit"
+        >
+          <!-- hand-drawn pencil/edit glyph (inline SVG stroke — no icon library) -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+        </button>
+      </nav>
+
+      <main id="main">
+        <!-- Status view: status word (Heading) → hero countdown (Display) → divider →
+             3-dot token meter + captions (Label). Whitespace-led, no cards. -->
+        <section id="status-view" aria-live="polite">
+          <h1 id="status-word" class="type-heading"></h1>
+          <div id="countdown" class="type-display" aria-label="Time remaining">--:--:--</div>
+          <p id="status-caption" class="type-label"></p>
+
+          <hr id="meter-divider" />
+
+          <div id="token-meter" aria-label="Weekly loosen tokens"></div>
+          <p id="token-caption" class="token-caption type-label"></p>
+          <p id="grace-caption" class="grace-caption type-label"></p>
+        </section>
+      </main>
+    </div>
+
     <script type="module" src="/main.ts"></script>
   </body>
 </html>
