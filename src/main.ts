@@ -254,9 +254,17 @@ async function startWatch(): Promise<void> {
     // optimistic local mutation.
     await watch(dir, () => void refresh(), { delayMs: 250, recursive: false });
   } catch (err) {
-    // If the watcher can't be established (dir unknown / outside fs:scope), the 1s tick + the
-    // load-time refresh still keep the display advisory-live; log and degrade gracefully.
+    // WR-02: a watch-setup failure is a real liveness degradation (D-05 never arms — guard
+    // reverts / hand-edits won't reflect until a manual refresh), NOT "no changes yet". Make it
+    // LOUD rather than a silent console.warn so a mis-scoped data dir is distinguishable. The 1s
+    // tick + load-time refresh still keep the display advisory-live, but the user is told liveness
+    // is off. (The Rust host also extends the fs scope to the resolved dir at setup; this caption
+    // covers any remaining failure path.)
     console.warn("data-dir watch unavailable; relying on tick + load fetch:", err);
+    const caption = captionEl();
+    const warn = "Live updates unavailable — changes may not appear until you reopen the app.";
+    caption.textContent = caption.textContent ? `${caption.textContent} · ${warn}` : warn;
+    caption.classList.add("warn");
   }
 }
 
