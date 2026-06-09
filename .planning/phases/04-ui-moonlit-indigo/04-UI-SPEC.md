@@ -1,10 +1,11 @@
 ---
 phase: 4
 slug: ui-moonlit-indigo
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-06-09
+reviewed_at: 2026-06-09T08:44:00+02:00
 ---
 
 # Phase 4 — UI Design Contract
@@ -180,7 +181,8 @@ no component library, no icon package. The registry vetting gate is **not applic
 > phase and the executor needs the structure to be unambiguous.
 
 - **Shell:** sparse **left icon-rail (56px)** with two items only — *Status* and *Edit* — backed
-  by `--surface`; the rest of the window is `--bg`.
+  by `--surface`; the rest of the window is `--bg`. Each icon item is icon-only and **carries an
+  `aria-label`** (`aria-label="Status"`, `aria-label="Edit"`) plus a hover tooltip — no visible text label.
 - **Status view (default):** vertically centered. **Hero countdown (Display/64px)** is the visual
   center; above it the `🌙 LOCKED / OPEN` status word (Heading); below it the **3-dot token meter**
   + grace caption (Label). Generous 2xl/3xl vertical whitespace. **No cards** — groups separated by
