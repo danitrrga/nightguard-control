@@ -13,3 +13,4 @@ guard.json
 config.yaml
 config.sanctioned.yaml
 tamper.log
+.playwright-mcp
