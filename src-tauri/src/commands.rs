@@ -18,7 +18,7 @@ use serde::Serialize;
 use mutation_engine::classify::{self, Direction};
 use mutation_engine::commit::{self, CommitPaths};
 use mutation_engine::grace;
-use mutation_engine::lock_status::lock_status;
+use mutation_engine::lock_status::{config_timezone, lock_status};
 use mutation_engine::ntp::{SntpTrueTime, TrueTime};
 use mutation_engine::quota;
 use mutation_engine::state::GuardState;
@@ -76,7 +76,9 @@ pub struct AppCtx {
     pub data_dir: PathBuf,
     /// The four fixed paths a commit touches (config / sanctioned / guard.json / lock dir).
     pub paths: CommitPaths,
-    /// Configured timezone name (filled from config in plan 03; advisory default for now).
+    /// Fallback timezone name used only when the live `config.yaml` cannot be read. The real
+    /// week/grace day-math reads `timezone` from the verified config per call (WR-06), so this
+    /// is just the startup default for the unreadable-config edge.
     pub tz: String,
 }
 
@@ -111,7 +113,8 @@ impl AppCtx {
             key,
             data_dir,
             paths,
-            // Advisory default; plan 03 reads `config.timezone` and fills this.
+            // Fallback default only (WR-06): the live week/grace day-math reads `timezone` from the
+            // verified config per call via `config_timezone`; this is used solely when that read fails.
             tz: "Europe/Amsterdam".to_string(),
         })
     }
@@ -227,11 +230,17 @@ fn build_state_dto(ctx: &AppCtx) -> Result<StateDto, IpcError> {
     let now_secs = now_utc.timestamp();
     let config_yaml = String::from_utf8_lossy(&raw_config).to_string();
 
+    // WR-06: drive the week/grace day-math from the SAME tz `lock_status` reads off this config,
+    // not the hardcoded `ctx.tz`. Otherwise the lock display and the quota/grace day rollover
+    // disagree on the zone (the Monday reset / "grace used today" would compute in the wrong
+    // local instant). `config_timezone` defaults to UTC fail-safe, matching `lock_status::parse_tz`.
+    let tz = config_timezone(&config_yaml);
+
     // (6) Curfew lock verdict + boundary from the pure evaluator over the (advisory) now.
     let ls = lock_status(&config_yaml, now_utc);
 
     // (7) Pure read of effective spent / next reset (empty diff = no proposed change).
-    let decision = quota::decide(&[], &gs, now_utc, &ctx.tz);
+    let decision = quota::decide(&[], &gs, now_utc, &tz);
 
     let maximal_lockout = !config_verified || !state_verified;
 
@@ -266,7 +275,7 @@ fn build_state_dto(ctx: &AppCtx) -> Result<StateDto, IpcError> {
     // day (advisory: compared against today's date in the configured tz).
     // WR-01: an unresolvable "today" must fail CLOSED — never report grace as available again
     // off the back of an empty-string date comparing unequal to a real recorded window.
-    let grace_available_today = match (&gs.grace, today_in_tz(&ctx.tz, now_secs)) {
+    let grace_available_today = match (&gs.grace, today_in_tz(&tz, now_secs)) {
         (None, _) => true,
         (Some(_), None) => false, // cannot resolve today -> assume grace already used (fail-closed)
         (Some(g), Some(today)) => g.date != today,
@@ -388,9 +397,12 @@ pub fn classify_change(
     // Per-field directions (engine error -> IpcError::Engine via From).
     let dirs = classify::classify_change(&old_yaml, &new_yaml)?;
 
-    // Quota preview against the live signed state (advisory now for the week math).
+    // Quota preview against the live signed state (advisory now for the week math). WR-06: the
+    // week-math tz comes from the live config, not the hardcoded `state.tz`, so the preview's
+    // Monday-reset boundary agrees with `lock_status`.
     let gs = read_guard_state(&state)?;
-    let decision = quota::decide(&dirs, &gs, Utc::now(), &state.tz);
+    let tz = config_timezone(&old_yaml);
+    let decision = quota::decide(&dirs, &gs, Utc::now(), &tz);
 
     let fields = dirs
         .iter()
@@ -425,10 +437,12 @@ pub fn commit_change(
     let old_yaml = std::fs::read_to_string(&state.paths.config)
         .map_err(|_| IpcError::NotInitialized)?;
 
-    // Classify + decide against the live signed state.
+    // Classify + decide against the live signed state. WR-06: the week-math tz is read from the
+    // live config (the same zone `lock_status` uses), not the hardcoded `state.tz`.
     let dirs = classify::classify_change(&old_yaml, &new_yaml)?;
     let gs = read_guard_state(&state)?;
-    let decision = quota::decide(&dirs, &gs, Utc::now(), &state.tz);
+    let tz = config_timezone(&old_yaml);
+    let decision = quota::decide(&dirs, &gs, Utc::now(), &tz);
 
     // Defense in depth: a disallowed (0-token loosen) decision NEVER reaches the writer.
     if !decision.allowed {
@@ -459,8 +473,16 @@ pub fn commit_change(
 /// verified truth (`grace_active=true`, `boundary_kind="grace_end"`), never an optimistic echo.
 #[tauri::command]
 pub fn use_grace(state: tauri::State<'_, AppCtx>) -> Result<StateDto, IpcError> {
+    // WR-06: the grace day-math tz must match the read-path tz `build_state_dto` uses to compare
+    // `grace.date` against "today", or a window granted near local midnight could be recorded under
+    // a date the read path then reads as a different day. Read it from the live config (UTC
+    // fail-safe), not the hardcoded `state.tz`. A missing/unreadable config falls back to `state.tz`.
+    let tz = std::fs::read_to_string(&state.paths.config)
+        .map(|c| config_timezone(&c))
+        .unwrap_or_else(|_| state.tz.clone());
+
     // Grant via the engine (NtpUnreachable / GraceAlreadyUsedToday -> IpcError via From).
-    grace::use_grace(&state.paths, &SntpTrueTime::default(), &state.tz, &state.key)?;
+    grace::use_grace(&state.paths, &SntpTrueTime::default(), &tz, &state.key)?;
 
     // Re-read the freshly-signed state (D-09) — the overlay surfaces the active grace window.
     build_state_dto(&state)

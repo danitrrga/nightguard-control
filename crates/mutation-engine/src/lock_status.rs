@@ -115,6 +115,24 @@ impl LockStatus {
     }
 }
 
+/// Extract the configured `timezone` name from `config_yaml`, defaulting to `"UTC"` on a
+/// malformed/absent field (mirrors the tz read inside [`lock_status`] and `week::parse_tz`).
+///
+/// This is the single source of truth for "which tz does this config declare", so the IPC layer
+/// can drive `quota::decide` / grace day-math with the SAME zone `lock_status` uses for the lock
+/// display — they must never disagree (WR-06). Returns the raw name (not a parsed `Tz`); callers
+/// that need a `Tz` parse it with their own defensive default, keeping the UTC fail-safe uniform.
+pub fn config_timezone(config_yaml: &str) -> String {
+    let doc = match Document::new(config_yaml.to_string()) {
+        Ok(d) => d,
+        Err(_) => return "UTC".to_string(),
+    };
+    read(&doc, &["timezone"])
+        .flatten()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "UTC".to_string())
+}
+
 /// Evaluate the curfew lock status for `now` against `config_yaml`. Pure — no I/O, no clock.
 ///
 /// Follows the module's precedence spec. Any parse/absent failure degrades to
