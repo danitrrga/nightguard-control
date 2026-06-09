@@ -302,17 +302,54 @@ let baseConfig = "";
 /** The most recent ClassifyDto, used by the commit handler to decide confirm + gating. */
 let lastClassify: ClassifyDto | null = null;
 
-/** Replace (or note absence of) a top-level-ish `curfew.<key>: value` line in the YAML text.
- *  The classifier reads fields via yamlpath, so a per-field line edit on the visible curfew
- *  fields is a faithful, format-preserving way to compose the proposed `new_yaml`. */
+/** Escape a string for safe literal use inside a RegExp (WR-04 — guards any non-literal key
+ *  against regex-injection / ReDoS; the three current keys are fixed, this is defense for reuse). */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Replace a `curfew.<key>: value` line in the YAML text, scoped to the `curfew:` block.
+ *
+ *  WR-04: the old implementation rewrote the FIRST `^\s*key:.*$` line ANYWHERE in the document
+ *  and let `.*$` swallow any trailing `# comment`. That can rewrite a same-named key nested under
+ *  another block and silently drop a comment the format-preserving Rust writer exists to keep.
+ *  This version (1) escapes the key, (2) constrains the rewrite to a DIRECT child line of the
+ *  `curfew:` block, and (3) preserves any trailing inline comment. The classifier reads fields via
+ *  yamlpath, so a faithful per-field line edit on the visible curfew.* fields composes `new_yaml`. */
 function setYamlField(yaml: string, key: string, value: string): string {
-  // Match an indented `key:` line (e.g. `  start: 23:00`) and replace its value, preserving
-  // the original indentation and key. Anchored per-line; only the first match is rewritten.
-  const re = new RegExp(`^(\\s*${key}\\s*:).*$`, "m");
-  if (re.test(yaml)) {
-    return yaml.replace(re, `$1 ${value}`);
+  const lines = yaml.split("\n");
+  const k = escapeRegExp(key);
+
+  // Locate the `curfew:` mapping key and its indentation.
+  const curfewRe = /^(\s*)curfew\s*:\s*(#.*)?$/;
+  let curfewIdx = -1;
+  let curfewIndent = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(curfewRe);
+    if (m) {
+      curfewIdx = i;
+      curfewIndent = m[1].length;
+      break;
+    }
   }
-  return yaml; // field absent in the source — leave untouched (absent != loosen, server decides)
+  if (curfewIdx === -1) return yaml; // no curfew block — leave untouched (absent != loosen).
+
+  // Match a direct child line of `curfew:` (indented deeper than `curfew:`), capturing
+  // indent+key, the value, and any trailing inline comment to preserve it verbatim.
+  const fieldRe = new RegExp(`^(\\s*)${k}\\s*:[ \\t]*([^#\\n]*?)[ \\t]*(#.*)?$`);
+  for (let i = curfewIdx + 1; i < lines.length; i++) {
+    const indentMatch = lines[i].match(/^(\s*)\S/);
+    // Blank line: stay inside the block. A non-blank line at indent <= curfew ends the block.
+    if (indentMatch && indentMatch[1].length <= curfewIndent) break;
+
+    const m = lines[i].match(fieldRe);
+    if (m && m[1].length > curfewIndent) {
+      const comment = m[3] ? ` ${m[3]}` : "";
+      lines[i] = `${m[1]}${key}: ${value}${comment}`;
+      return lines.join("\n");
+    }
+  }
+  return yaml; // field absent in the curfew block — leave untouched (server decides direction).
 }
 
 /** Compose the proposed new YAML from `baseConfig` + the current input values. */
