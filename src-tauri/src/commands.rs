@@ -433,14 +433,34 @@ pub fn commit_change(
     new_yaml: String,
     state: tauri::State<'_, AppCtx>,
 ) -> Result<StateDto, IpcError> {
-    // The current live config is the classifier's `old` side.
-    let old_yaml = std::fs::read_to_string(&state.paths.config)
-        .map_err(|_| IpcError::NotInitialized)?;
+    // The current live config is the classifier's `old` side — read its RAW bytes so we can
+    // re-verify them against the signed tag before trusting them as the token-charging baseline.
+    let raw_old = std::fs::read(&state.paths.config).map_err(|_| IpcError::NotInitialized)?;
+    let gs = read_guard_state(&state)?;
+
+    // WR-05: the `old` side MUST be verified-sanctioned, not whatever is on disk. If `config.yaml`
+    // was hand-edited out of band (the exact threat this product counters), classifying the
+    // proposed change against the TAMPERED file lets an actual loosen-vs-sanctioned read as
+    // noop/tighten and commit for free. Re-verify the on-disk bytes against `gs.config_hmac`
+    // (same canonicalize + constant-time verify path as `build_state_dto`); refuse on mismatch.
+    let canon_old = canonicalize_bytes(&raw_old);
+    let old_verified = match hex_to_tag32(&gs.config_hmac) {
+        Some(tag) => verify_bytes(&state.key, &canon_old, &tag),
+        None => false,
+    };
+    if !old_verified {
+        return Err(IpcError::Engine(
+            "config.yaml does not match the signed baseline (tampered or unverified) — \
+             commit refused; re-sync before editing"
+                .to_string(),
+        ));
+    }
+
+    let old_yaml = String::from_utf8_lossy(&raw_old).to_string();
 
     // Classify + decide against the live signed state. WR-06: the week-math tz is read from the
     // live config (the same zone `lock_status` uses), not the hardcoded `state.tz`.
     let dirs = classify::classify_change(&old_yaml, &new_yaml)?;
-    let gs = read_guard_state(&state)?;
     let tz = config_timezone(&old_yaml);
     let decision = quota::decide(&dirs, &gs, Utc::now(), &tz);
 
