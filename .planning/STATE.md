@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 04 plan 05 complete — phase ready for verification
-last_updated: "2026-06-09T10:07:18.289Z"
+status: ready_to_plan
+stopped_at: Phase 04 complete (5/5) — ready to discuss Phase 5
+last_updated: 2026-06-09T10:50:22.649Z
 last_activity: 2026-06-09
 progress:
   total_phases: 5
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts.
-**Current focus:** Phase 04 — ui-moonlit-indigo
+**Current focus:** Phase 5 — instance wiring
 
 ## Current Position
 
-Phase: 04 (ui-moonlit-indigo) — READY FOR VERIFICATION
-Plan: 5 of 5 (all plans complete)
+Phase: 5
+Plan: Not started
 Next: Phase 04 verification, then Phase 05 — Instance Wiring
-Status: Phase 04 complete — all 5 plans executed; ready for verification
-Last activity: 2026-06-09 -- Phase 04 plan 05 complete (Edit view: single --surface per-field editor with debounced classify feedback + 0-token disable-with-reason + loosen confirm + commit re-render; +8 grace button enabled only when locked && grace_available_today, use_grace + re-render — vertical slice complete)
+Status: Ready to plan
+Last activity: 2026-06-09
 
 Phase progress: [████████░░] 4/5 phases complete (Phase 04: 5/5 plans)
 
@@ -37,7 +37,7 @@ Phase progress: [████████░░] 4/5 phases complete (Phase 04: 
 
 **Velocity:**
 
-- Total plans completed: 4
+- Total plans completed: 9
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -46,6 +46,7 @@ Phase progress: [████████░░] 4/5 phases complete (Phase 04: 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 03 | 4 | - | - |
+| 04 | 5 | - | - |
 
 **Recent Trend:**
 
