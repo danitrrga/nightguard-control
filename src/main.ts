@@ -67,6 +67,7 @@ const dividerEl = () => el<HTMLElement>("meter-divider");
 const tokenMeterEl = () => el<HTMLElement>("token-meter");
 const tokenCaptionEl = () => el<HTMLElement>("token-caption");
 const graceCaptionEl = () => el<HTMLElement>("grace-caption");
+const graceBtnEl = () => el<HTMLButtonElement>("grace-btn");
 
 // Edit view handles.
 const editView = () => el<HTMLElement>("edit-view");
@@ -177,6 +178,13 @@ function render(s: StateDto): void {
   }
   graceCaptionEl().textContent = grace;
 
+  // "+8 minutes" button: enabled IFF locked && grace_available_today (D-10). The `disabled`
+  // attribute makes the gate real (not styling-only); `.enabled` fills it accent only when on.
+  const graceEnabled = s.locked && s.grace_available_today;
+  const graceBtn = graceBtnEl();
+  graceBtn.disabled = !graceEnabled;
+  graceBtn.classList.toggle("enabled", graceEnabled);
+
   dividerEl().style.display = "";
 }
 
@@ -201,6 +209,8 @@ function renderEmpty(): void {
   tokenMeterEl().replaceChildren();
   tokenCaptionEl().textContent = "";
   graceCaptionEl().textContent = "";
+  graceBtnEl().disabled = true;
+  graceBtnEl().classList.remove("enabled");
   dividerEl().style.display = "none";
 }
 
@@ -236,6 +246,26 @@ async function startWatch(): Promise<void> {
     // If the watcher can't be established (dir unknown / outside fs:scope), the 1s tick + the
     // load-time refresh still keep the display advisory-live; log and degrade gracefully.
     console.warn("data-dir watch unavailable; relying on tick + load fetch:", err);
+  }
+}
+
+// ── "+8 minutes" grace grant (UI-03 / D-10) ──
+//
+// Enabled ONLY during an active lock when grace is available (the enable rule lives in render()).
+// On press it grants the once-daily window via use_grace, then re-renders the countdown to the
+// grace-window end from the returned re-verified StateDto (D-09 — grace_active=true,
+// boundary_kind="grace_end"). NTP-unreachable / already-used errors surface non-punitively and
+// leave the displayed state unchanged. No optimistic grace_active flip before the command returns.
+async function onGrace(): Promise<void> {
+  try {
+    const s = await invoke<StateDto>("use_grace");
+    last = s;
+    render(s); // re-render from re-verified truth (D-09) — never an optimistic flip
+    captionEl().classList.remove("warn");
+  } catch (err) {
+    // NtpUnreachable / GraceAlreadyUsedToday — amber, non-punitive; displayed state unchanged.
+    captionEl().textContent = String(err);
+    captionEl().classList.add("warn");
   }
 }
 
@@ -424,6 +454,9 @@ async function initEdit(): Promise<void> {
   // Left-rail view switching (Status is the default).
   railStatusEl().addEventListener("click", () => showView("status"));
   railEditEl().addEventListener("click", () => showView("edit"));
+
+  // "+8 minutes" grace grant (the handler only fires when the button is enabled — D-10).
+  graceBtnEl().addEventListener("click", () => void onGrace());
 }
 
 async function init(): Promise<void> {
