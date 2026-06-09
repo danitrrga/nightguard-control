@@ -1,5 +1,11 @@
 # Build output
 /target
+src-tauri/target
+src-tauri/gen
+
+# Frontend toolchain
+node_modules
+dist
 
 # Runtime secret/state artifacts — MUST never be committed (T-01-04)
 *.guardkey
