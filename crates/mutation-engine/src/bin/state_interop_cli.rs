@@ -29,12 +29,15 @@
 //! Exit codes: 0 = success, 1 = error (bad args / IO / DPAPI / serde),
 //!             2 = verify-state-hmac tag mismatch (distinct from a generic error).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use chrono::Utc;
 use mutation_engine::commit::with_commit_lock;
 use mutation_engine::state::{GraceWindow, GuardState, LedgerEntry, MutationError};
+use mutation_engine::week::most_recent_monday_midnight;
 use trust_kernel::canon::canonicalize_bytes;
+use trust_kernel::hmac::{sign_bytes, tag_to_hex};
 use trust_kernel::key::load_or_create_key;
 
 /// Exit code for a state_hmac verification failure (distinct from a generic error).
@@ -48,9 +51,10 @@ fn main() -> ExitCode {
         "emit-state-hmac" => cmd_emit_state_hmac(args.get(2), args.get(3)),
         "verify-state-hmac" => cmd_verify_state_hmac(args.get(2), args.get(3), args.get(4)),
         "hold-commit-lock" => cmd_hold_commit_lock(args.get(2), args.get(3), args.get(4)),
+        "init-instance" => cmd_init_instance(args.get(2)),
         other => Err(format!(
             "unknown or missing subcommand: '{other}'\n\
-             usage: state_interop_cli <emit-state-hmac|verify-state-hmac|hold-commit-lock> ..."
+             usage: state_interop_cli <emit-state-hmac|verify-state-hmac|hold-commit-lock|init-instance> ..."
         )),
     };
 
@@ -198,5 +202,86 @@ fn cmd_hold_commit_lock(
         Ok(())
     });
     held.map_err(|e| e.to_string())?;
+    Ok(0)
+}
+
+/// `init-instance <data_dir>`
+///
+/// Initialize a fresh, fully-armed signed instance under `<data_dir>` (WIRE-02 / D-10).
+/// This is the LIVE-instance counterpart to `emit-state-hmac`: instead of a fixed test
+/// state it writes a real armed `GuardState` whose `state_hmac` and `config_hmac` both verify
+/// in Rust AND PowerShell. Ordered recipe (mirrors RESEARCH Pattern 3):
+///   1. Resolve the five fixed paths under `<data_dir>` exactly like `AppCtx::load`
+///      (config.yaml / config.sanctioned.yaml / guard.json / .nightguard.lock / .guardkey).
+///   2. Read `config.yaml` raw bytes and run them through `canonicalize_bytes` (UTF-8 / no BOM /
+///      LF / one trailing LF) so the PS minimal parser (KERN-04) and the Rust HMAC agree.
+///   3. Write the canonical bytes back to `config.yaml` AND byte-copy them to
+///      `config.sanctioned.yaml` so the two files are byte-identical (the guard's
+///      `Test-SanctionedValid` revert-target identity).
+///   4. `load_or_create_key(<data_dir>/.guardkey)` — generate-once + DPAPI-protect (Scope::User).
+///   5. `config_hmac = tag_to_hex(sign_bytes(&key, &canonical_config_bytes))` (lowercase hex).
+///   6. Build the armed `GuardState` (weekly_spent=0 -> 3 tokens; week_anchor from the DST-aware
+///      `most_recent_monday_midnight`; ledger empty; grace none).
+///   7. `compute_state_hmac(&key)` via the SINGLE locked A3 recipe; fill it in; write `guard.json`.
+///
+/// Prints `config_hmac=<hex>` and `state_hmac=<hex>`.
+fn cmd_init_instance(data_dir: Option<&String>) -> Result<u8, String> {
+    let data_dir = data_dir.ok_or("init-instance requires <data_dir>")?;
+    let data_dir = PathBuf::from(data_dir);
+    if !data_dir.is_dir() {
+        return Err(format!("data dir does not exist: {}", data_dir.display()));
+    }
+
+    // (1) The five fixed paths under <data_dir>, exactly like AppCtx::load.
+    let config_path = data_dir.join("config.yaml");
+    let sanctioned_path = data_dir.join("config.sanctioned.yaml");
+    let guard_path = data_dir.join("guard.json");
+    let key_path = data_dir.join(".guardkey");
+    // .nightguard.lock is created lazily by the commit lock; not written here.
+
+    // (2) Read config.yaml raw bytes and canonicalize them.
+    let raw_config = std::fs::read(&config_path)
+        .map_err(|e| format!("read {}: {e}", config_path.display()))?;
+    let canonical_config = canonicalize_bytes(&raw_config);
+
+    // (3) Write the canonical bytes back to config.yaml, then byte-copy to sanctioned so the
+    //     two files are byte-identical (HMAC(sanctioned) == HMAC(config) == config_hmac).
+    std::fs::write(&config_path, &canonical_config)
+        .map_err(|e| format!("write {}: {e}", config_path.display()))?;
+    std::fs::write(&sanctioned_path, &canonical_config)
+        .map_err(|e| format!("write {}: {e}", sanctioned_path.display()))?;
+
+    // (4) Generate-once + DPAPI-protect the 32-byte signing key.
+    let key = load_or_create_key(&key_path).map_err(|e| e.to_string())?;
+
+    // (5) config_hmac over the IDENTICAL canonical config bytes (lowercase hex).
+    let config_hmac = tag_to_hex(&sign_bytes(&key, &canonical_config));
+
+    // (6) Build the armed initial state (D-10). week_anchor via the DST-aware Monday anchor in
+    //     Europe/Amsterdam — never naive date math.
+    let week_anchor = most_recent_monday_midnight(Utc::now(), "Europe/Amsterdam")
+        .with_timezone(&chrono_tz::Europe::Amsterdam)
+        .date_naive()
+        .format("%Y-%m-%d")
+        .to_string();
+    let mut state = GuardState {
+        config_hmac: config_hmac.clone(),
+        state_hmac: String::new(),
+        weekly_spent: 0,
+        week_anchor,
+        ledger: vec![],
+        grace: None,
+    };
+
+    // (7) state_hmac via the SINGLE locked A3 recipe (no second canonicalize+HMAC); write guard.json.
+    let state_hmac = state.compute_state_hmac(&key);
+    state.state_hmac = state_hmac.clone();
+    let filled = serde_json::to_string(&state)
+        .map_err(|e| format!("serialize guard.json: {e}"))?;
+    std::fs::write(&guard_path, filled.as_bytes())
+        .map_err(|e| format!("write {}: {e}", guard_path.display()))?;
+
+    println!("config_hmac={config_hmac}");
+    println!("state_hmac={state_hmac}");
     Ok(0)
 }
