@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 5 context gathered
-last_updated: "2026-06-09T16:05:08.468Z"
-last_activity: 2026-06-09 -- Phase 05 planning complete
+last_updated: "2026-06-09T21:07:49.979Z"
+last_activity: 2026-06-09 -- Phase 05 execution started
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 20
-  completed_plans: 17
-  percent: 80
+  completed_plans: 18
+  percent: 90
 ---
 
 # Project State
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts.
-**Current focus:** Phase 5 — instance wiring
+**Current focus:** Phase 05 — instance-wiring
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
-Next: Phase 04 verification, then Phase 05 — Instance Wiring
-Status: Ready to execute
-Last activity: 2026-06-09 -- Phase 05 planning complete
+Phase: 05 (instance-wiring) — EXECUTING
+Plan: 2 of 3 (Plan 01 complete)
+Next: 05-02-PLAN.md — build deployable hooks (adapter + watchdog rewrite + install/deploy)
+Status: Executing Phase 05
+Last activity: 2026-06-10 -- Phase 05 Plan 01 complete: LifeOS instance initialized and verifying
 
 Phase progress: [████████░░] 4/5 phases complete (Phase 04: 5/5 plans)
 
@@ -106,6 +106,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 4, 04-02]: lock_status is a pure (config_yaml, now) -> LockStatus curfew evaluator in mutation-engine. Precedence: curfew.enabled=false => not locked; schedule.<day> overrides start/end (off => unlocked, HH:MM-HH:MM => that window); overnight-wrap inside = minute>=start||minute<end with the boundary on the CORRECT calendar day (next day for a late-entered wrap, never naive +24h, DST-aware via explicit MappedLocalTime like week.rs); absent/malformed field => fail-safe LOCKED (D-04/A2, never a silent unlock). grace_active=false here -- get_state overlays the signed guard.json grace window. Reuses classify::parse_hhmm/parse_window made pub(crate) -- exactly ONE HH:MM parser. 11 offline tests green.
 - [Phase 4, 04-04]: Status view + liveness shipped (UI-01/UI-02/UI-05). render() derives every assertion from a fresh get_state DTO (D-03); !state_verified||maximal_lockout -> fully-locked "State unverified" warm-tone copy, never optimism. Hero countdown is 64px tabular-nums (Display); status word 🌙 LOCKED / · grace / OPEN ("next lock at {time}"); 3-dot accent token meter ("{n} of 3 tokens · resets Monday {date}") + grace caption; NotInitialized -> empty state. plugin-fs watch(dataDir, refresh, {delayMs:250}) re-invokes get_state on any data-dir change (D-05/D-09); 1s setInterval re-renders ONLY countdown digits and never the status word (T-04-14). New additive data_dir IPC command surfaces the absolute watch target (AppCtx.data_dir consumed, its #[allow(dead_code)] removed). fs:scope narrowed off bare ** to $HOME/.nightguard + $APPDATA/nightguard (least-privilege T-04-17; residual: non-conventional NIGHTGUARD_DIR is out of watch scope -> tick+load-fetch+re-read-on-action still keep displayed state correct). Roboto 400/500 woff2 bundled locally from fontsource mirror, no runtime CDN (T-04-16). Moonlit Indigo hand CSS (palette tokens + 4-size type scale + 8pt spacing + 56px aria-labelled inline-SVG left rail), no UI framework/icon package. tsc clean, vite build green (fonts in dist/assets), cargo build zero warnings.
 - [Phase 4, 04-05]: Edit view shipped (UI-03/UI-04/UI-05) — vertical slice complete. Single --surface per-field editor (curfew.enabled/start/end) runs classify_change debounced (~250ms) per field -> exact UI-SPEC feedback ("Tightens curfew · free"=accent / "Loosens curfew · costs 1 token"=warn / noop silent); Commit disabled with the locked "available again Monday" reason on a 0-token loosen (UI-04) + "Commit (spends 1 token)" loosen label; one-step "Spend a weekly token?" confirm ONLY on loosening commits (D-08, tighten-only skips). commit_change/use_grace re-render Status ONLY from the returned re-verified StateDto (D-09 — no optimistic token decrement / grace flip; grep-clean). +8 button enabled IFF locked && grace_available_today with the REAL disabled attribute (D-10, not styling-only) + accent .enabled fill; use_grace -> re-render (boundary retargets to grace_end), NtpUnreachable/GraceAlreadyUsedToday surfaced inline amber non-punitively. Added a read-only read_config IPC seam (Rule 3 blocking — the edit classify old/new pair needs the live config text); new_yaml composed by per-field line edit on the loaded config (yamlpath-faithful, comment/format-preserving), absent field left untouched. Reuses plan-04 tokens/scale (no second design system). tsc clean, vite build green, cargo check zero warnings. Task 3 human-verify checkpoint auto-approved under AUTO_MODE; live tauri-dev walkthrough deferred to the phase verifier.
+- [Phase 5, 05-01]: Author's LifeOS instance INITIALIZED and verifying. NIGHTGUARD_DIR (User scope) = C:\Users\20252128\dev\Projects\LifeOS\nightguard (reads back in a fresh process). New `init-instance <data_dir>` subcommand in state_interop_cli composes the locked primitives (canonicalize_bytes + load_or_create_key DPAPI Scope::User + compute_state_hmac A3 + most_recent_monday_midnight DST-aware) — never fixed test state. The data dir now holds config.yaml (canonical bytes, content no-op — curfew 20:45->05:30 + watchdog/StayFree + Spanish-butler msgs intact), a byte-identical config.sanctioned.yaml, a fresh DPAPI .guardkey (unprotects to exactly 32 bytes), and a fully-armed guard.json (weekly_spent=0 -> 3 tokens, week_anchor 2026-06-08, grace=null, ledger=[]). Cross-language parity PROVEN on a real Windows CurrentUser session: state_hmac=94d8... and config_hmac=7618... re-derive identically Rust<->PowerShell, verify-state-hmac exit 0, HMAC(sanctioned)==config_hmac. CARRY-FORWARD: NIGHTGUARD_DIR is already set (do not re-set); the live curfew gate is still the OLD hook (untouched) — WIRE-01 only partially advanced, drift not eliminated until Plan 03's prove-then-switch cutover (T-05-05 accepted).
 - [Phase ?]: [Phase 4, 04-03]: four IPC commands real + signature-frozen. get_state/commit_change/use_grace all return ONE build_state_dto helper re-verifying config_hmac (constant-time verify_bytes over canonicalize_bytes) + state_hmac (A3 compute_state_hmac), worst-casing on tamper EXACTLY like the guard (weekly_spent=3/tokens=0/grace_available=false/maximal_lockout) in one place; lock/boundary from lock_status with active guard.json grace overlaid (boundary_kind=grace_end). classify_change wraps classify+quota::decide (disable-at-0-tokens preview; took a managed AppCtx body-fill, JS shape unchanged). commit_change gates decision.allowed in-command -> true NTP fail-closed -> engine ordered fd-locked commit::commit_change -> re-read (D-09); use_grace -> grace::use_grace -> re-read. No hand-rolled writer, no == on a config tag.
 
 ### Pending Todos
