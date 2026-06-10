@@ -25,7 +25,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Mutation Engine** - Direction classifier, weekly token quota, NTP-true grace, atomic ordered commit (completed 2026-06-05)
 - [x] **Phase 3: Enforcement Guard** - PowerShell verify→auto-revert with fail-closed paths and grace re-check (completed 2026-06-08)
 - [x] **Phase 4: UI (Moonlit Indigo)** - Status, token meter, +8 button, and live per-field editor feedback (completed 2026-06-09)
-- [ ] **Phase 5: Instance Wiring** - Point the author's live hook at the canonical LifeOS config and initialize the instance
+- [x] **Phase 5: Instance Wiring** - Point the author's live hook at the canonical LifeOS config and initialize the instance (completed 2026-06-10)
 
 ## Phase Details
 
@@ -104,7 +104,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
   - [x] 05-01-PLAN.md — Instance init: set NIGHTGUARD_DIR, normalize config to canonical bytes, Rust init-instance bin, generate key + sanctioned + A3-signed armed guard.json (WIRE-02, WIRE-01)
   - [x] 05-02-PLAN.md — Build deployable hooks: adapter (verdict→CC block + allow-pass + butler msgs), watchdog rewrite (canonical config + StayFree), byte-exact install/deploy + integrity re-stamp; confirm CC block schema (WIRE-01)
-  - [ ] 05-03-PLAN.md — Prove-then-switch cutover: deploy + D-11 verify gate, then retire legacy gate / swap settings.json / restart watchdog LAST (WIRE-01, WIRE-02)
+  - [x] 05-03-PLAN.md — Prove-then-switch cutover: deploy + D-11 verify gate, then retire legacy gate / swap settings.json / restart watchdog LAST (WIRE-01, WIRE-02)
 
 ## Progress
 
@@ -117,4 +117,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Mutation Engine | 5/5 | Complete   | 2026-06-05 |
 | 3. Enforcement Guard | 3/4 | In Progress|  |
 | 4. UI (Moonlit Indigo) | 5/5 | Complete   | 2026-06-09 |
-| 5. Instance Wiring | 2/3 | In Progress|  |
+| 5. Instance Wiring | 3/3 | Complete   | 2026-06-10 |
