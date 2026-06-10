@@ -103,7 +103,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The author's instance is configured as the app's target config path, with signing key and signed state initialized and verifying.
 **Plans**: 3 plans
   - [x] 05-01-PLAN.md — Instance init: set NIGHTGUARD_DIR, normalize config to canonical bytes, Rust init-instance bin, generate key + sanctioned + A3-signed armed guard.json (WIRE-02, WIRE-01)
-  - [ ] 05-02-PLAN.md — Build deployable hooks: adapter (verdict→CC block + allow-pass + butler msgs), watchdog rewrite (canonical config + StayFree), byte-exact install/deploy + integrity re-stamp; confirm CC block schema (WIRE-01)
+  - [x] 05-02-PLAN.md — Build deployable hooks: adapter (verdict→CC block + allow-pass + butler msgs), watchdog rewrite (canonical config + StayFree), byte-exact install/deploy + integrity re-stamp; confirm CC block schema (WIRE-01)
   - [ ] 05-03-PLAN.md — Prove-then-switch cutover: deploy + D-11 verify gate, then retire legacy gate / swap settings.json / restart watchdog LAST (WIRE-01, WIRE-02)
 
 ## Progress
@@ -117,4 +117,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Mutation Engine | 5/5 | Complete   | 2026-06-05 |
 | 3. Enforcement Guard | 3/4 | In Progress|  |
 | 4. UI (Moonlit Indigo) | 5/5 | Complete   | 2026-06-09 |
-| 5. Instance Wiring | 1/3 | In Progress|  |
+| 5. Instance Wiring | 2/3 | In Progress|  |

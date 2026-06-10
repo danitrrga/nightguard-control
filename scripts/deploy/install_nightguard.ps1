@@ -1,8 +1,8 @@
 # install_nightguard.ps1 -- byte-exact deploy of the nightguard hook scripts (D-09 deploy).
 #
 # "Updating the nightguard" = re-run this script. It byte-copies the five+ trust-surface scripts
-# from the repo into LifeOS/hooks (the ~/.claude/hooks junction target), preserving the
-# hooks/interop/ sibling so the guard's ..\interop dot-source resolves, then re-stamps the SHA256
+# from the repo into LifeOS/hooks (the ~/.claude/hooks junction target), and the interop scripts
+# into ~/.claude/interop (where the guard's runtime ..\interop lexically resolves), then re-stamps the SHA256
 # integrity baseline at REPO-SOURCE scope and STAGES (but does NOT fire) the NightguardWatchdog
 # task re-register.
 #
@@ -22,7 +22,13 @@
 [CmdletBinding()]
 param(
     # The deploy target dir (the ~/.claude/hooks junction => LifeOS/hooks). Override for testing.
-    [string]$HooksDir = 'C:\Users\20252128\dev\Projects\LifeOS\hooks'
+    [string]$HooksDir = 'C:\Users\20252128\dev\Projects\LifeOS\hooks',
+    # The interop deploy dir. MUST be where the guard's $here\..\interop resolves AT RUNTIME.
+    # Claude Code invokes the hook via the ~/.claude/hooks junction path, so the guard's $here is
+    # C:\Users\...\.claude\hooks and its '..\interop' resolves LEXICALLY to C:\Users\...\.claude\interop
+    # (verified empirically). That is NOT $HooksDir\interop and NOT the junction TARGET's parent
+    # (LifeOS\interop) -- only ~/.claude/hooks is junctioned, ~/.claude/interop is its own real dir.
+    [string]$InteropDir = 'C:\Users\20252128\.claude\interop'
 )
 
 Set-StrictMode -Version Latest
@@ -66,13 +72,16 @@ Copy-ByteExact -Source (Join-Path $guardDir 'guard.baseline.sha256')     -Dest (
 Copy-ByteExact -Source (Join-Path $guardDir 'nightguard_adapter.ps1')    -Dest (Join-Path $HooksDir 'nightguard_adapter.ps1')
 Copy-ByteExact -Source (Join-Path $guardDir 'nightguard_watchdog.ps1')   -Dest (Join-Path $HooksDir 'nightguard_watchdog.ps1')
 
-# --- 3: preserve the hooks/interop/ sibling so the guard's $here\..\interop dot-source resolves ---
+# --- 3: deploy interop where the guard's $here\..\interop dot-source resolves AT RUNTIME -----------
 # Pitfall 4 / T-05-09: nightguard_guard.ps1 dot-sources ..\interop\{nightguard_interop,state_interop}.ps1.
-# When the guard lands in LifeOS/hooks/, the interop scripts MUST land in LifeOS/hooks/interop/.
-$interopDir = Join-Path $repoRoot 'scripts\interop'
-$hooksInterop = Join-Path $HooksDir 'interop'
-Copy-ByteExact -Source (Join-Path $interopDir 'nightguard_interop.ps1') -Dest (Join-Path $hooksInterop 'nightguard_interop.ps1')
-Copy-ByteExact -Source (Join-Path $interopDir 'state_interop.ps1')      -Dest (Join-Path $hooksInterop 'state_interop.ps1')
+# Claude Code invokes the hook via the ~/.claude/hooks junction, so the guard's $here is
+# C:\Users\...\.claude\hooks and '..\interop' resolves LEXICALLY to C:\Users\...\.claude\interop
+# (verified empirically -- a junction does not rewrite a lexical '..'). Therefore interop MUST land
+# in $InteropDir (~/.claude/interop), NOT $HooksDir\interop and NOT LifeOS\interop. Putting it
+# anywhere else makes the deployed guard throw on load -> the adapter fail-closes -> total lockout.
+$interopSrc = Join-Path $repoRoot 'scripts\interop'
+Copy-ByteExact -Source (Join-Path $interopSrc 'nightguard_interop.ps1') -Dest (Join-Path $InteropDir 'nightguard_interop.ps1')
+Copy-ByteExact -Source (Join-Path $interopSrc 'state_interop.ps1')      -Dest (Join-Path $InteropDir 'state_interop.ps1')
 
 Write-Host ""
 
