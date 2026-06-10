@@ -67,10 +67,15 @@ if (-not (Test-Path $HooksDir)) { New-Item -ItemType Directory -Path $HooksDir -
 
 $guardDir = Join-Path $repoRoot 'scripts\guard'
 Copy-ByteExact -Source (Join-Path $guardDir 'nightguard_guard.ps1')      -Dest (Join-Path $HooksDir 'nightguard_guard.ps1')
-Copy-ByteExact -Source (Join-Path $guardDir 'verify_hook_integrity.ps1') -Dest (Join-Path $HooksDir 'verify_hook_integrity.ps1')
-Copy-ByteExact -Source (Join-Path $guardDir 'guard.baseline.sha256')     -Dest (Join-Path $HooksDir 'guard.baseline.sha256')
 Copy-ByteExact -Source (Join-Path $guardDir 'nightguard_adapter.ps1')    -Dest (Join-Path $HooksDir 'nightguard_adapter.ps1')
 Copy-ByteExact -Source (Join-Path $guardDir 'nightguard_watchdog.ps1')   -Dest (Join-Path $HooksDir 'nightguard_watchdog.ps1')
+# NOTE (A5 / live-safety): we deliberately do NOT deploy verify_hook_integrity.ps1 or
+# guard.baseline.sha256 into $HooksDir. $HooksDir == ~/.claude/hooks (junction), and the
+# SessionStart hook already runs the EXISTING ~/.claude/hooks/verify_hook_integrity.ps1. The repo
+# verifier computes $repoRoot=$here\..\.. + checks scripts/guard/* relative to it, which from
+# ~/.claude/hooks resolves to a non-existent C:\Users\<u>\scripts\guard and would FAIL the live
+# SessionStart integrity check. Integrity is instead enforced at REPO-SOURCE scope (re-stamp below);
+# extending a deployed-layout-aware verifier + repointing the SessionStart hook is deferred (A5).
 
 # --- 3: deploy interop where the guard's $here\..\interop dot-source resolves AT RUNTIME -----------
 # Pitfall 4 / T-05-09: nightguard_guard.ps1 dot-sources ..\interop\{nightguard_interop,state_interop}.ps1.
@@ -108,9 +113,8 @@ Write-Host "Re-stamping integrity baseline (repo-source scope):"
 if ($LASTEXITCODE -ne 0) {
     throw "install_nightguard: baseline re-stamp failed (verify_hook_integrity -Update exit $LASTEXITCODE)"
 }
-# The freshly re-stamped baseline now lives at scripts/guard/guard.baseline.sha256; copy it forward
-# so the deployed baseline matches the re-stamped repo bytes.
-Copy-ByteExact -Source (Join-Path $guardDir 'guard.baseline.sha256') -Dest (Join-Path $HooksDir 'guard.baseline.sha256')
+# (No deployed baseline copy: the SessionStart verifier + baseline are repo-scope only -- see the
+# A5 note above. The re-stamp protects the repo source bytes, which equal the deployed bytes.)
 
 Write-Host ""
 

@@ -457,6 +457,95 @@ function Verify-AuditChain {
     return $result
 }
 
+# --- Curfew-schedule evaluation (D-03 / WIRE-01): is true-now inside today's curfew window? ------
+# The published guard is the SOLE curfew gate (D-01). Its verdict must honor the curfew SCHEDULE
+# (start/end, per-day overrides, 'off' days) -- not deny 24/7. Reads the VERIFIED/auto-reverted
+# config.yaml (the same signed bytes config_hmac covers; a hand-edit would have reverted above), and
+# converts the guard's true-now (unix UTC) into the config timezone. FAIL-CLOSED: any parse/tz error
+# returns $true (in-curfew -> deny), never a permissive allow. enabled:false (in the SIGNED config)
+# is an explicit, tamper-protected "curfew off" -> not in curfew.
+function Resolve-GuardTimeZone {
+    param([Parameter(Mandatory)][string]$Name)
+    # PS 7 accepts IANA ids; Windows PowerShell 5.1 needs Windows ids -> map the ones we use.
+    $candidates = @($Name)
+    $map = @{ 'Europe/Amsterdam' = 'W. Europe Standard Time'; 'UTC' = 'UTC'; 'Etc/UTC' = 'UTC' }
+    if ($map.ContainsKey($Name)) { $candidates += $map[$Name] }
+    foreach ($c in $candidates) {
+        try { return [System.TimeZoneInfo]::FindSystemTimeZoneById($c) } catch { }
+    }
+    return $null
+}
+
+function Read-GuardConfig {
+    # Minimal YAML reader (KERN-04 form, mirrors the legacy gate parser) for the curfew schedule
+    # fields. Reads RAW bytes as UTF-8 (never Get-Content) so it is encoding-stable.
+    param([Parameter(Mandatory)][string]$Path)
+    $config = @{ timezone = 'Europe/Amsterdam'; curfew = @{ enabled = 'true'; start = '20:45'; end = '05:30'; schedule = @{} } }
+    if (-not (Test-Path $Path)) { return $config }
+    $text = [System.Text.Encoding]::UTF8.GetString((Get-FileBytes -Path $Path))
+    $section = ''; $subsection = ''; $dayName = ''
+    foreach ($line in ($text -split "`r?`n")) {
+        if ($line -match '^\s*#' -or $line -match '^\s*$') { continue }
+        if ($line -match '^(\w[\w_]*):\s*(.*)$') {
+            $section = $Matches[1]; $val = $Matches[2].Trim().Trim('"', "'")
+            if ($val -ne '') { $config[$section] = $val } elseif (-not $config.ContainsKey($section)) { $config[$section] = @{} }
+            $subsection = ''; $dayName = ''; continue
+        }
+        if ($line -match '^\s{2}(\w[\w_]*):\s*(.*)$') {
+            $key = $Matches[1]; $val = $Matches[2].Trim().Trim('"', "'")
+            if ($key -eq 'schedule') { $subsection = 'schedule'; if (($config[$section] -is [hashtable]) -and -not $config[$section]['schedule']) { $config[$section]['schedule'] = @{} }; continue }
+            if ($config[$section] -is [hashtable]) { $config[$section][$key] = $val }
+            $subsection = ''; $dayName = ''; continue
+        }
+        if ($subsection -eq 'schedule' -and $line -match '^\s{4}(\w+):\s*(.*)$') {
+            $val = $Matches[2].Trim().Trim('"', "'")
+            if ($val -eq 'off') { $config[$section]['schedule'][$Matches[1]] = 'off'; $dayName = '' }
+            elseif ($val -match '^\d{1,2}:\d{2}-\d{1,2}:\d{2}$') { $config[$section]['schedule'][$Matches[1]] = $val; $dayName = '' }
+            else { $dayName = $Matches[1]; if (-not $config[$section]['schedule'][$dayName]) { $config[$section]['schedule'][$dayName] = @{} } }
+            continue
+        }
+        if ($dayName -and $line -match '^\s{6}(\w+):\s*"?(.+?)"?\s*$') {
+            $config[$section]['schedule'][$dayName][$Matches[1]] = $Matches[2]; continue
+        }
+    }
+    return $config
+}
+
+function Get-InCurfew {
+    param(
+        [Parameter(Mandatory)][string]$ConfigPath,
+        [Parameter(Mandatory)][Int64]$TrueNowUnix
+    )
+    try {
+        $cfg = Read-GuardConfig -Path $ConfigPath
+        $curfew = $cfg['curfew']
+        if (-not ($curfew -is [hashtable])) { return $true }                       # malformed -> deny
+        if ([string]$curfew['enabled'] -eq 'false') { return $false }              # signed "curfew off"
+        $tzName = [string]$cfg['timezone']; if ([string]::IsNullOrWhiteSpace($tzName)) { $tzName = 'Europe/Amsterdam' }
+        $tz = Resolve-GuardTimeZone -Name $tzName
+        if ($null -eq $tz) { return $true }                                        # unresolved tz -> deny
+        $utc   = [System.DateTimeOffset]::FromUnixTimeSeconds($TrueNowUnix).UtcDateTime
+        $local = [System.TimeZoneInfo]::ConvertTimeFromUtc($utc, $tz)
+        $dow   = $local.DayOfWeek.ToString().ToLower()
+        $start = [string]$curfew['start']; $end = [string]$curfew['end']
+        $sched = $curfew['schedule']
+        if (($sched -is [hashtable]) -and $sched.ContainsKey($dow)) {
+            $day = $sched[$dow]
+            if ($day -eq 'off') { return $false }
+            if (($day -is [string]) -and ($day -match '^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$')) { $start = $Matches[1]; $end = $Matches[2] }
+            elseif ($day -is [hashtable]) { if ($day['start']) { $start = $day['start'] }; if ($day['end']) { $end = $day['end'] } }
+        }
+        $sp = $start -split ':'; $ep = $end -split ':'
+        $startMin = [int]$sp[0] * 60 + [int]$sp[1]
+        $endMin   = [int]$ep[0] * 60 + [int]$ep[1]
+        $minutes  = $local.Hour * 60 + $local.Minute
+        if ($startMin -gt $endMin) { return (($minutes -ge $startMin) -or ($minutes -lt $endMin)) }   # overnight wrap
+        else { return (($minutes -ge $startMin) -and ($minutes -lt $endMin)) }
+    } catch {
+        return $true   # ANY parse/tz/error -> fail-closed (treat as in-curfew, deny)
+    }
+}
+
 # --- Resolve guard-side true-time (test seam OR real SNTP) --------------------------------------
 $decision      = 'deny'
 $reason        = 'curfew'
@@ -506,7 +595,15 @@ else {
     # guard refuses the window regardless of what the tampered guard.json claims (T-03-15, GARD-03).
     # In the trusted branch $graceUsed == ($null -ne grace), so a present window is the live grant;
     # $stateValid is the load-bearing gate, the grace presence + window_end > trueNow is the grant.
-    if ($stateValid -and ($null -ne $guardObj) -and ($null -ne $guardObj.grace) `
+    if (-not (Get-InCurfew -ConfigPath $cfgLive -TrueNowUnix $trueNow)) {
+        # D-03 / WIRE-01: true-now is OUTSIDE today's curfew window (per the signed, auto-reverted
+        # config). The nightguard only gates DURING curfew -> allow. (A hand-edit widening the
+        # window would have failed config-verify and reverted above, so this reads trusted bytes.)
+        $decision       = 'allow'
+        $reason         = 'outside curfew'
+        $graceRemaining = 0
+    }
+    elseif ($stateValid -and ($null -ne $guardObj) -and ($null -ne $guardObj.grace) `
             -and ([int64]$guardObj.grace.window_end -gt $trueNow)) {
         $decision       = 'allow'
         $reason         = 'grace active'

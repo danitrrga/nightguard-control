@@ -134,11 +134,14 @@ for ($i = 0; $i -lt 32; $i++) { $knownKey[$i] = ($i * 11 + 5) -band 0xFF }
 
 # Canonical config bytes (UTF-8, no BOM, LF-only, exactly one trailing LF) -- the byte form the
 # Rust writer guarantees and config_hmac is signed over. Keep it minimal but schema-shaped.
+# 24/7 window (00:00-24:00) so the guard's curfew-SCHEDULE pre-gate is always "in curfew" here --
+# this keeps GARD-01..07 exercising the config/state/grace/audit paths unchanged after the schedule
+# verdict was added. The schedule itself is covered by GARD-08 (and run_cutover_gate.ps1).
 $canonicalConfigText = @(
     'curfew:'
     '  enabled: true'
-    '  start: "23:00"'
-    '  end: "07:00"'
+    '  start: "00:00"'
+    '  end: "24:00"'
     'timezone: "Europe/Amsterdam"'
 ) -join "`n"
 $canonicalConfigText = $canonicalConfigText + "`n"
@@ -406,6 +409,37 @@ try {
         -Detail ("clean={0} broken={1}(idx={2}) verdictUnchanged={3} chainBrokenRecord={4} appendedForward={5}" -f $cleanOk, $brokenReported, ($(if($null -ne $r2.Json){$r2.Json.audit_chain_break_index}else{'?'})), $verdictUnchanged, $chainBrokenRecord, $appendedForward)
 } catch {
     Add-Check -Name 'GARD-07 audit-chain-tamper-detected' -Pass $false -Detail "exception: $_"
+}
+
+# === GARD-08: curfew SCHEDULE honored -- outside window allows, inside window denies =============
+try {
+    # Build a fixture with a real evening window (20:45-05:30) and NO grace; fire at a daytime
+    # instant (allow, reason 'outside curfew') and an in-window instant (deny, reason 'curfew').
+    # Proves the guard gates on the SCHEDULE, not 24/7 (D-03 / WIRE-01 -- the cutover blocker fix).
+    $f = Build-Fixture -Name 'gard08' -WindowEnd $null
+    $schedText  = (@('curfew:', '  enabled: true', '  start: "20:45"', '  end: "05:30"', 'timezone: "Europe/Amsterdam"') -join "`n") + "`n"
+    $schedBytes = [System.Text.Encoding]::UTF8.GetBytes($schedText)
+    $cfgPath = Join-Path $f.Dir 'config.yaml'; $sanctPath = Join-Path $f.Dir 'config.sanctioned.yaml'
+    Write-RawBytes -Path $cfgPath -Bytes $schedBytes
+    Write-RawBytes -Path $sanctPath -Bytes $schedBytes
+    $newCfgHmac = Get-FileHmacHex -KeyBytes $knownKey -Path $cfgPath
+    # Re-sign guard.json over the new config_hmac (A3 recipe), no grace window.
+    $st = [PSCustomObject]([ordered]@{ config_hmac = $newCfgHmac; state_hmac = ''; weekly_spent = 1; week_anchor = '2026-06-01'; ledger = @(); grace = $null })
+    $cj = $st | ConvertTo-Json -Compress -Depth 10
+    $cb = [System.Text.Encoding]::UTF8.GetBytes($cj); $cn = New-Object byte[] ($cb.Length + 1); [Array]::Copy($cb, $cn, $cb.Length); $cn[$cb.Length] = 0x0A
+    $hm = [System.Security.Cryptography.HMACSHA256]::new($knownKey); try { $st.state_hmac = ConvertTo-LowerHex -Bytes $hm.ComputeHash($cn) } finally { $hm.Dispose() }
+    Write-RawBytes -Path (Join-Path $f.Dir 'guard.json') -Bytes ([System.Text.Encoding]::UTF8.GetBytes(($st | ConvertTo-Json -Compress -Depth 10)))
+    $tzi = [System.TimeZoneInfo]::FindSystemTimeZoneById('W. Europe Standard Time')
+    $noonU = [int64]([DateTimeOffset][System.TimeZoneInfo]::ConvertTimeToUtc([datetime]::new(2026, 6, 10, 12, 0, 0, [DateTimeKind]::Unspecified), $tzi)).ToUnixTimeSeconds()
+    $eveU  = [int64]([DateTimeOffset][System.TimeZoneInfo]::ConvertTimeToUtc([datetime]::new(2026, 6, 10, 21, 30, 0, [DateTimeKind]::Unspecified), $tzi)).ToUnixTimeSeconds()
+    $rOut = Invoke-Guard -DataDir $f.Dir -NtpOverrideUnixSecs $noonU
+    $rIn  = Invoke-Guard -DataDir $f.Dir -NtpOverrideUnixSecs $eveU
+    $outAllow = ($rOut.Exit -eq 0) -and ($null -ne $rOut.Json) -and ($rOut.Json.decision -eq 'allow') -and ($rOut.Json.reason -eq 'outside curfew')
+    $inDeny   = ($rIn.Exit -ne 0) -and ($null -ne $rIn.Json) -and ($rIn.Json.decision -eq 'deny') -and ($rIn.Json.reason -eq 'curfew')
+    Add-Check -Name 'GARD-08 schedule-honored' -Pass ($outAllow -and $inDeny) `
+        -Detail ("out:allow/outside={0} in:deny/curfew={1}" -f $outAllow, $inDeny)
+} catch {
+    Add-Check -Name 'GARD-08 schedule-honored' -Pass $false -Detail "exception: $_"
 }
 
 # === Verdict ====================================================================================
