@@ -12,3 +12,6 @@ scripts/guard/*.ps1 -text
 # Pin them -text for the same reason -- a fresh autocrlf checkout must not rewrite their line
 # endings (false drift) and any future here-string / byte literal in them must stay byte-stable.
 scripts/interop/*.ps1 -text
+
+# The deploy helper byte-copies LF-stable scripts; keep it LF-pinned for consistency (no autocrlf churn).
+scripts/deploy/*.ps1 -text
