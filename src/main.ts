@@ -52,6 +52,9 @@ const WEEKLY_TOKENS = 3;
 // only ever assigned by `refresh()` (a fresh `get_state`), never by the tick (D-05).
 let last: StateDto | null = null;
 
+// Tray throttle: only push to the system tray when the minute (or state) actually changes.
+let lastTrayKey = "";
+
 // ── DOM handles ──
 function el<T extends Element>(id: string): T {
   const node = document.getElementById(id);
@@ -136,6 +139,53 @@ function fmtClock(unix: number): string {
 function fmtDate(unix: number): string {
   const d = new Date(unix * 1000);
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+/** Compact remaining for the tray ("1h 24m" / "24m" / "<1m"). */
+function fmtShort(secs: number): string {
+  const s = Math.max(0, Math.floor(secs));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return "<1m";
+}
+
+/**
+ * Push the current curfew countdown into the system tray (menu status line + hover tooltip) so
+ * the time remaining is visible at a glance without opening the window. Throttled to minute (or
+ * state) changes via `lastTrayKey`. Advisory display — the guard stays the source of truth.
+ */
+function updateTray(s: StateDto): void {
+  const verifyFail = !s.state_verified || s.maximal_lockout;
+  let menuLine: string;
+  let tooltip: string;
+  let key: string;
+  if (verifyFail) {
+    menuLine = "State unverified — locked";
+    tooltip = "Nightguard — state unverified (locked)";
+    key = "vf";
+  } else if (s.boundary_kind === "none") {
+    menuLine = "Open — no upcoming lock";
+    tooltip = "Nightguard — open · no upcoming lock";
+    key = "none";
+  } else {
+    const short = fmtShort(s.boundary_unix - nowUnix());
+    if (s.locked && s.grace_active) {
+      menuLine = `Grace — ${short} left`;
+      tooltip = `Nightguard — grace · ${short} left`;
+    } else if (s.locked) {
+      menuLine = `Locked — ${short} to open`;
+      tooltip = `Nightguard — locked · ${short} to open`;
+    } else {
+      menuLine = `Open — locks in ${short}`;
+      tooltip = `Nightguard — open · locks in ${short}`;
+    }
+    key = `${s.locked}|${s.grace_active}|${short}`;
+  }
+  if (key === lastTrayKey) return; // only push on a real change (avoid per-second IPC churn)
+  lastTrayKey = key;
+  void invoke("set_tray_status", { menuLine, tooltip }).catch(() => {});
 }
 
 // ── render ──
@@ -271,6 +321,7 @@ function render(s: StateDto): void {
 function renderCountdownOnly(s: StateDto): void {
   // CR-02: "none" is the no-upcoming-lock sentinel (curfew disabled / today off) — render a
   // neutral dash instead of a frozen 00:00:00 countdown derived from a sentinel boundary.
+  updateTray(s);
   const verifyFail = !s.state_verified || s.maximal_lockout;
   if (s.boundary_kind === "none") {
     countdownEl().textContent = "--:--:--";

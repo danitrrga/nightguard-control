@@ -1,0 +1,19 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Nightguard mark — "Ceramic Night" (El Portal-aligned): a cobalt portal ring guarding a
+       porcelain crescent on the navy canvas. Cobalt is the brand/atmosphere color. -->
+  <rect width="512" height="512" rx="112" fill="#0f1318"/>
+  <!-- atmosphere: faint cobalt wash from the top -->
+  <defs>
+    <radialGradient id="atmo" cx="50%" cy="18%" r="75%">
+      <stop offset="0%" stop-color="#4487D6" stop-opacity="0.22"/>
+      <stop offset="60%" stop-color="#4487D6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#atmo)"/>
+  <!-- portal rings (cobalt) -->
+  <circle cx="256" cy="256" r="170" fill="none" stroke="#4487D6" stroke-width="10" opacity="0.9"/>
+  <circle cx="256" cy="256" r="206" fill="none" stroke="#4487D6" stroke-width="6" opacity="0.4"/>
+  <!-- porcelain crescent: a porcelain disc carved by an offset navy disc -->
+  <circle cx="248" cy="262" r="104" fill="#F4F0E6"/>
+  <circle cx="298" cy="226" r="92" fill="#0f1318"/>
+</svg>
