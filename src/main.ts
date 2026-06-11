@@ -53,10 +53,10 @@ const WEEKLY_TOKENS = 3;
 let last: StateDto | null = null;
 
 // ── DOM handles ──
-function el<T extends HTMLElement>(id: string): T {
+function el<T extends Element>(id: string): T {
   const node = document.getElementById(id);
   if (!node) throw new Error(`missing #${id} in the shell DOM`);
-  return node as T;
+  return node as unknown as T;
 }
 
 const statusView = () => el<HTMLElement>("status-view");
@@ -79,6 +79,36 @@ const fieldEndEl = () => el<HTMLInputElement>("field-end");
 const commitBtnEl = () => el<HTMLButtonElement>("commit-btn");
 const editReasonEl = () => el<HTMLElement>("edit-reason");
 const fbEl = (field: string) => el<HTMLElement>(`fb-${field}`);
+
+// New (Phase 6 polish) handles: status pill, guard-health chip, wind-down ring arc + moon.
+const statusPillEl = () => el<HTMLElement>("status-pill");
+const guardHealthEl = () => el<HTMLElement>("guard-health");
+const guardHealthTextEl = () => el<HTMLElement>("guard-health-text");
+const ringArcEl = () => el<SVGCircleElement>("ring-arc");
+const ringMoonEl = () => el<SVGCircleElement>("ring-moon");
+
+// Wind-down ring geometry (r=108 within the 240 viewBox). The arc fraction encodes the countdown
+// magnitude (capped at 12h) and the moon marker sits at the arc's leading end. Driven PURELY from
+// the existing DTO/countdown — no new backend data, no new IPC. The ring + moon live inside the
+// CSS-rotated <svg> (rotate(-90deg)), so a local angle of frac*2PI lands the moon exactly at the
+// arc's visual end (arc starts at 12 o'clock, sweeps clockwise).
+const RING_R = 108;
+const RING_C = 2 * Math.PI * RING_R;
+function renderRing(frac: number, hideMoon: boolean): void {
+  const f = Math.max(0, Math.min(1, frac));
+  const arc = ringArcEl();
+  arc.style.strokeDasharray = String(RING_C);
+  arc.style.strokeDashoffset = String(RING_C * (1 - f));
+  const moon = ringMoonEl();
+  if (hideMoon) {
+    moon.style.display = "none";
+    return;
+  }
+  moon.style.display = "";
+  const t = f * 2 * Math.PI;
+  moon.setAttribute("cx", (120 + RING_R * Math.cos(t)).toFixed(2));
+  moon.setAttribute("cy", (120 + RING_R * Math.sin(t)).toFixed(2));
+}
 
 // ── formatting helpers (advisory display only — D-04) ──
 function nowUnix(): number {
@@ -117,44 +147,84 @@ function fmtDate(unix: number): string {
  */
 function render(s: StateDto): void {
   const verifyFail = !s.state_verified || s.maximal_lockout;
-  statusView().classList.toggle("verify-fail", verifyFail);
+  const v = statusView();
+  v.classList.toggle("verify-fail", verifyFail);
 
-  // Status word + caption.
+  // Derive the small countdown LABEL (status-word is now an eyebrow label above the hero — the
+  // at-a-glance STATE lives in the colored pill), the caption, and the pill + ring color class.
   let word: string;
   let caption = "";
   let captionWarn = false;
+  let pillText: string;
+  let pillClass: string; // is-locked | is-open | is-grace | is-warn
+  let ringClass: string; // container class that recolors the ring (verify-fail handled separately)
 
   if (verifyFail) {
     // Fail-closed: the guard is treating the user as fully locked until the app re-syncs.
-    word = "State unverified";
+    word = "STATE UNVERIFIED";
     caption =
-      "The signed state failed HMAC verification. The guard is treating you as fully locked until the app re-syncs. Open the edit panel to re-sign.";
+      "Signed state failed verification — you are treated as fully locked until the app re-signs.";
     captionWarn = true;
+    pillText = "Unverified";
+    pillClass = "is-warn";
+    ringClass = ""; // .verify-fail (toggled above) drives the ring color
   } else if (s.locked && s.grace_active) {
-    word = "🌙 LOCKED · grace";
+    word = "GRACE ENDS IN";
+    pillText = "Grace";
+    pillClass = "is-grace";
+    ringClass = "is-grace";
   } else if (s.locked) {
-    word = "🌙 LOCKED";
+    word = "UNTIL OPEN";
+    pillText = "Locked";
+    pillClass = "is-locked";
+    ringClass = "is-locked";
   } else if (s.boundary_kind === "none") {
-    // CR-02: curfew disabled, or today is `off` and we do not scan future days — there is no
-    // resolvable upcoming lock. Show "no upcoming lock" rather than a `00:00:00` countdown.
-    word = "OPEN";
-    caption = "no upcoming lock";
+    // CR-02: curfew disabled / today off and no future scan — no resolvable upcoming lock.
+    word = "NO UPCOMING LOCK";
+    caption = "Curfew is clear";
+    pillText = "Open";
+    pillClass = "is-open";
+    ringClass = "is-open";
   } else {
-    word = "OPEN";
-    caption = `next lock at ${fmtClock(s.boundary_unix)}`;
+    word = "UNTIL LOCK";
+    caption = `Next lock at ${fmtClock(s.boundary_unix)}`;
+    pillText = "Open";
+    pillClass = "is-open";
+    ringClass = "is-open";
   }
+
+  // Ring color class on the container (verify-fail already toggled; reset the mutually-exclusive set).
+  v.classList.remove("is-locked", "is-open", "is-grace");
+  if (ringClass) v.classList.add(ringClass);
 
   statusWordEl().textContent = word;
 
   // Time-unverified caveat is advisory (D-04) — append only when state itself verified.
   if (!verifyFail && s.time_unverified) {
-    const caveat =
-      "Time unverified — the countdown is advisory; the guard re-checks with its own clock.";
+    const caveat = "Time unverified — advisory; the guard re-checks with its own clock.";
     caption = caption ? `${caption} · ${caveat}` : caveat;
   }
 
   captionEl().textContent = caption;
   captionEl().classList.toggle("warn", captionWarn);
+
+  // Status pill (state at a glance).
+  const pill = statusPillEl();
+  pill.textContent = pillText;
+  pill.className = `pill ${pillClass}`;
+
+  // Guard-health chip.
+  const gh = guardHealthEl();
+  if (verifyFail) {
+    guardHealthTextEl().textContent = "Re-sign needed";
+    gh.classList.add("warn");
+  } else if (s.time_unverified) {
+    guardHealthTextEl().textContent = "Time unverified";
+    gh.classList.add("warn");
+  } else {
+    guardHealthTextEl().textContent = "Guard active";
+    gh.classList.remove("warn");
+  }
 
   // Hero countdown (digits handled by the shared tick path).
   renderCountdownOnly(s);
@@ -201,27 +271,40 @@ function render(s: StateDto): void {
 function renderCountdownOnly(s: StateDto): void {
   // CR-02: "none" is the no-upcoming-lock sentinel (curfew disabled / today off) — render a
   // neutral dash instead of a frozen 00:00:00 countdown derived from a sentinel boundary.
+  const verifyFail = !s.state_verified || s.maximal_lockout;
   if (s.boundary_kind === "none") {
     countdownEl().textContent = "--:--:--";
+    // verify-fail → full warn ring (fully locked); otherwise empty track, no moon.
+    renderRing(verifyFail ? 1 : 0, !verifyFail);
     return;
   }
   const remaining = s.boundary_unix - nowUnix();
   countdownEl().textContent = fmtRemaining(remaining);
+  // Wind-down: arc fraction = remaining capped at 12h; verify-fail pins a full warn ring.
+  const frac = verifyFail ? 1 : Math.max(0, Math.min(1, remaining / (12 * 3600)));
+  renderRing(frac, false);
 }
 
 /** Render the UI-SPEC empty state when no signed config exists yet. */
 function renderEmpty(): void {
-  statusView().classList.remove("verify-fail");
-  statusWordEl().textContent = "No signed config yet";
+  const v = statusView();
+  v.classList.remove("verify-fail", "is-locked", "is-open", "is-grace");
+  statusWordEl().textContent = "NOT INITIALIZED";
   countdownEl().textContent = "--:--:--";
   captionEl().classList.remove("warn");
   captionEl().textContent =
-    "Nightguard hasn't been initialized on this machine. Run the app's setup to generate your signing key and first sanctioned config.";
+    "Run setup to generate your signing key and first sanctioned config.";
+  const pill = statusPillEl();
+  pill.textContent = "Setup";
+  pill.className = "pill";
+  guardHealthTextEl().textContent = "Not initialized";
+  guardHealthEl().classList.add("warn");
   tokenMeterEl().replaceChildren();
   tokenCaptionEl().textContent = "";
   graceCaptionEl().textContent = "";
   graceBtnEl().disabled = true;
   graceBtnEl().classList.remove("enabled");
+  renderRing(0, true);
   dividerEl().style.display = "none";
 }
 

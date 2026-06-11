@@ -1,40 +1,62 @@
-/* Nightguard Control — Moonlit Indigo design system (hand-rolled, no UI framework).
+/* Nightguard Control — "Moonlit Command Center" (Phase 6 UI polish).
  *
- * Minimalist, typographic, whitespace-led (D-11/D-12): the hero countdown dominates,
- * everything else recedes. No cards — groups are separated by whitespace with at most a
- * single hairline divider. Palette + Roboto are locked by CLAUDE.md / UI-SPEC (UI-05).
+ * Layered, premium dark desktop UI (Linear/Raycast/Vercel caliber), executed RESTRAINED:
+ * depth + composition + refined type win; motion is minimal. Hand-rolled, no UI framework,
+ * inline SVG only. Geist Sans/Mono bundled locally (no runtime CDN). The hero is a wind-down
+ * ring; panels use a nested "tray + core" architecture with a soft top highlight.
  *
- * Fonts are bundled LOCALLY (src/assets/roboto-{400,500}.woff2) — no CDN fetch at runtime
- * (Pitfall 6, T-04-16). The two @font-face rules below are the only font sources.
+ * Render contract is unchanged: main.ts drives the same element IDs (status-word, countdown,
+ * token-meter, grace-btn, edit fields, …) — this file restyles + recomposes around them.
  */
 
 @font-face {
-  font-family: "Roboto";
+  font-family: "Geist";
   font-style: normal;
-  font-weight: 400;
+  font-weight: 100 900;
   font-display: swap;
-  src: url("./assets/roboto-400.woff2") format("woff2");
+  src: url("./assets/geist-sans.woff2") format("woff2");
 }
-
 @font-face {
-  font-family: "Roboto";
+  font-family: "Geist Mono";
   font-style: normal;
-  font-weight: 500;
+  font-weight: 100 900;
   font-display: swap;
-  src: url("./assets/roboto-500.woff2") format("woff2");
+  src: url("./assets/geist-mono.woff2") format("woff2");
 }
 
-/* ── Moonlit Indigo palette (LOCKED — CLAUDE.md / UI-SPEC §Color) ── */
 :root {
-  --bg: #0c0e14; /* dominant 60% — the field the countdown floats on */
-  --surface: #161a24; /* secondary 30% — left-rail backing, sole edit panel */
-  --border: #242a38; /* hairline dividers (replaces cards, D-11) */
-  --text: #e8eaf0; /* primary text: countdown, status word, values */
-  --dim: #8b91a3; /* labels, captions, inactive token dots, caveats */
-  --accent: #7aa2ff; /* RESERVED: filled token dots, active rail icon, +8 fill, tighten */
-  --warn: #f0a35e; /* warm amber: loosen warning, 0-token reason, fail-closed caveat */
+  /* Layered surfaces (depth, not flat) */
+  --bg: #0b0d13;
+  --surface-1: #12151f;
+  --surface-2: #181c28;
+  --tray: rgba(255, 255, 255, 0.025); /* double-bezel outer tray fill */
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.05); /* lit-from-above edge */
 
-  /* 8-point spacing scale (UI-SPEC §Spacing) */
+  /* Text */
+  --text: #e8eaf0;
+  --dim: #9aa1b4;
+  --faint: #6b7186;
+
+  /* Accent — moonlit indigo */
+  --accent: #7aa2ff;
+  --accent-2: #93b4ff;
+  --accent-soft: rgba(122, 162, 255, 0.14);
+  --accent-ring: rgba(122, 162, 255, 0.4);
+  --accent-glow: 0 0 22px rgba(122, 162, 255, 0.28);
+
+  /* State semantics */
+  --ok: #6fcf97; /* OPEN / outside curfew */
+  --ok-soft: rgba(111, 207, 151, 0.14);
+  --warn: #f0a35e; /* loosen / fail-closed / grace */
+  --warn-soft: rgba(240, 163, 94, 0.14);
+
+  /* Soft, diffused ambient shadows (never harsh black) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 18px 48px -20px rgba(0, 0, 0, 0.7);
+
+  /* 8pt spacing */
   --sp-xs: 4px;
   --sp-sm: 8px;
   --sp-md: 16px;
@@ -43,55 +65,80 @@
   --sp-2xl: 48px;
   --sp-3xl: 64px;
 
-  --rail-w: 56px; /* fixed left icon-rail width (UI-SPEC layout contract) */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-pill: 999px;
+  --rail-w: 64px;
+
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --font-sans: "Geist", system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "Cascadia Code", "SF Mono", monospace;
 }
 
 * {
   box-sizing: border-box;
 }
-
 html,
 body {
   margin: 0;
   padding: 0;
   height: 100%;
 }
-
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: "Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv01";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow: hidden;
 }
 
-/* ── 4-size type scale, 2 weights (UI-SPEC §Typography) ── */
+/* A single, very subtle moonlit wash from the top — the one restrained ambient effect. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 50% -20%, rgba(122, 162, 255, 0.1), transparent 60%),
+    radial-gradient(80% 60% at 100% 0%, rgba(122, 162, 255, 0.05), transparent 55%);
+  z-index: 0;
+}
+
+/* ── Type scale (Geist) ── */
 .type-display {
-  font-size: 64px;
+  font-family: var(--font-mono);
+  font-size: 60px;
   font-weight: 500;
-  line-height: 1.1;
-  letter-spacing: 0.01em;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
-
 .type-heading {
-  font-size: 20px;
-  font-weight: 500;
-  line-height: 1.2;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
 }
-
 .type-body {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 400;
   line-height: 1.5;
 }
-
 .type-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
-  line-height: 1.4;
+  line-height: 1.45;
 }
-
-/* Tabular numerals everywhere a number appears — no width jitter on the 1s tick (Pitfall 6). */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
 .tabular-nums,
 #countdown,
 .token-caption,
@@ -99,8 +146,10 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Shell: 56px left icon-rail + main field ── */
+/* ── Shell: left rail + main field ── */
 #shell {
+  position: relative;
+  z-index: 1;
   display: flex;
   height: 100%;
 }
@@ -108,190 +157,379 @@ body {
 #rail {
   width: var(--rail-w);
   flex: 0 0 var(--rail-w);
-  background: var(--surface);
+  background: linear-gradient(180deg, var(--surface-1), rgba(18, 21, 31, 0.6));
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-lg);
-  padding: var(--sp-md) 0;
+  gap: var(--sp-sm);
+  padding: var(--sp-lg) 0;
 }
 
-.rail-item {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--dim);
-  background: none;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  padding: 0;
-}
-
-.rail-item:hover {
-  color: var(--text);
-}
-
-/* The active rail icon is the ONE accent use here (reserved list #4). */
-.rail-item[aria-current="page"] {
+/* small moon brand mark at the top of the rail */
+#rail .brand {
+  width: 28px;
+  height: 28px;
+  margin-bottom: var(--sp-lg);
   color: var(--accent);
+  filter: drop-shadow(var(--accent-glow));
 }
-
-.rail-item svg {
-  width: 24px;
-  height: 24px;
+#rail .brand svg {
+  width: 100%;
+  height: 100%;
   display: block;
 }
 
-/* ── Status view: vertically centered, whitespace-led, NO cards ── */
+.rail-item {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--faint);
+  background: none;
+  border: none;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.18s var(--ease), background 0.18s var(--ease);
+}
+.rail-item:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+.rail-item[aria-current="page"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+/* left accent bar on the active item */
+.rail-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  box-shadow: var(--accent-glow);
+}
+.rail-item svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+.rail-spacer {
+  flex: 1 1 auto;
+}
+
 #main {
   flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--sp-3xl) var(--sp-xl);
+  padding: var(--sp-2xl) var(--sp-xl);
   overflow: auto;
 }
 
+/* ── Status view: header row → ring hero → token panel ── */
 #status-view {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  max-width: 460px;
+  gap: var(--sp-xl);
+}
+
+.status-head {
+  display: flex;
   align-items: center;
-  text-align: center;
-  max-width: 520px;
+  justify-content: space-between;
+  gap: var(--sp-md);
 }
 
-/* status word (Heading) above the hero */
-#status-word {
+/* status pill (state at a glance) */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  padding: 6px 12px 6px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  box-shadow: var(--highlight);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--text);
-  margin: 0 0 var(--sp-2xl) 0;
+}
+.pill::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.pill.is-locked {
+  color: var(--accent-2);
+}
+.pill.is-locked::before {
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+.pill.is-open {
+  color: var(--ok);
+}
+.pill.is-open::before {
+  background: var(--ok);
+  box-shadow: 0 0 10px var(--ok);
+}
+.pill.is-grace,
+.pill.is-warn {
+  color: var(--warn);
+}
+.pill.is-grace::before,
+.pill.is-warn::before {
+  background: var(--warn);
+  box-shadow: 0 0 10px var(--warn);
 }
 
-/* the hero countdown — the single Display element, the visual center */
+/* guard-health chip (right side) */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dim);
+}
+.chip svg {
+  width: 14px;
+  height: 14px;
+}
+.chip.warn {
+  color: var(--warn);
+}
+
+/* ── Hero: wind-down ring ── */
+.ring-wrap {
+  position: relative;
+  width: 300px;
+  height: 300px;
+  align-self: center;
+}
+.ring {
+  width: 100%;
+  height: 100%;
+  display: block;
+  transform: rotate(-90deg); /* 0 at 12 o'clock */
+}
+.ring-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 6;
+}
+#ring-arc {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 6;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 8px rgba(122, 162, 255, 0.45));
+  transition: stroke-dashoffset 0.9s var(--ease), stroke 0.3s var(--ease);
+}
+#ring-moon {
+  fill: var(--accent-2);
+  filter: drop-shadow(0 0 6px var(--accent));
+  transition: fill 0.3s var(--ease);
+}
+/* state recolors the arc/moon */
+.is-open #ring-arc {
+  stroke: var(--ok);
+  filter: drop-shadow(0 0 8px rgba(111, 207, 151, 0.45));
+}
+.is-open #ring-moon {
+  fill: var(--ok);
+  filter: drop-shadow(0 0 6px var(--ok));
+}
+.is-grace #ring-arc,
+.verify-fail #ring-arc {
+  stroke: var(--warn);
+  filter: drop-shadow(0 0 8px rgba(240, 163, 94, 0.4));
+}
+.is-grace #ring-moon,
+.verify-fail #ring-moon {
+  fill: var(--warn);
+}
+
+/* centered content inside the ring */
+.ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--sp-sm);
+  padding: 0 var(--sp-xl);
+}
+#status-word {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
 #countdown {
   color: var(--text);
   margin: 0;
 }
-
-/* OPEN caption ("next lock at …") + verify/time caveats, dim, below the hero */
 #status-caption {
   color: var(--dim);
-  margin: var(--sp-md) 0 0 0;
+  margin: 0;
+  max-width: 200px;
   min-height: 1.4em;
 }
-
 #status-caption.warn {
   color: var(--warn);
 }
-
-/* single hairline divider above the token meter — the only allowed separator (D-11) */
-#meter-divider {
-  width: 100%;
-  height: 1px;
-  background: var(--border);
-  border: none;
-  margin: var(--sp-2xl) 0 var(--sp-lg) 0;
+.verify-fail #status-word,
+.verify-fail #countdown {
+  color: var(--warn);
 }
 
-/* 3-dot weekly token meter */
+/* keep #meter-divider in DOM (main.ts toggles its display) but make it invisible spacing —
+   composition now uses the panel, not a hairline. */
+#meter-divider {
+  border: none;
+  height: 0;
+  margin: 0;
+}
+
+/* ── Panels: nested tray + core (double-bezel), soft elevation + top highlight ── */
+.panel {
+  background: var(--tray);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-xs);
+  box-shadow: var(--shadow-md);
+}
+.panel-core {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--r-lg) - 5px);
+  box-shadow: var(--highlight);
+  padding: var(--sp-lg);
+}
+.panel-label {
+  margin: 0 0 var(--sp-md) 0;
+}
+
+/* token economy */
 #token-meter {
   display: flex;
   gap: var(--sp-sm);
   align-items: center;
-  justify-content: center;
 }
-
 .token-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--dim); /* spent / empty */
+  flex: 1 1 0;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.3s var(--ease), box-shadow 0.3s var(--ease);
 }
-
 .token-dot.filled {
-  background: var(--accent); /* remaining (reserved accent use #1) */
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 10px rgba(122, 162, 255, 0.4);
 }
-
 .token-caption {
-  color: var(--dim);
-  margin: var(--sp-sm) 0 0 0;
+  color: var(--text);
+  font-weight: 500;
+  margin: var(--sp-md) 0 0 0;
 }
-
 .grace-caption {
-  color: var(--dim);
+  color: var(--faint);
   margin: var(--sp-xs) 0 0 0;
 }
 
-/* the "State unverified" / fail-closed copy reads in the warm caveat tone */
-.verify-fail #status-word,
-.verify-fail #status-caption {
-  color: var(--warn);
-}
-
-/* ── Action buttons: +8 grace + Commit (40px min hit target, UI-SPEC §Spacing) ── */
+/* ── Buttons ── */
 .action-btn {
-  min-height: 40px;
+  min-height: 42px;
+  width: 100%;
   padding: var(--sp-sm) var(--sp-lg);
   margin-top: var(--sp-lg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  box-shadow: var(--highlight);
   color: var(--text);
   font-family: inherit;
-  font-size: 16px;
+  font-size: 15px;
+  font-weight: 500;
   cursor: pointer;
+  transition: transform 0.15s var(--ease), border-color 0.18s var(--ease),
+    background 0.18s var(--ease);
 }
-
 .action-btn:hover:not(:disabled) {
   border-color: var(--accent);
+  background: var(--surface-2);
 }
-
-/* Disabled actions read dim, not accent (accent is reserved to ENABLED affordances). */
+.action-btn:active:not(:disabled) {
+  transform: scale(0.985);
+}
 .action-btn:disabled {
-  color: var(--dim);
+  color: var(--faint);
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.55;
 }
-
-/* The +8 button, when ENABLED, fills with accent (reserved use #2). The `.enabled` class is
-   set in main.ts only when `locked && grace_available_today`, alongside removing `disabled`. */
 #grace-btn.enabled {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--bg);
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+  border-color: transparent;
+  color: #0a0c12;
+  box-shadow: var(--accent-glow), var(--highlight);
 }
-
-/* A loosening pending commit warns in the warm amber tone (it spends a token). */
 #commit-btn.loosen {
   border-color: var(--warn);
   color: var(--warn);
+  background: var(--warn-soft);
 }
 
-/* ── Edit view: a SINGLE --surface panel (the one justified container, D-11) ── */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-ring);
+  border-radius: var(--r-sm);
+}
+
+/* ── Edit view: one elevated panel (tray + core) ── */
 #edit-view {
   width: 100%;
-  max-width: 520px;
+  max-width: 460px;
   display: flex;
   justify-content: center;
 }
-
 .edit-panel {
   width: 100%;
-  background: var(--surface);
+  background: var(--tray);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
+  padding: var(--sp-xs);
+  box-shadow: var(--shadow-md);
+}
+.edit-panel-core {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--r-lg) - 5px);
+  box-shadow: var(--highlight);
   padding: var(--sp-xl);
 }
-
 .edit-title {
   margin: 0 0 var(--sp-lg) 0;
   color: var(--text);
 }
-
-/* Per-field row: label · input · live feedback, with md vertical rhythm. */
 .edit-field {
   display: grid;
   grid-template-columns: 120px auto 1fr;
@@ -299,45 +537,46 @@ body {
   gap: var(--sp-md);
   margin-bottom: var(--sp-md);
 }
-
 .edit-field label {
-  color: var(--text);
+  color: var(--dim);
 }
-
 .field-input {
   background: var(--bg);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: var(--sp-sm);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  padding: var(--sp-sm) var(--sp-md);
   font-family: inherit;
-  font-size: 16px;
+  font-size: 15px;
   color-scheme: dark;
+  transition: border-color 0.18s var(--ease);
 }
-
+.field-input:hover {
+  border-color: var(--accent-ring);
+}
 .field-input[type="checkbox"] {
   width: 18px;
   height: 18px;
   accent-color: var(--accent);
   justify-self: start;
 }
-
-/* Per-field live feedback: tighten=accent (quiet/free), loosen=warn (costs a token), noop=silent. */
 .field-feedback {
-  color: var(--dim);
+  color: var(--faint);
 }
-
 .field-feedback.tighten {
-  color: var(--accent);
+  color: var(--accent-2);
 }
-
 .field-feedback.loosen {
   color: var(--warn);
 }
-
-/* The inline disabled-commit reason (0 tokens) reads amber. */
 .edit-reason {
   color: var(--warn);
   margin: var(--sp-md) 0 0 0;
   min-height: 1.4em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
 }
