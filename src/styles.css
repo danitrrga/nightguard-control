@@ -1,12 +1,13 @@
-/* Nightguard Control — "Moonlit Command Center" (Phase 6 UI polish).
+/* Nightguard Control — "Ceramic Night" (Phase 6 UI polish, El Portal-aligned branding).
  *
- * Layered, premium dark desktop UI (Linear/Raycast/Vercel caliber), executed RESTRAINED:
- * depth + composition + refined type win; motion is minimal. Hand-rolled, no UI framework,
- * inline SVG only. Geist Sans/Mono bundled locally (no runtime CDN). The hero is a wind-down
- * ring; panels use a nested "tray + core" architecture with a soft top highlight.
+ * Branding inspired by El Portal's "Ceramic Night" identity: warm PORCELAIN ink on a NAVY-black
+ * canvas, ceramic-BONE primary actions, COBALT reserved for the brand mark/atmosphere only, sage /
+ * amber / rose semantic accents, restrained 8px radius, a faint dot-grid, editorial serif wordmark.
+ * Calm and warm — NOT cold neon glass. No glow, no glassy slop.
  *
- * Render contract is unchanged: main.ts drives the same element IDs (status-word, countdown,
- * token-meter, grace-btn, edit fields, …) — this file restyles + recomposes around them.
+ * Hand-rolled, no UI framework, inline SVG only. Geist Sans/Mono bundled locally (no runtime CDN);
+ * the wordmark uses a system serif to echo El Portal's editorial serif-display. Render contract is
+ * unchanged: main.ts drives the same element IDs.
  */
 
 @font-face {
@@ -25,60 +26,58 @@
 }
 
 :root {
-  /* Layered surfaces (depth, not flat) */
-  --bg: #0b0d13;
-  --surface-1: #12151f;
-  --surface-2: #181c28;
-  --tray: rgba(255, 255, 255, 0.025); /* double-bezel outer tray fill */
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.12);
-  --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.05); /* lit-from-above edge */
+  /* === El Portal "Ceramic Night" === */
+  --bg: #080a0e; /* navy-black canvas */
+  --surface-1: #0f1318; /* navy card */
+  --surface-2: #151b22; /* elevated */
+  --surface-input: #11161c;
+  --surface-hover: rgba(244, 240, 230, 0.05);
 
-  /* Text */
-  --text: #e8eaf0;
-  --dim: #9aa1b4;
-  --faint: #6b7186;
+  --border: rgba(244, 240, 230, 0.1); /* porcelain hairline */
+  --border-subtle: rgba(244, 240, 230, 0.05);
+  --highlight: inset 0 1px 0 rgba(244, 240, 230, 0.04);
 
-  /* Accent — moonlit indigo */
-  --accent: #7aa2ff;
-  --accent-2: #93b4ff;
-  --accent-soft: rgba(122, 162, 255, 0.14);
-  --accent-ring: rgba(122, 162, 255, 0.4);
-  --accent-glow: 0 0 22px rgba(122, 162, 255, 0.28);
+  --text: #f4f0e6; /* porcelain ink (warm, never cold white) */
+  --text-2: #c9c4ba; /* secondary */
+  --dim: #87847b; /* warm muted */
 
-  /* State semantics */
-  --ok: #6fcf97; /* OPEN / outside curfew */
-  --ok-soft: rgba(111, 207, 151, 0.14);
-  --warn: #f0a35e; /* loosen / fail-closed / grace */
-  --warn-soft: rgba(240, 163, 94, 0.14);
+  --bone: #c9c2b4; /* ceramic bone — PRIMARY action */
+  --bone-hover: #d8d2c4;
+  --brand: #4487d6; /* cobalt — BRAND / atmosphere / logo ONLY */
+  --sage: #8fb3a3; /* OPEN / positive */
+  --amber: #d7aa42; /* grace / warning */
+  --rose: #d98a80; /* destructive / unverified */
+  --teal: #74a0a0; /* data / secondary */
 
-  /* Soft, diffused ambient shadows (never harsh black) */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 18px 48px -20px rgba(0, 0, 0, 0.7);
+  /* soft, diffused ambient shadow (never harsh, never neon) */
+  --shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.7);
 
-  /* 8pt spacing */
   --sp-xs: 4px;
   --sp-sm: 8px;
   --sp-md: 16px;
   --sp-lg: 24px;
   --sp-xl: 32px;
   --sp-2xl: 48px;
-  --sp-3xl: 64px;
 
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 18px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
   --r-pill: 999px;
-  --rail-w: 64px;
+  --rail-w: 60px;
 
-  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --font-sans: "Geist", system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "Cascadia Code", "SF Mono", monospace;
+  --font-mono: "Geist Mono", ui-monospace, "Cascadia Code", monospace;
+  --font-serif: "Iowan Old Style", Georgia, "Times New Roman", serif; /* El Portal serif-display echo */
 }
 
 * {
   box-sizing: border-box;
 }
+[hidden] {
+  display: none !important;
+} /* fix: explicit display on sections must not defeat the hidden attribute */
+
 html,
 body {
   margin: 0;
@@ -89,35 +88,41 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
-  font-feature-settings: "ss01", "cv01";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
 }
 
-/* A single, very subtle moonlit wash from the top — the one restrained ambient effect. */
+/* El Portal signature: faint dot-grid + a single cool atmosphere wash from the top. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(120% 80% at 50% -20%, rgba(122, 162, 255, 0.1), transparent 60%),
-    radial-gradient(80% 60% at 100% 0%, rgba(122, 162, 255, 0.05), transparent 55%);
   z-index: 0;
+  background-image: radial-gradient(circle, rgba(244, 240, 230, 0.035) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(95% 60% at 50% -10%, rgba(68, 135, 214, 0.08), transparent 65%);
 }
 
-/* ── Type scale (Geist) ── */
+/* ── Type ── */
 .type-display {
   font-family: var(--font-mono);
-  font-size: 60px;
-  font-weight: 500;
+  font-size: 58px;
+  font-weight: 480;
   line-height: 1;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 .type-heading {
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.01em;
@@ -135,9 +140,9 @@ body::before {
 .eyebrow {
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--dim);
 }
 .tabular-nums,
 #countdown,
@@ -146,7 +151,7 @@ body::before {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Shell: left rail + main field ── */
+/* ── Shell ── */
 #shell {
   position: relative;
   z-index: 1;
@@ -157,37 +162,33 @@ body::before {
 #rail {
   width: var(--rail-w);
   flex: 0 0 var(--rail-w);
-  background: linear-gradient(180deg, var(--surface-1), rgba(18, 21, 31, 0.6));
-  border-right: 1px solid var(--border);
+  background: var(--surface-1);
+  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-sm);
+  gap: var(--sp-xs);
   padding: var(--sp-lg) 0;
 }
-
-/* small moon brand mark at the top of the rail */
 #rail .brand {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   margin-bottom: var(--sp-lg);
-  color: var(--accent);
-  filter: drop-shadow(var(--accent-glow));
+  color: var(--brand); /* cobalt — brand mark only */
 }
 #rail .brand svg {
   width: 100%;
   height: 100%;
   display: block;
 }
-
 .rail-item {
   position: relative;
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--faint);
+  color: var(--dim);
   background: none;
   border: none;
   border-radius: var(--r-md);
@@ -196,29 +197,27 @@ body::before {
   transition: color 0.18s var(--ease), background 0.18s var(--ease);
 }
 .rail-item:hover {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-2);
+  background: var(--surface-hover);
 }
 .rail-item[aria-current="page"] {
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--text);
+  background: var(--surface-hover);
 }
-/* left accent bar on the active item */
 .rail-item[aria-current="page"]::before {
   content: "";
   position: absolute;
   left: -12px;
   top: 50%;
   transform: translateY(-50%);
-  width: 3px;
-  height: 20px;
+  width: 2px;
+  height: 18px;
   border-radius: var(--r-pill);
-  background: var(--accent);
-  box-shadow: var(--accent-glow);
+  background: var(--bone);
 }
 .rail-item svg {
-  width: 22px;
-  height: 22px;
+  width: 21px;
+  height: 21px;
   display: block;
 }
 .rail-spacer {
@@ -230,74 +229,234 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--sp-2xl) var(--sp-xl);
+  padding: var(--sp-xl);
   overflow: auto;
 }
 
-/* ── Status view: header row → ring hero → token panel ── */
+/* ── Status view: brand bar → ring hero → 2-up card row → health footer ── */
 #status-view {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   width: 100%;
-  max-width: 460px;
+  max-width: 480px;
   gap: var(--sp-xl);
 }
 
-.status-head {
+.brand-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-md);
 }
+.brand-bar .mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-bar .mark svg {
+  width: 22px;
+  height: 22px;
+  color: var(--brand);
+}
+.wordmark {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+.wordmark em {
+  font-style: italic;
+  color: var(--text-2);
+}
 
-/* status pill (state at a glance) */
+/* status pill */
 .pill {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-sm);
-  padding: 6px 12px 6px 10px;
+  padding: 5px 12px 5px 10px;
   border-radius: var(--r-pill);
   border: 1px solid var(--border);
   background: var(--surface-1);
-  box-shadow: var(--highlight);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text);
+  letter-spacing: 0.02em;
+  color: var(--text-2);
 }
 .pill::before {
   content: "";
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--dim);
 }
 .pill.is-locked {
-  color: var(--accent-2);
+  color: var(--text);
 }
 .pill.is-locked::before {
-  background: var(--accent);
-  box-shadow: 0 0 10px var(--accent);
+  background: var(--brand);
 }
 .pill.is-open {
-  color: var(--ok);
+  color: var(--sage);
 }
 .pill.is-open::before {
-  background: var(--ok);
-  box-shadow: 0 0 10px var(--ok);
+  background: var(--sage);
 }
-.pill.is-grace,
+.pill.is-grace {
+  color: var(--amber);
+}
+.pill.is-grace::before {
+  background: var(--amber);
+}
 .pill.is-warn {
-  color: var(--warn);
+  color: var(--rose);
 }
-.pill.is-grace::before,
 .pill.is-warn::before {
-  background: var(--warn);
-  box-shadow: 0 0 10px var(--warn);
+  background: var(--rose);
 }
 
-/* guard-health chip (right side) */
+/* ── Hero ring (ceramic — thin, no glow) ── */
+.hero {
+  display: flex;
+  justify-content: center;
+}
+.ring-wrap {
+  position: relative;
+  width: 256px;
+  height: 256px;
+}
+.ring {
+  width: 100%;
+  height: 100%;
+  display: block;
+  transform: rotate(-90deg);
+}
+.ring-track {
+  fill: none;
+  stroke: rgba(244, 240, 230, 0.07);
+  stroke-width: 4;
+}
+#ring-arc {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.9s var(--ease), stroke 0.3s var(--ease);
+}
+#ring-moon {
+  fill: var(--text);
+  transition: fill 0.3s var(--ease);
+}
+.is-open #ring-arc {
+  stroke: var(--sage);
+}
+.is-grace #ring-arc,
+.verify-fail #ring-arc {
+  stroke: var(--amber);
+}
+.verify-fail #ring-arc {
+  stroke: var(--rose);
+}
+
+.ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 0 var(--sp-xl);
+}
+#status-word {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+#countdown {
+  color: var(--text);
+  margin: 0;
+}
+#status-caption {
+  color: var(--dim);
+  margin: 0;
+  max-width: 190px;
+  min-height: 1.4em;
+  font-size: 12px;
+}
+#status-caption.warn {
+  color: var(--amber);
+}
+.verify-fail #status-word,
+.verify-fail #countdown {
+  color: var(--rose);
+}
+
+#meter-divider {
+  border: none;
+  height: 0;
+  margin: 0;
+}
+
+/* ── 2-up ceramic card row ── */
+.card-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-md);
+}
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow), var(--highlight);
+  padding: var(--sp-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm);
+}
+.card .eyebrow {
+  margin: 0 0 var(--sp-xs) 0;
+}
+
+/* token meter — bone segments */
+#token-meter {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.token-dot {
+  flex: 1 1 0;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: rgba(244, 240, 230, 0.09);
+  transition: background 0.3s var(--ease);
+}
+.token-dot.filled {
+  background: var(--bone);
+}
+.token-caption {
+  color: var(--text);
+  font-weight: 500;
+  margin: var(--sp-sm) 0 0 0;
+  font-size: 13px;
+}
+.grace-caption {
+  color: var(--dim);
+  margin: 0;
+  font-size: 13px;
+}
+
+/* health footer */
+.foot {
+  display: flex;
+  justify-content: center;
+}
 .chip {
   display: inline-flex;
   align-items: center;
@@ -311,220 +470,77 @@ body::before {
   height: 14px;
 }
 .chip.warn {
-  color: var(--warn);
-}
-
-/* ── Hero: wind-down ring ── */
-.ring-wrap {
-  position: relative;
-  width: 300px;
-  height: 300px;
-  align-self: center;
-}
-.ring {
-  width: 100%;
-  height: 100%;
-  display: block;
-  transform: rotate(-90deg); /* 0 at 12 o'clock */
-}
-.ring-track {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.06);
-  stroke-width: 6;
-}
-#ring-arc {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 6;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 8px rgba(122, 162, 255, 0.45));
-  transition: stroke-dashoffset 0.9s var(--ease), stroke 0.3s var(--ease);
-}
-#ring-moon {
-  fill: var(--accent-2);
-  filter: drop-shadow(0 0 6px var(--accent));
-  transition: fill 0.3s var(--ease);
-}
-/* state recolors the arc/moon */
-.is-open #ring-arc {
-  stroke: var(--ok);
-  filter: drop-shadow(0 0 8px rgba(111, 207, 151, 0.45));
-}
-.is-open #ring-moon {
-  fill: var(--ok);
-  filter: drop-shadow(0 0 6px var(--ok));
-}
-.is-grace #ring-arc,
-.verify-fail #ring-arc {
-  stroke: var(--warn);
-  filter: drop-shadow(0 0 8px rgba(240, 163, 94, 0.4));
-}
-.is-grace #ring-moon,
-.verify-fail #ring-moon {
-  fill: var(--warn);
-}
-
-/* centered content inside the ring */
-.ring-center {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: var(--sp-sm);
-  padding: 0 var(--sp-xl);
-}
-#status-word {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--faint);
-}
-#countdown {
-  color: var(--text);
-  margin: 0;
-}
-#status-caption {
-  color: var(--dim);
-  margin: 0;
-  max-width: 200px;
-  min-height: 1.4em;
-}
-#status-caption.warn {
-  color: var(--warn);
-}
-.verify-fail #status-word,
-.verify-fail #countdown {
-  color: var(--warn);
-}
-
-/* keep #meter-divider in DOM (main.ts toggles its display) but make it invisible spacing —
-   composition now uses the panel, not a hairline. */
-#meter-divider {
-  border: none;
-  height: 0;
-  margin: 0;
-}
-
-/* ── Panels: nested tray + core (double-bezel), soft elevation + top highlight ── */
-.panel {
-  background: var(--tray);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: var(--sp-xs);
-  box-shadow: var(--shadow-md);
-}
-.panel-core {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: calc(var(--r-lg) - 5px);
-  box-shadow: var(--highlight);
-  padding: var(--sp-lg);
-}
-.panel-label {
-  margin: 0 0 var(--sp-md) 0;
-}
-
-/* token economy */
-#token-meter {
-  display: flex;
-  gap: var(--sp-sm);
-  align-items: center;
-}
-.token-dot {
-  flex: 1 1 0;
-  height: 8px;
-  border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.08);
-  transition: background 0.3s var(--ease), box-shadow 0.3s var(--ease);
-}
-.token-dot.filled {
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  box-shadow: 0 0 10px rgba(122, 162, 255, 0.4);
-}
-.token-caption {
-  color: var(--text);
-  font-weight: 500;
-  margin: var(--sp-md) 0 0 0;
-}
-.grace-caption {
-  color: var(--faint);
-  margin: var(--sp-xs) 0 0 0;
+  color: var(--amber);
 }
 
 /* ── Buttons ── */
 .action-btn {
-  min-height: 42px;
+  min-height: 38px;
   width: 100%;
-  padding: var(--sp-sm) var(--sp-lg);
-  margin-top: var(--sp-lg);
-  border: 1px solid var(--border-strong);
+  padding: var(--sp-sm) var(--sp-md);
+  margin-top: var(--sp-sm);
+  border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--surface-2);
-  box-shadow: var(--highlight);
-  color: var(--text);
+  color: var(--text-2);
   font-family: inherit;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: transform 0.15s var(--ease), border-color 0.18s var(--ease),
-    background 0.18s var(--ease);
+  transition: transform 0.12s var(--ease), border-color 0.18s var(--ease),
+    background 0.18s var(--ease), color 0.18s var(--ease);
 }
 .action-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--surface-2);
+  border-color: var(--border);
+  background: var(--surface-hover);
+  color: var(--text);
 }
 .action-btn:active:not(:disabled) {
   transform: scale(0.985);
 }
 .action-btn:disabled {
-  color: var(--faint);
+  color: var(--dim);
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 0.5;
 }
+/* enabled grace = bone (primary action), warm dark text — El Portal primary */
 #grace-btn.enabled {
-  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+  background: var(--bone);
   border-color: transparent;
-  color: #0a0c12;
-  box-shadow: var(--accent-glow), var(--highlight);
+  color: #1a1c17;
+}
+#grace-btn.enabled:hover {
+  background: var(--bone-hover);
 }
 #commit-btn.loosen {
-  border-color: var(--warn);
-  color: var(--warn);
-  background: var(--warn-soft);
+  border-color: rgba(215, 170, 66, 0.5);
+  color: var(--amber);
+  background: rgba(215, 170, 66, 0.08);
 }
 
 :focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-ring);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--bone);
   border-radius: var(--r-sm);
 }
 
-/* ── Edit view: one elevated panel (tray + core) ── */
+/* ── Edit view: one ceramic panel ── */
 #edit-view {
   width: 100%;
-  max-width: 460px;
+  max-width: 480px;
   display: flex;
   justify-content: center;
 }
 .edit-panel {
   width: 100%;
-  background: var(--tray);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: var(--sp-xs);
-  box-shadow: var(--shadow-md);
-}
-.edit-panel-core {
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: calc(var(--r-lg) - 5px);
-  box-shadow: var(--highlight);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow), var(--highlight);
   padding: var(--sp-xl);
+}
+.edit-panel-core {
+  display: contents;
 }
 .edit-title {
   margin: 0 0 var(--sp-lg) 0;
@@ -538,41 +554,43 @@ body::before {
   margin-bottom: var(--sp-md);
 }
 .edit-field label {
-  color: var(--dim);
+  color: var(--text-2);
 }
 .field-input {
-  background: var(--bg);
+  background: var(--surface-input);
   color: var(--text);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--r-sm);
   padding: var(--sp-sm) var(--sp-md);
   font-family: inherit;
-  font-size: 15px;
+  font-size: 14px;
   color-scheme: dark;
   transition: border-color 0.18s var(--ease);
 }
 .field-input:hover {
-  border-color: var(--accent-ring);
+  border-color: var(--bone);
 }
 .field-input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: var(--accent);
+  accent-color: var(--brand);
   justify-self: start;
 }
 .field-feedback {
-  color: var(--faint);
+  color: var(--dim);
+  font-size: 13px;
 }
 .field-feedback.tighten {
-  color: var(--accent-2);
+  color: var(--sage);
 }
 .field-feedback.loosen {
-  color: var(--warn);
+  color: var(--amber);
 }
 .edit-reason {
-  color: var(--warn);
+  color: var(--amber);
   margin: var(--sp-md) 0 0 0;
   min-height: 1.4em;
+  font-size: 13px;
 }
 
 @media (prefers-reduced-motion: reduce) {
