@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-06-10T11:28:01.866Z"
+status: milestone_complete
+stopped_at: Milestone complete (Phase 05 was final phase)
+last_updated: 2026-06-11T16:05:23.406Z
 last_activity: 2026-06-10
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 20
-  completed_plans: 19
+  completed_plans: 20
   percent: 80
 ---
 
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts.
-**Current focus:** Phase 05 — instance-wiring
+**Current focus:** Milestone complete
 
 ## Current Position
 
-Phase: 05 (instance-wiring) — EXECUTING
-Plan: 3 of 3 (Plan 01 complete)
+Phase: 05
+Plan: Not started
 Next: 05-02-PLAN.md — build deployable hooks (adapter + watchdog rewrite + install/deploy)
-Status: Ready to execute
-Last activity: 2026-06-10
+Status: Milestone complete
+Last activity: 2026-06-11
 
 Phase progress: [████████░░] 4/5 phases complete (Phase 04: 5/5 plans)
 
@@ -37,7 +37,7 @@ Phase progress: [████████░░] 4/5 phases complete (Phase 04: 
 
 **Velocity:**
 
-- Total plans completed: 9
+- Total plans completed: 12
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -47,6 +47,7 @@ Phase progress: [████████░░] 4/5 phases complete (Phase 04: 
 |-------|-------|-------|----------|
 | 03 | 4 | - | - |
 | 04 | 5 | - | - |
+| 05 | 3 | - | - |
 
 **Recent Trend:**
 
