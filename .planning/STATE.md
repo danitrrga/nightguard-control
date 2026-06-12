@@ -29,7 +29,7 @@ Phase: 05
 Plan: Not started
 Next: 05-02-PLAN.md — build deployable hooks (adapter + watchdog rewrite + install/deploy)
 Status: Milestone complete
-Last activity: 2026-06-12 - Completed quick task 260612-fsc: Tray number-badge (runtime time-remaining on the icon)
+Last activity: 2026-06-12 - Completed quick task 260612-gc2: Globalized curfew guard hook + app login-autostart (close-to-tray)
 
 Phase progress: [████████░░] 4/5 phases complete (Phase 04: 5/5 plans)
 
@@ -126,6 +126,7 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 260612-fhu | Polish the edit view (sole sanctioned editor) — Ceramic Night | 2026-06-12 | 03a57e9 | [260612-fhu-polish-edit-view](./quick/260612-fhu-polish-edit-view/) |
 | 260612-fsc | Tray number-badge — runtime time-remaining on the tray icon | 2026-06-12 | 8f67492 | [260612-fsc-tray-number-badge](./quick/260612-fsc-tray-number-badge/) |
+| 260612-gc2 | Globalize curfew guard hook + app login-autostart (close-to-tray) | 2026-06-12 | d96c76c | [260612-gc2-global-curfew-autostart](./quick/260612-gc2-global-curfew-autostart/) |
 
 ## Deferred Items
 
