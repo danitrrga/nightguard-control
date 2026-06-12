@@ -15,7 +15,7 @@ use commands::{
 use tauri::image::Image;
 use tauri::menu::{MenuBuilder, MenuItem, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
 
 /// Tray handles the frontend updates as the countdown ticks: the disabled "status" menu line and
 /// the brand icon (restored when there is no count to badge). Stored in managed state so
@@ -129,7 +129,25 @@ pub fn run() {
                 status,
                 default_icon,
             });
+
+            // The window is created hidden (tauri.conf `visible: false`) so the Run-key login
+            // launch (`--hidden`) stays tucked in the tray with no flash. A manual launch (no flag)
+            // shows it once ready; the tray's Show / left-click reveal it thereafter.
+            if !std::env::args().any(|a| a == "--hidden") {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Close-to-tray: this is a background curfew companion. Closing the window hides it
+            // (the tray countdown/badge stays live) instead of quitting — quit is via the tray menu.
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
         })
         .manage(ctx)
         .invoke_handler(tauri::generate_handler![
