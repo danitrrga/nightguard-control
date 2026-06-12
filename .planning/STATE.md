@@ -29,7 +29,7 @@ Phase: 05
 Plan: Not started
 Next: 05-02-PLAN.md — build deployable hooks (adapter + watchdog rewrite + install/deploy)
 Status: Milestone complete
-Last activity: 2026-06-12 - Completed quick task 260612-fhu: Polish the edit view (Ceramic Night)
+Last activity: 2026-06-12 - Completed quick task 260612-fsc: Tray number-badge (runtime time-remaining on the icon)
 
 Phase progress: [████████░░] 4/5 phases complete (Phase 04: 5/5 plans)
 
@@ -125,6 +125,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260612-fhu | Polish the edit view (sole sanctioned editor) — Ceramic Night | 2026-06-12 | 03a57e9 | [260612-fhu-polish-edit-view](./quick/260612-fhu-polish-edit-view/) |
+| 260612-fsc | Tray number-badge — runtime time-remaining on the tray icon | 2026-06-12 | 8f67492 | [260612-fsc-tray-number-badge](./quick/260612-fsc-tray-number-badge/) |
 
 ## Deferred Items
 
