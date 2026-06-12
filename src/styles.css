@@ -524,13 +524,45 @@ body::after {
   border-radius: var(--r-sm);
 }
 
-/* ── Edit view: one ceramic panel ── */
+/* ── Edit view: branded column + one ceramic panel (sole sanctioned editor) ── */
 #edit-view {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   width: 100%;
   max-width: 480px;
-  display: flex;
-  justify-content: center;
+  gap: var(--sp-xl);
 }
+
+/* weekly-token budget chip — mirrors the status pill; grounds the loosen cost while editing */
+.budget-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-2);
+}
+.budget-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+.budget-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(244, 240, 230, 0.16);
+  transition: background 0.3s var(--ease);
+}
+.budget-dots i.filled {
+  background: var(--bone);
+}
+
 .edit-panel {
   width: 100%;
   background: var(--surface-1);
@@ -539,46 +571,142 @@ body::after {
   box-shadow: var(--shadow), var(--highlight);
   padding: var(--sp-xl);
 }
-.edit-panel-core {
-  display: contents;
+
+.edit-head {
+  margin-bottom: var(--sp-lg);
+}
+.edit-head .eyebrow {
+  margin: 0 0 6px 0;
 }
 .edit-title {
-  margin: 0 0 var(--sp-lg) 0;
+  margin: 0;
   color: var(--text);
 }
-.edit-field {
-  display: grid;
-  grid-template-columns: 120px auto 1fr;
+.edit-sub {
+  color: var(--dim);
+  margin: 6px 0 0 0;
+  max-width: 42ch;
+}
+
+.edit-rule {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: var(--sp-lg) 0;
+}
+
+/* enabled toggle row */
+.edit-row {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--sp-md);
-  margin-bottom: var(--sp-md);
 }
-.edit-field label {
-  color: var(--text-2);
+.edit-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
+.row-label {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+}
+.row-hint {
+  color: var(--dim);
+}
+
+/* toggle switch (wraps the #field-enabled checkbox — controller still reads .checked) */
+.switch {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.switch-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+.switch-track {
+  display: inline-flex;
+  align-items: center;
+  width: 44px;
+  height: 24px;
+  padding: 2px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease);
+}
+.switch-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bone);
+  transform: translateX(0);
+  transition: transform 0.18s var(--ease), background 0.18s var(--ease);
+}
+.switch-input:checked + .switch-track {
+  background: var(--brand);
+  border-color: transparent;
+}
+.switch-input:checked + .switch-track .switch-thumb {
+  transform: translateX(20px);
+  background: var(--text);
+}
+.switch-input:focus-visible + .switch-track {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--bone);
+}
+
+/* time range: "Locks at" → "Opens at" */
+.time-range {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
+  gap: var(--sp-md);
+}
+.time-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.time-field .row-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.time-arrow {
+  align-self: center;
+  margin-top: 14px;
+  color: var(--dim);
+  font-size: 16px;
+}
+
 .field-input {
   background: var(--surface-input);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   padding: var(--sp-sm) var(--sp-md);
-  font-family: inherit;
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: 15px;
   color-scheme: dark;
   transition: border-color 0.18s var(--ease);
 }
-.field-input:hover {
+.field-input:hover,
+.field-input:focus {
   border-color: var(--bone);
+  outline: none;
 }
-.field-input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--brand);
-  justify-self: start;
-}
+
 .field-feedback {
+  display: block;
   color: var(--dim);
   font-size: 13px;
+  min-height: 1.2em;
 }
 .field-feedback.tighten {
   color: var(--sage);
@@ -586,11 +714,41 @@ body::after {
 .field-feedback.loosen {
   color: var(--amber);
 }
+/* enabled feedback sits full-width under the toggle row */
+#fb-curfew\.enabled:not(:empty) {
+  margin-top: var(--sp-sm);
+}
+
+/* commit footer */
+.edit-foot {
+  margin-top: var(--sp-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+}
 .edit-reason {
   color: var(--amber);
-  margin: var(--sp-md) 0 0 0;
-  min-height: 1.4em;
+  margin: 0;
+  min-height: 1.2em;
   font-size: 13px;
+}
+
+/* commit = primary (bone); loosen recolors amber; disabled = muted surface */
+#commit-btn {
+  margin-top: 0;
+  background: var(--bone);
+  border-color: transparent;
+  color: #1a1c17;
+  font-weight: 600;
+}
+#commit-btn:hover:not(:disabled) {
+  background: var(--bone-hover);
+  color: #1a1c17;
+}
+#commit-btn:disabled {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--dim);
 }
 
 @media (prefers-reduced-motion: reduce) {

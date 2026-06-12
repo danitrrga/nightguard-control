@@ -88,33 +88,59 @@
           </footer>
         </section>
 
-        <!-- Edit view: single ceramic panel (sole sanctioned editor). -->
+        <!-- Edit view: branded column + one ceramic panel (sole sanctioned editor). -->
         <section id="edit-view" aria-live="polite" hidden>
+          <header class="brand-bar">
+            <span class="mark">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9.3" stroke-width="1.1" opacity="0.45" /><path d="M15.6 13a5 5 0 1 1-4.7-6.9A3.9 3.9 0 0 0 15.6 13Z" fill="currentColor" stroke="none" />
+              </svg>
+              <span class="wordmark">Nightguard</span>
+            </span>
+            <span id="edit-budget" class="budget-chip" title="Weekly loosen tokens remaining">
+              <span class="budget-dots" id="edit-budget-dots" aria-hidden="true"></span>
+              <span id="edit-budget-text">—</span>
+            </span>
+          </header>
+
           <div class="edit-panel">
-            <div class="edit-panel-core">
-              <h2 class="type-heading edit-title">Curfew</h2>
+            <div class="edit-head">
+              <p class="eyebrow">Sole sanctioned editor</p>
+              <h2 class="type-heading edit-title">Curfew schedule</h2>
+              <p class="edit-sub type-label">Edits here are signed. Hand-edits to the config revert automatically.</p>
+            </div>
 
-              <div class="edit-field">
-                <label class="type-body" for="field-enabled">Curfew enabled</label>
-                <input type="checkbox" id="field-enabled" class="field-input" />
-                <span class="field-feedback type-label" id="fb-curfew.enabled"></span>
+            <div class="edit-row">
+              <div class="edit-row-main">
+                <label class="row-label" for="field-enabled">Curfew enabled</label>
+                <p class="row-hint type-label">When off, no lock is enforced.</p>
               </div>
+              <label class="switch">
+                <input type="checkbox" id="field-enabled" class="switch-input" />
+                <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+              </label>
+            </div>
+            <span class="field-feedback type-label" id="fb-curfew.enabled"></span>
 
-              <div class="edit-field">
-                <label class="type-body" for="field-start">Start</label>
+            <hr class="edit-rule" />
+
+            <div class="time-range">
+              <div class="time-field">
+                <label class="row-label" for="field-start">Locks at</label>
                 <input type="time" id="field-start" class="field-input" />
                 <span class="field-feedback type-label" id="fb-curfew.start"></span>
               </div>
-
-              <div class="edit-field">
-                <label class="type-body" for="field-end">End</label>
+              <span class="time-arrow" aria-hidden="true">&rarr;</span>
+              <div class="time-field">
+                <label class="row-label" for="field-end">Opens at</label>
                 <input type="time" id="field-end" class="field-input" />
                 <span class="field-feedback type-label" id="fb-curfew.end"></span>
               </div>
+            </div>
 
+            <div class="edit-foot">
               <p class="edit-reason type-label" id="edit-reason"></p>
-
-              <button type="button" id="commit-btn" class="action-btn type-body">Commit changes</button>
+              <button type="button" id="commit-btn" class="action-btn">Commit changes</button>
             </div>
           </div>
         </section>

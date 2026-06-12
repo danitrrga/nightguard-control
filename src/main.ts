@@ -90,6 +90,10 @@ const guardHealthTextEl = () => el<HTMLElement>("guard-health-text");
 const ringArcEl = () => el<SVGCircleElement>("ring-arc");
 const ringMoonEl = () => el<SVGCircleElement>("ring-moon");
 
+// Edit-view weekly-token budget chip (grounds the loosen cost while editing).
+const editBudgetDotsEl = () => el<HTMLElement>("edit-budget-dots");
+const editBudgetTextEl = () => el<HTMLElement>("edit-budget-text");
+
 // Wind-down ring geometry (r=108 within the 240 viewBox). The arc fraction encodes the countdown
 // magnitude (capped at 12h) and the moon marker sits at the arc's leading end. Driven PURELY from
 // the existing DTO/countdown — no new backend data, no new IPC. The ring + moon live inside the
@@ -186,6 +190,22 @@ function updateTray(s: StateDto): void {
   if (key === lastTrayKey) return; // only push on a real change (avoid per-second IPC churn)
   lastTrayKey = key;
   void invoke("set_tray_status", { menuLine, tooltip }).catch(() => {});
+}
+
+/**
+ * Fill the edit-view budget chip from the same re-verified DTO the status view uses, so the cost
+ * of a loosen ("costs 1 token") is grounded by the live remaining count while editing.
+ */
+function renderEditBudget(s: StateDto): void {
+  const remaining = Math.max(0, Math.min(WEEKLY_TOKENS, s.tokens_remaining));
+  const dots = editBudgetDotsEl();
+  dots.replaceChildren();
+  for (let i = 0; i < WEEKLY_TOKENS; i++) {
+    const d = document.createElement("i");
+    if (i < remaining) d.className = "filled";
+    dots.appendChild(d);
+  }
+  editBudgetTextEl().textContent = `${remaining} of ${WEEKLY_TOKENS} left`;
 }
 
 // ── render ──
@@ -310,6 +330,9 @@ function render(s: StateDto): void {
   graceBtn.disabled = !graceEnabled;
   graceBtn.classList.toggle("enabled", graceEnabled);
 
+  // Edit-view budget chip stays in sync with the live token count.
+  renderEditBudget(s);
+
   dividerEl().style.display = "";
 }
 
@@ -355,6 +378,8 @@ function renderEmpty(): void {
   graceCaptionEl().textContent = "";
   graceBtnEl().disabled = true;
   graceBtnEl().classList.remove("enabled");
+  editBudgetDotsEl().replaceChildren();
+  editBudgetTextEl().textContent = "—";
   renderRing(0, true);
   dividerEl().style.display = "none";
 }
