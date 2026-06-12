@@ -156,6 +156,18 @@ function fmtShort(secs: number): string {
 }
 
 /**
+ * Ultra-compact text for the tray ICON badge — at most 2-3 glyphs the Rust bitmap font can draw:
+ * minutes ("0".."59") under an hour, "{h}h" otherwise (clamped to "99h"). The badge is the
+ * most-significant unit only; the menu line / tooltip carry the precise "1h 24m".
+ */
+function fmtBadge(secs: number): string {
+  const m = Math.round(Math.max(0, secs) / 60);
+  if (m < 60) return String(m);
+  const h = Math.floor(m / 60);
+  return `${Math.min(h, 99)}h`;
+}
+
+/**
  * Push the current curfew countdown into the system tray (menu status line + hover tooltip) so
  * the time remaining is visible at a glance without opening the window. Throttled to minute (or
  * state) changes via `lastTrayKey`. Advisory display — the guard stays the source of truth.
@@ -164,32 +176,43 @@ function updateTray(s: StateDto): void {
   const verifyFail = !s.state_verified || s.maximal_lockout;
   let menuLine: string;
   let tooltip: string;
+  let badge: string; // icon overlay text ("" = restore plain brand icon)
+  let state: string; // tint: locked | open | grace | warn | none
   let key: string;
   if (verifyFail) {
     menuLine = "State unverified — locked";
     tooltip = "Nightguard — state unverified (locked)";
+    badge = "!";
+    state = "warn";
     key = "vf";
   } else if (s.boundary_kind === "none") {
     menuLine = "Open — no upcoming lock";
     tooltip = "Nightguard — open · no upcoming lock";
+    badge = "";
+    state = "none";
     key = "none";
   } else {
-    const short = fmtShort(s.boundary_unix - nowUnix());
+    const secs = s.boundary_unix - nowUnix();
+    const short = fmtShort(secs);
+    badge = fmtBadge(secs);
     if (s.locked && s.grace_active) {
       menuLine = `Grace — ${short} left`;
       tooltip = `Nightguard — grace · ${short} left`;
+      state = "grace";
     } else if (s.locked) {
       menuLine = `Locked — ${short} to open`;
       tooltip = `Nightguard — locked · ${short} to open`;
+      state = "locked";
     } else {
       menuLine = `Open — locks in ${short}`;
       tooltip = `Nightguard — open · locks in ${short}`;
+      state = "open";
     }
-    key = `${s.locked}|${s.grace_active}|${short}`;
+    key = `${state}|${badge}`;
   }
   if (key === lastTrayKey) return; // only push on a real change (avoid per-second IPC churn)
   lastTrayKey = key;
-  void invoke("set_tray_status", { menuLine, tooltip }).catch(() => {});
+  void invoke("set_tray_status", { menuLine, tooltip, badge, state }).catch(() => {});
 }
 
 /**

@@ -6,22 +6,27 @@
 //! key lives in `AppCtx` in-host and never crosses the `invoke` boundary.
 
 mod commands;
+mod tray_badge;
 
 use commands::{
     classify_change, commit_change, data_dir, get_state, read_config, use_grace, AppCtx,
 };
 
+use tauri::image::Image;
 use tauri::menu::{MenuBuilder, MenuItem, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 
-/// Tray handle the frontend updates as the countdown ticks (the disabled "status" menu line).
-/// Stored in managed state so `set_tray_status` can reach it; the tooltip is updated by tray id.
+/// Tray handles the frontend updates as the countdown ticks: the disabled "status" menu line and
+/// the brand icon (restored when there is no count to badge). Stored in managed state so
+/// `set_tray_status` can reach them; the tooltip is updated by tray id.
 struct TrayHandles {
     status: MenuItem<tauri::Wry>,
+    default_icon: Image<'static>,
 }
 
-/// Push the current "time remaining" into the tray: the menu status line + the hover tooltip.
+/// Push the current "time remaining" into the tray: the menu status line, the hover tooltip, and
+/// the icon badge (`badge` text tinted by `state`; empty `badge` restores the plain brand icon).
 /// Called from the frontend tick so the tray reflects the live curfew countdown at a glance.
 /// Advisory display only — the guard remains the source of truth; this never writes state.
 #[tauri::command]
@@ -30,10 +35,21 @@ fn set_tray_status(
     tray: tauri::State<'_, TrayHandles>,
     menu_line: String,
     tooltip: String,
+    badge: String,
+    state: String,
 ) -> Result<(), String> {
     tray.status.set_text(&menu_line).map_err(|e| e.to_string())?;
     if let Some(t) = app.tray_by_id("main") {
         let _ = t.set_tooltip(Some(&tooltip));
+        // Badge the icon with the count when there is one; otherwise show the plain brand mark.
+        let icon = if badge.is_empty() {
+            Some(tray.default_icon.clone())
+        } else {
+            tray_badge::render_badge(&badge, &state).or_else(|| Some(tray.default_icon.clone()))
+        };
+        if let Some(img) = icon {
+            let _ = t.set_icon(Some(img));
+        }
     }
     Ok(())
 }
@@ -74,6 +90,9 @@ pub fn run() {
                 .default_window_icon()
                 .cloned()
                 .expect("bundled default window icon");
+            // Owned 'static copy so the badge path can restore the plain brand icon at runtime.
+            let default_icon =
+                Image::new_owned(icon.rgba().to_vec(), icon.width(), icon.height());
 
             let _tray = TrayIconBuilder::with_id("main")
                 .icon(icon)
@@ -106,7 +125,10 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            app.manage(TrayHandles { status });
+            app.manage(TrayHandles {
+                status,
+                default_icon,
+            });
             Ok(())
         })
         .manage(ctx)
