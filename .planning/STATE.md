@@ -29,7 +29,7 @@ Phase: 05
 Plan: Not started
 Next: 05-02-PLAN.md — build deployable hooks (adapter + watchdog rewrite + install/deploy)
 Status: Milestone complete
-Last activity: 2026-06-11
+Last activity: 2026-06-12 - Completed quick task 260612-fhu: Polish the edit view (Ceramic Night)
 
 Phase progress: [████████░░] 4/5 phases complete (Phase 04: 5/5 plans)
 
@@ -119,6 +119,12 @@ None yet.
 - [Phase 1]: DPAPI + HMAC Rust↔PowerShell interop is the single genuine technical risk — must pass the byte-identical round-trip spike as the phase exit gate.
 - [Phase 2]: Verify `sntpc 0.10.1` `sync::get_time` signature and `yamlpatch` round-trip against the actual PowerShell minimal YAML parser at integration.
 - [Phase 3]: Verify hook-path resolution under Claude Code junctions before wiring (`$PSScriptRoot\..` may resolve to the drifted `~/.claude/nightguard`).
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260612-fhu | Polish the edit view (sole sanctioned editor) — Ceramic Night | 2026-06-12 | 03a57e9 | [260612-fhu-polish-edit-view](./quick/260612-fhu-polish-edit-view/) |
 
 ## Deferred Items
 
