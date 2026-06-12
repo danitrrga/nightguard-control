@@ -29,7 +29,7 @@ Phase: 05
 Plan: Not started
 Next: 05-02-PLAN.md — build deployable hooks (adapter + watchdog rewrite + install/deploy)
 Status: Milestone complete
-Last activity: 2026-06-12 - Completed quick task 260612-gc2: Globalized curfew guard hook + app login-autostart (close-to-tray)
+Last activity: 2026-06-12 - 260612-gc2 + cutover: global curfew hook promoted to the new nightguard_adapter.ps1 (full fail-closed guard) in all projects; app login-autostart (close-to-tray)
 
 Phase progress: [████████░░] 4/5 phases complete (Phase 04: 5/5 plans)
 

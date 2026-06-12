@@ -67,6 +67,23 @@ The prior "cutover complete" notes claimed the live guard was the new Phase-5
 - Run-key points at the dev `target/release` exe (auto-fresh on each
   `npm run tauri build`); a `cargo clean` would remove it — re-run the build +
   installer if so. Alternatively install the NSIS bundle and point the key there.
-- Decision was the **legacy** guard (parity with what was live). Switching the
-  live guard to the new `nightguard_adapter.ps1` (full HMAC/schedule/fail-closed)
-  remains an open, separate cutover if desired.
+- Decision was initially the **legacy** guard (parity with what was live).
+
+## Addendum — cutover to the new guard (same day, user: "GO AHEAD")
+
+Promoted the global hook from the legacy `curfew_guard.ps1` to the Phase-5
+**`nightguard_adapter.ps1`** (thin Claude-Code seam → `nightguard_guard.ps1`,
+the full HMAC config+state verify / schedule verdict / fail-closed oracle).
+Prove-then-switch:
+- Adapter contract confirmed: stdin prompt JSON → exit 0 allow / exit 2 block;
+  ANY exception (unset NIGHTGUARD_DIR, guard throw, non-{0,1} exit) → exit 2
+  (fail-closed). `/shutdown`-type `allow_commands` bypass before invoking guard.
+- Proved adapter **exit 0 (allow)** with user-scope NIGHTGUARD_DIR + a fake
+  prompt, mirroring the wired invocation — **before and after** the swap (daytime,
+  state verified).
+- Swapped `~/.claude/settings.json` UserPromptSubmit `curfew_guard.ps1` →
+  `nightguard_adapter.ps1`; re-validated JSON; hook list confirmed.
+- Now live in **all** projects: full fail-closed guard (HMAC-verified state, NTP
+  true-time, clock-tamper, schedule). Blocks (exit 2) at curfew / offline /
+  tamper / any verification failure — everywhere.
+- Revert: point the UserPromptSubmit command back at `curfew_guard.ps1`.
