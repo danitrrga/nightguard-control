@@ -8,14 +8,28 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <div id="titlebar" data-tauri-drag-region>
+      <span class="tb-brand">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9.3" stroke-width="1.1" opacity="0.45" /><path d="M15.6 13a5 5 0 1 1-4.7-6.9A3.9 3.9 0 0 0 15.6 13Z" fill="currentColor" stroke="none" />
+        </svg>
+        <span class="wordmark">Nightguard</span>
+      </span>
+      <span id="status-pill" class="pill">—</span>
+      <div class="tb-controls">
+        <button type="button" id="btn-min" class="tb-btn" aria-label="Minimize" title="Minimize">
+          <svg viewBox="0 0 10 1" aria-hidden="true"><rect width="10" height="1" fill="currentColor"/></svg>
+        </button>
+        <button type="button" id="btn-max" class="tb-btn" aria-label="Maximize" title="Maximize">
+          <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x=".5" y=".5" width="9" height="9"/></svg>
+        </button>
+        <button type="button" id="btn-close" class="tb-btn tb-close" aria-label="Close" title="Close">
+          <svg viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true"><path d="M1 1l8 8M9 1L1 9"/></svg>
+        </button>
+      </div>
+    </div>
     <div id="shell">
       <nav id="rail" aria-label="Primary">
-        <span class="brand" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="9.3" stroke-width="1.1" opacity="0.45" /><path d="M15.6 13a5 5 0 1 1-4.7-6.9A3.9 3.9 0 0 0 15.6 13Z" fill="currentColor" stroke="none" />
-          </svg>
-        </span>
-
         <button type="button" class="rail-item" id="rail-status" aria-label="Status" aria-current="page" title="Status">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="8.5" />
@@ -34,18 +48,8 @@
       </nav>
 
       <main id="main">
-        <!-- Status view: brand bar → ring hero → 2-up cards → health footer. -->
+        <!-- Status view: ring hero → 2-up cards → health footer. -->
         <section id="status-view" aria-live="polite">
-          <header class="brand-bar">
-            <span class="mark">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="9.3" stroke-width="1.1" opacity="0.45" /><path d="M15.6 13a5 5 0 1 1-4.7-6.9A3.9 3.9 0 0 0 15.6 13Z" fill="currentColor" stroke="none" />
-              </svg>
-              <span class="wordmark">Nightguard</span>
-            </span>
-            <span id="status-pill" class="pill">—</span>
-          </header>
-
           <div class="hero">
             <div class="ring-wrap">
               <svg class="ring" viewBox="0 0 240 240" aria-hidden="true">
@@ -60,8 +64,6 @@
               </div>
             </div>
           </div>
-
-          <hr id="meter-divider" />
 
           <div class="card-row">
             <section class="card" aria-label="Weekly loosen tokens">
@@ -88,24 +90,17 @@
           </footer>
         </section>
 
-        <!-- Edit view: branded column + one ceramic panel (sole sanctioned editor). -->
+        <!-- Edit view: one ceramic panel (sole sanctioned editor). -->
         <section id="edit-view" aria-live="polite" hidden>
-          <header class="brand-bar">
-            <span class="mark">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="9.3" stroke-width="1.1" opacity="0.45" /><path d="M15.6 13a5 5 0 1 1-4.7-6.9A3.9 3.9 0 0 0 15.6 13Z" fill="currentColor" stroke="none" />
-              </svg>
-              <span class="wordmark">Nightguard</span>
-            </span>
-            <span id="edit-budget" class="budget-chip" title="Weekly loosen tokens remaining">
-              <span class="budget-dots" id="edit-budget-dots" aria-hidden="true"></span>
-              <span id="edit-budget-text">—</span>
-            </span>
-          </header>
-
           <div class="edit-panel">
             <div class="edit-head">
-              <p class="eyebrow">Sole sanctioned editor</p>
+              <div class="edit-head-top">
+                <p class="eyebrow">Sole sanctioned editor</p>
+                <span id="edit-budget" class="budget-chip" title="Weekly loosen tokens remaining">
+                  <span class="budget-dots" id="edit-budget-dots" aria-hidden="true"></span>
+                  <span id="edit-budget-text">—</span>
+                </span>
+              </div>
               <h2 class="type-heading edit-title">Curfew schedule</h2>
               <p class="edit-sub type-label">Edits here are signed. Hand-edits to the config revert automatically.</p>
             </div>
