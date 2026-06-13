@@ -65,6 +65,7 @@
   --r-pill: 999px;
   --rail-w: 60px;
 
+  --titlebar-h: 36px;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --font-sans: "Geist", system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "Cascadia Code", monospace;
@@ -85,6 +86,8 @@ body {
   height: 100%;
 }
 body {
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
@@ -110,6 +113,70 @@ body::after {
   pointer-events: none;
   z-index: 0;
   background: radial-gradient(95% 60% at 50% -10%, rgba(68, 135, 214, 0.08), transparent 65%);
+}
+
+/* ── Titlebar ── */
+#titlebar {
+  flex: 0 0 var(--titlebar-h);
+  height: var(--titlebar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--sp-sm) 0 var(--sp-md);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative;
+  z-index: 10;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+.tb-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--brand);
+}
+.tb-brand svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.tb-brand .wordmark {
+  font-size: 14px;
+  color: var(--text);
+}
+.tb-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+.tb-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--dim);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+.tb-btn svg {
+  width: 10px;
+  height: 10px;
+  display: block;
+}
+.tb-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.tb-btn.tb-close:hover {
+  background: var(--rose);
+  color: #fff;
 }
 
 /* ── Type ── */
@@ -156,7 +223,8 @@ body::after {
   position: relative;
   z-index: 1;
   display: flex;
-  height: 100%;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 #rail {
@@ -169,17 +237,6 @@ body::after {
   align-items: center;
   gap: var(--sp-xs);
   padding: var(--sp-lg) 0;
-}
-#rail .brand {
-  width: 26px;
-  height: 26px;
-  margin-bottom: var(--sp-lg);
-  color: var(--brand); /* cobalt — brand mark only */
-}
-#rail .brand svg {
-  width: 100%;
-  height: 100%;
-  display: block;
 }
 .rail-item {
   position: relative;
@@ -241,34 +298,6 @@ body::after {
   width: 100%;
   max-width: 480px;
   gap: var(--sp-xl);
-}
-
-.brand-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-md);
-}
-.brand-bar .mark {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-.brand-bar .mark svg {
-  width: 22px;
-  height: 22px;
-  color: var(--brand);
-}
-.wordmark {
-  font-family: var(--font-serif);
-  font-size: 19px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  color: var(--text);
-}
-.wordmark em {
-  font-style: italic;
-  color: var(--text-2);
 }
 
 /* status pill */
@@ -396,12 +425,6 @@ body::after {
 .verify-fail #status-word,
 .verify-fail #countdown {
   color: var(--rose);
-}
-
-#meter-divider {
-  border: none;
-  height: 0;
-  margin: 0;
 }
 
 /* ── 2-up ceramic card row ── */
@@ -574,6 +597,15 @@ body::after {
 
 .edit-head {
   margin-bottom: var(--sp-lg);
+}
+.edit-head-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.edit-head-top .eyebrow {
+  margin: 0;
 }
 .edit-head .eyebrow {
   margin: 0 0 6px 0;

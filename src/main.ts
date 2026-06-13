@@ -10,6 +10,7 @@
 // from `@tauri-apps/plugin-fs`.
 import { invoke } from "@tauri-apps/api/core";
 import { watch } from "@tauri-apps/plugin-fs";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 /**
  * The shared IPC contract — mirrors `StateDto` in src-tauri/src/commands.rs field-for-field.
@@ -66,7 +67,6 @@ const statusView = () => el<HTMLElement>("status-view");
 const statusWordEl = () => el<HTMLElement>("status-word");
 const countdownEl = () => el<HTMLElement>("countdown");
 const captionEl = () => el<HTMLElement>("status-caption");
-const dividerEl = () => el<HTMLElement>("meter-divider");
 const tokenMeterEl = () => el<HTMLElement>("token-meter");
 const tokenCaptionEl = () => el<HTMLElement>("token-caption");
 const graceCaptionEl = () => el<HTMLElement>("grace-caption");
@@ -331,18 +331,16 @@ function render(s: StateDto): void {
     dot.className = i < remaining ? "token-dot filled" : "token-dot";
     meter.appendChild(dot);
   }
-  tokenCaptionEl().textContent = `${remaining} of 3 tokens · resets Monday ${fmtDate(
-    s.next_reset_unix,
-  )}`;
+  tokenCaptionEl().innerHTML = `${remaining} of 3 tokens left<br>Resets Mon ${fmtDate(s.next_reset_unix)}`;
 
   // Grace caption (UI-SPEC line 153).
   let grace: string;
   if (!s.locked) {
-    grace = "+8 unavailable (not locked)";
+    grace = "Unavailable while open";
   } else if (s.grace_available_today) {
-    grace = "+8 available today";
+    grace = "Available · once today";
   } else {
-    grace = "+8 used today";
+    grace = "Used today";
   }
   graceCaptionEl().textContent = grace;
 
@@ -355,8 +353,6 @@ function render(s: StateDto): void {
 
   // Edit-view budget chip stays in sync with the live token count.
   renderEditBudget(s);
-
-  dividerEl().style.display = "";
 }
 
 /**
@@ -404,7 +400,6 @@ function renderEmpty(): void {
   editBudgetDotsEl().replaceChildren();
   editBudgetTextEl().textContent = "—";
   renderRing(0, true);
-  dividerEl().style.display = "none";
 }
 
 // ── liveness ──
@@ -706,6 +701,11 @@ async function init(): Promise<void> {
   setInterval(() => {
     if (last) renderCountdownOnly(last);
   }, 1000);
+
+  const win = getCurrentWindow();
+  document.getElementById("btn-min")?.addEventListener("click", () => void win.minimize());
+  document.getElementById("btn-max")?.addEventListener("click", () => void win.toggleMaximize());
+  document.getElementById("btn-close")?.addEventListener("click", () => void win.close());
 }
 
 window.addEventListener("DOMContentLoaded", () => {
