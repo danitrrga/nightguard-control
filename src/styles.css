@@ -360,8 +360,8 @@ body::after {
 }
 .ring-wrap {
   position: relative;
-  width: 256px;
-  height: 256px;
+  width: 288px;
+  height: 288px;
 }
 .ring {
   width: 100%;
@@ -405,7 +405,7 @@ body::after {
   justify-content: center;
   text-align: center;
   gap: 6px;
-  padding: 0 var(--sp-xl);
+  padding: 0 32px;
 }
 #status-word {
   margin: 0;
@@ -418,6 +418,7 @@ body::after {
 #countdown {
   color: var(--text);
   margin: 0;
+  font-size: 44px;
 }
 #status-caption {
   color: var(--dim);
