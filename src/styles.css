@@ -128,7 +128,6 @@ body::after {
   position: relative;
   z-index: 10;
   user-select: none;
-  -webkit-app-region: drag;
 }
 .tb-brand {
   display: inline-flex;
@@ -136,7 +135,8 @@ body::after {
   gap: 8px;
   color: var(--brand);
 }
-.tb-brand svg {
+.tb-brand svg,
+.tb-brand img {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
@@ -149,7 +149,6 @@ body::after {
   display: flex;
   align-items: center;
   gap: 2px;
-  -webkit-app-region: no-drag;
 }
 .tb-btn {
   width: 32px;
