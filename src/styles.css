@@ -121,12 +121,20 @@ body::after {
   height: var(--titlebar-h);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--sp-sm) 0 var(--sp-md);
+  padding: 0 0 0 var(--sp-md);
   background: var(--surface-1);
   border-bottom: 1px solid var(--border-subtle);
   position: relative;
   z-index: 10;
+}
+.tb-drag {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: var(--sp-sm);
   user-select: none;
 }
 .tb-brand {

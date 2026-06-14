@@ -703,6 +703,9 @@ async function init(): Promise<void> {
   }, 1000);
 
   const win = getCurrentWindow();
+  for (const id of ["btn-min", "btn-max", "btn-close"]) {
+    document.getElementById(id)?.addEventListener("mousedown", e => e.stopPropagation());
+  }
   document.getElementById("btn-min")?.addEventListener("click", () => void win.minimize());
   document.getElementById("btn-max")?.addEventListener("click", () => void win.toggleMaximize());
   document.getElementById("btn-close")?.addEventListener("click", () => void win.close());
