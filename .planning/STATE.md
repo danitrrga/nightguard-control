@@ -29,7 +29,7 @@ Phase: 05
 Plan: Not started
 Next: 05-02-PLAN.md — build deployable hooks (adapter + watchdog rewrite + install/deploy)
 Status: Milestone complete
-Last activity: 2026-06-13 - 260613-opk: UI polish — custom titlebar (decorations=false), brand consolidation, copy cleanup, custom min/max/close window chrome
+Last activity: 2026-06-14 - 260614-dkp: fixed countdown overflowing the ring (288px ring, 44px digits) + redesigned logo/mark (cobalt guard-arc + bone crescent), icons regenerated
 
 Phase progress: [████████░░] 4/5 phases complete (Phase 04: 5/5 plans)
 
@@ -128,6 +128,7 @@ None yet.
 | 260612-fsc | Tray number-badge — runtime time-remaining on the tray icon | 2026-06-12 | 8f67492 | [260612-fsc-tray-number-badge](./quick/260612-fsc-tray-number-badge/) |
 | 260612-gc2 | Globalize curfew guard hook + app login-autostart (close-to-tray) | 2026-06-12 | d96c76c | [260612-gc2-global-curfew-autostart](./quick/260612-gc2-global-curfew-autostart/) |
 | 260613-opk | UI Polish: fix layout, alignment, text inconsistencies plus add custom window chrome | 2026-06-13 | 14e3bc7 | [260613-opk-ui-polish-fix-layout-alignment-text-inco](./quick/260613-opk-ui-polish-fix-layout-alignment-text-inco/) |
+| 260614-dkp | Polish: fix countdown overflowing the ring + redesign logo/mark | 2026-06-14 | 4edcfc8 | [260614-dkp-polish-app-countdown-text-doesnt-fit-in-](./quick/260614-dkp-polish-app-countdown-text-doesnt-fit-in-/) |
 
 ## Deferred Items
 
