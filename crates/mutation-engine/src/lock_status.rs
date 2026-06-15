@@ -26,8 +26,11 @@
 //!          - value `HH:MM-HH:MM` => that window applies for the day (overnight-wrap allowed).
 //!      - if `schedule.<weekday>` is **absent**, fall back to `curfew.start`-`curfew.end`.
 //! 3. **Inside-window verdict (overnight-wrap aware).** A window `start..end` where
-//!    `end <= start` *wraps past midnight* (e.g. `23:00-07:00`): "inside" is
+//!    `end < start` *wraps past midnight* (e.g. `23:00-07:00`): "inside" is
 //!    `minute >= start OR minute < end`. A non-wrapping window is `start <= minute < end`.
+//!    `end == start` is an EMPTY window (no curfew) — never locked — matching the guard's
+//!    strict `$startMin -gt $endMin` wrap test. This is the single midnight invariant the
+//!    Rust display and the PowerShell guard must agree on.
 //!    - **locked** => `boundary_kind = "curfew_end"`, `boundary_unix` = the window-end instant
 //!      on the CORRECT calendar day (for a wrap entered late, that is the NEXT day — derived
 //!      from the wrapped end, never a naive `+24h`; mirrors `week.rs`'s explicit instant math).
@@ -195,7 +198,17 @@ pub fn lock_status(config_yaml: &str, now: DateTime<Utc>) -> LockStatus {
     };
 
     // (3) Inside-window verdict + boundary, overnight-wrap aware.
-    let wraps = end_min <= start_min;
+    // A window where `end == start` is EMPTY (zero-length) — no curfew. The guard treats it the
+    // same way (`if ($startMin -gt $endMin)` is false, the non-wrap branch then yields
+    // `minute >= s && minute < s` == false), so report "no upcoming lock" rather than a
+    // perpetual never-firing countdown. With the old `<=` the app instead showed a 24/7 lock for
+    // `start == end` (e.g. driving both to 00:00) while the guard enforced nothing.
+    if start_min == end_min {
+        return LockStatus::no_upcoming_lock();
+    }
+
+    // STRICT `<` so the overnight wrap matches the guard's `$startMin -gt $endMin` exactly.
+    let wraps = end_min < start_min;
     let inside = if wraps {
         minute >= start_min || minute < end_min
     } else {

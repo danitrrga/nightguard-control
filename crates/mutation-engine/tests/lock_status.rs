@@ -180,6 +180,44 @@ fn malformed_window_fails_safe_locked() {
     assert!(s.locked, "a malformed window must fail-safe LOCKED, never silently unlock");
 }
 
+// ---- start == end is an EMPTY window (no curfew), matching the guard (not 24/7) -------------
+#[test]
+fn equal_start_end_is_no_curfew_not_locked() {
+    // The old `end <= start` wrap treated start==end as a 24/7 lock; the guard's strict
+    // `$startMin -gt $endMin` treats it as no curfew. The app must match the guard.
+    let cfg = cfg_window("00:00", "00:00");
+    let now = utc(2026, 6, 9, 12, 0);
+    let s = lock_status(&cfg, now);
+    assert!(!s.locked, "start==end is an empty window -> never locked (matches the guard)");
+    assert_eq!(s.boundary_kind, "none");
+    assert_eq!(s.boundary_unix, NO_UPCOMING_LOCK);
+}
+
+#[test]
+fn equal_start_end_midday_is_no_curfew() {
+    // Same invariant at a non-midnight equal value (e.g. shrinking a window until start meets end).
+    let cfg = cfg_window("05:30", "05:30");
+    let now = utc(2026, 6, 9, 3, 30); // 05:30 local == 03:30 UTC — would be the boundary instant
+    let s = lock_status(&cfg, now);
+    assert!(!s.locked, "an empty window is never locked, even at the would-be boundary minute");
+    assert_eq!(s.boundary_kind, "none");
+}
+
+// ---- a window ENDING at 00:00 (midnight) ends tonight, not 24h later ------------------------
+#[test]
+fn window_ending_at_midnight_boundary_is_tonight() {
+    // 22:00-00:00 means "locked until midnight tonight". At 23:00 the boundary is the NEXT
+    // calendar day's 00:00 (1h away), not a naive far-future instant.
+    let cfg = cfg_window("22:00", "00:00");
+    // 2026-06-09 23:00 CEST == 21:00 UTC.
+    let now = utc(2026, 6, 9, 21, 0);
+    let s = lock_status(&cfg, now);
+    assert!(s.locked, "23:00 is inside the 22:00-00:00 window");
+    assert_eq!(s.boundary_kind, "curfew_end");
+    // Midnight tonight == next calendar day 00:00 (1 hour away).
+    assert_eq!(s.boundary_unix, local_unix(2026, 6, 10, 0, 0));
+}
+
 // ---- Test 8: bad timezone defaults to UTC, never panics -----------------------------------
 #[test]
 fn bad_timezone_defaults_to_utc_no_panic() {
