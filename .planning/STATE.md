@@ -29,7 +29,7 @@ Phase: 05
 Plan: Not started
 Next: 05-02-PLAN.md — build deployable hooks (adapter + watchdog rewrite + install/deploy)
 Status: Milestone complete
-Last activity: 2026-06-16 - 260616-grc: grace "+8" button now goes live across the curfew boundary (1s tick re-fetches get_state when the boundary passes; tray-resident app no longer needs a restart)
+Last activity: 2026-06-16 - 260616-grc: grace "+8" button goes live across the curfew boundary; + single-instance lock (tauri-plugin-single-instance — 2nd launch focuses the resident window) + release rebuild (new exe; Raycast Start-Menu shortcut already targets it)
 
 Phase progress: [████████░░] 4/5 phases complete (Phase 04: 5/5 plans)
 

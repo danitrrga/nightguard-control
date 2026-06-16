@@ -4,6 +4,7 @@ status: complete
 date: 2026-06-16
 commits:
   - 2257c04
+  - dc7420a
 ---
 
 # Quick Task 260616-grc: Grace "+8" button live across the curfew boundary
@@ -40,3 +41,18 @@ Leave the app in the tray before 20:30 and watch at 20:30: the pill should flip 
 **Locked** and **+8 minutes** should become clickable on its own. If it becomes clickable
 but clicking shows an amber "NTP unreachable" message, that's a separate (network/NTP)
 issue, not the gate — surface it and we'll handle that next.
+
+## Addendum — rebuild + single-instance lock (same session)
+
+- **Single-instance** (`dc7420a`): added `tauri-plugin-single-instance` v2.4.2 (registered
+  first in `lib.rs`). A second launch — Raycast opening it while the autostart `--hidden`
+  tray copy is resident, or any double-open — no longer spawns a twin; the plugin fires the
+  callback in the running instance, which show + unminimize + set_focus on the main window.
+  Verified live: `--hidden` launch then a second no-arg launch → exactly **1** process.
+- **Rebuild**: built the frontend (tsc + vite) then `cargo build --release` (the npm/tauri
+  CLI path failed in this shell — npm spawns bash, which the stripped env lacks; drove the
+  binaries directly instead). New exe stamped 2026-06-16 11:49, embeds the grace fix +
+  single-instance. `--no-bundle` (NSIS skipped — the shortcut/autostart use the exe directly).
+- **Raycast shortcut**: `…\Start Menu\Programs\Nightguard Control.lnk` already targets the
+  stable `target\release\nightguard-control.exe` (no args), so it now runs the newest build
+  with no change needed. Left one hidden resident instance of the new build running.
