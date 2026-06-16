@@ -161,3 +161,12 @@ Do not make direct repo edits outside a GSD workflow unless the user explicitly 
 > Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
 > This section is managed by `generate-claude-profile` -- do not edit manually.
 <!-- GSD:profile-end -->
+
+
+<!-- BEGIN LIFEOS-SYSTEM-POINTER (managed by sync_system_doc.py) -->
+## Shared agent-config system
+
+This project's MCP servers, skills, plugins, and memory are governed by a **shared system rooted in LifeOS** (`C:/Users/20252128/dev/Projects/LifeOS`). Generated files here (`.claude/settings.local.json`, `~/.claude.json`, `.mcp.json`, `.gemini/*`, `.antigravitycli/*`) are **overwritten on every SessionStart** — do not hand-edit them.
+
+**Before changing any MCP server, skill, plugin, secret, or memory store, read [`.claude/AGENT-SYSTEM.md`](.claude/AGENT-SYSTEM.md)** — it explains what to edit in LifeOS `config/` and which generator to run. Editing the wrong file silently breaks across sessions.
+<!-- END LIFEOS-SYSTEM-POINTER -->

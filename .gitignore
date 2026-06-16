@@ -15,3 +15,8 @@ config.sanctioned.yaml
 tamper.log
 .playwright-mcp
 .claude
+.antigravitycli
+.gemini
+AGENTS.md
+CLAUDE.md
+.claude/AGENT-SYSTEM.md
