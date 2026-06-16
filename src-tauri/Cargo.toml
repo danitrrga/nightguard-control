@@ -9,6 +9,14 @@ edition = "2021"
 name = "nightguard_control_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Production builds MUST enable this so Tauri embeds the frontend (custom asset protocol)
+# instead of loading the dev server (devUrl = http://localhost:1420). `tauri build` sets it
+# automatically; a manual `cargo build --release` must pass `--features custom-protocol` or the
+# app boots in dev mode and shows ERR_CONNECTION_REFUSED for localhost. (tauri-macros gates this:
+# `dev: cfg!(not(feature = "custom-protocol"))`.) DO NOT REMOVE.
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
