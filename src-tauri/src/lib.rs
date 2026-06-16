@@ -66,6 +66,18 @@ pub fn run() {
     let watch_dir = ctx.data_dir.clone();
 
     tauri::Builder::default()
+        // Single-instance guard (registered FIRST, per the plugin's contract): a second launch —
+        // e.g. Raycast opening it while the autostart `--hidden` tray copy is already resident, or
+        // any double-open — fires this callback in the ALREADY-RUNNING instance instead of spawning
+        // a twin process. We reveal + focus the existing window so "open" always means "the one
+        // instance, foregrounded". Guarantees exactly one nightguard-control.exe at a time.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_fs::init())
         .setup(move |app| {
             use tauri_plugin_fs::FsExt;
