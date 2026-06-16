@@ -696,10 +696,31 @@ async function init(): Promise<void> {
   await refresh();
   await initEdit();
   await startWatch();
-  // 1-second tick: re-render ONLY the countdown digits from the last verified DTO. It never
-  // calls invoke and never recomputes `locked` (D-05 / T-04-14).
+  // 1-second tick: re-render the countdown digits from the last verified DTO, AND re-invoke
+  // get_state when the advisory boundary has passed so the lock verdict + grace gate go live the
+  // moment the curfew opens/closes — even when NO file in the data dir changed to fire the fs-watch
+  // (the guard only writes guard-audit.log when a prompt fires). Without this, an app left open in
+  // the tray across the curfew start keeps showing the stale pre-lock state with the "+8 minutes"
+  // grace button disabled until a file changes or the app restarts. The refresh still flows through
+  // get_state (re-verified truth, never an optimistic local flip — D-05); the tick only decides
+  // WHEN to re-fetch, never WHAT the state is.
+  let boundaryRefreshing = false;
   setInterval(() => {
-    if (last) renderCountdownOnly(last);
+    if (!last) return;
+    if (
+      !boundaryRefreshing &&
+      last.boundary_kind !== "none" &&
+      nowUnix() >= last.boundary_unix
+    ) {
+      // Boundary crossed (open→locked, locked→open, or grace_end): re-fetch authoritative state.
+      // The in-flight guard prevents stacking concurrent get_state calls if a fetch is slow.
+      boundaryRefreshing = true;
+      void refresh().finally(() => {
+        boundaryRefreshing = false;
+      });
+      return;
+    }
+    renderCountdownOnly(last);
   }, 1000);
 
   const win = getCurrentWindow();
