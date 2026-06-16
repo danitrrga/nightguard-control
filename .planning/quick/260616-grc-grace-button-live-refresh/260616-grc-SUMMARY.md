@@ -5,6 +5,7 @@ date: 2026-06-16
 commits:
   - 2257c04
   - dc7420a
+  - 5a39aad
 ---
 
 # Quick Task 260616-grc: Grace "+8" button live across the curfew boundary
@@ -56,3 +57,21 @@ issue, not the gate — surface it and we'll handle that next.
 - **Raycast shortcut**: `…\Start Menu\Programs\Nightguard Control.lnk` already targets the
   stable `target\release\nightguard-control.exe` (no args), so it now runs the newest build
   with no change needed. Left one hidden resident instance of the new build running.
+
+## Addendum 2 — release build was booting in DEV mode (`5a39aad`)
+
+The first manual rebuild produced an exe that showed `ERR_CONNECTION_REFUSED` for
+`localhost:1420`. Root cause: the crate had **no `[features]` block**, so the
+`custom-protocol` feature was never on — and `tauri-macros` gates dev mode on it
+(`dev: cfg!(not(feature = "custom-protocol"))`). `tauri build` (the CLI) enables it
+automatically, but the manual `cargo build --release` (used because npm spawns bash, which
+this shell lacks) did not → the app loaded the dead dev server.
+
+Fix: declared the standard `custom-protocol = ["tauri/custom-protocol"]` feature and rebuilt
+with `cargo build --release --features custom-protocol`. Verified at the binary level (the
+hashed JS asset is now embedded — it was absent before) and visually (window renders the real
+UI: "UNTIL LOCK 08:05:08 · Next lock at 20:30", tokens, grace card — not the error page).
+Single-instance re-confirmed on the production build (2nd launch → still 1 process).
+
+**Note for future manual builds:** always pass `--features custom-protocol`, or just use the
+normal `npm run tauri build` in a real terminal (the CLI handles it).
