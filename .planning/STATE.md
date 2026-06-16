@@ -29,7 +29,7 @@ Phase: 05
 Plan: Not started
 Next: 05-02-PLAN.md — build deployable hooks (adapter + watchdog rewrite + install/deploy)
 Status: Milestone complete
-Last activity: 2026-06-14 - 260614-dkp: fixed countdown overflowing the ring (288px ring, 44px digits) + redesigned logo/mark (cobalt guard-arc + bone crescent), icons regenerated
+Last activity: 2026-06-16 - 260616-grc: grace "+8" button now goes live across the curfew boundary (1s tick re-fetches get_state when the boundary passes; tray-resident app no longer needs a restart)
 
 Phase progress: [████████░░] 4/5 phases complete (Phase 04: 5/5 plans)
 
@@ -124,6 +124,7 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 260616-grc | Grace "+8" button live across the curfew boundary (1s tick re-fetches get_state on boundary) | 2026-06-16 | 2257c04 | [260616-grc-grace-button-live-refresh](./quick/260616-grc-grace-button-live-refresh/) |
 | 260612-fhu | Polish the edit view (sole sanctioned editor) — Ceramic Night | 2026-06-12 | 03a57e9 | [260612-fhu-polish-edit-view](./quick/260612-fhu-polish-edit-view/) |
 | 260612-fsc | Tray number-badge — runtime time-remaining on the tray icon | 2026-06-12 | 8f67492 | [260612-fsc-tray-number-badge](./quick/260612-fsc-tray-number-badge/) |
 | 260612-gc2 | Globalize curfew guard hook + app login-autostart (close-to-tray) | 2026-06-12 | d96c76c | [260612-gc2-global-curfew-autostart](./quick/260612-gc2-global-curfew-autostart/) |
