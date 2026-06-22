@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Linux Port
 status: phase_complete
-stopped_at: Completed Phase 6 (06-01 + 06-02 + Python trust-stack recovery)
-last_updated: "2026-06-22T19:35:00.000Z"
+stopped_at: Completed Phase 7 (07-01 root watchdog/key chown + 07-02 sign-via-sudo + quota)
+last_updated: "2026-06-22T20:50:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 2
-  percent: 20
+  completed_phases: 2
+  total_plans: 6
+  completed_plans: 4
+  percent: 40
 ---
 
 # Project State
@@ -20,15 +20,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22 — opened v2.0 · Linux Port)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts. *(v2.0: the wall is now root-backed; `sudo` is the past-the-impulse threshold.)*
-**Current focus:** Phase 06 — config-cleanup ✅ COMPLETE → next: Phase 7 (root integrity wall)
+**Current focus:** Phase 07 — root-integrity-wall ✅ COMPLETE → next: Phase 8 (native-app blocker)
 
 ## Current Position
 
 Milestone: v2.0 · Linux Port (supersedes v1.0 Windows, shipped)
-Phase: 06 (config-cleanup) — COMPLETE (2/2 plans; LXCF-01 + LXCF-02 verified 2026-06-22)
+Phase: 07 (root-integrity-wall) — COMPLETE (2/2; ROOT-01..04 verified 2026-06-22, guided-interactive)
 Plan: 2 of 2 done
+
+ROOT WALL LIVE (2026-06-22): .guardkey root:root 0600 (user cannot read → cannot forge); watchdog is a systemd SYSTEM service (root, 60s, /etc/systemd/system/nightguard-watchdog.{service,timer}); --user timer retired; signing only via `sudo /usr/bin/python3 .../nightguard_ctl.py commit` (password required, /etc/sudoers.d/nightguard); in-CLI weekly quota (loosen 1/3, refuse at 0 "available again Monday"); config.yaml chowned back to user after each commit. Real quota at 0/3 (proofs used a free tighten + rebaseline). NOTE: user-context guard.py now runs in soft mode (key unreadable) — integrity is enforced solely by the root watchdog.
+Next: Phase 8 (native-app blocker) — folds the Hyprland window-class kill into the root watchdog tick. MAIN RISK: the root tick reaching the user's Hyprland socket /run/user/1000/hypr/$HIS/.socket.sock (discover XDG_RUNTIME_DIR + instance sig for uid 1000).
 Next: Phase 7 (root integrity wall) via `/gsd-discuss-phase 7` → `/gsd-plan-phase 7`. P0 is RESOLVED — the Python trust stack (ngcommon/guard/nightguard_ctl/nightguard_watchdog .py) is recovered, validated, and git-tracked in LifeOS (commit 33df4c3). Phase 7 decisions still standing: keep files in LifeOS/nightguard + chown (key root:root 0600; sanctioned/guard.json root:root 0644; config.yaml stays user) · watchdog→systemd system unit (prove-then-switch) · sign via sudo→control-CLI (password, narrow sudoers, chown config.yaml back). Phase-8 risk flagged: root watchdog reaching the user's Hyprland socket (/run/user/1000/hypr).
-Status: Phase complete — ready for Phase 7
+Status: Executing Phase 07
 
 NOTE (2026-06-22): the live LifeOS instance now runs the new `blocking:` schema (curfew 20:45), guard.json re-signed (config_hmac=78847ce5…), systemd watchdog healthy (steady `tick: ok`). The control CLI is `LifeOS/scripts/nightguard/nightguard_ctl.py` (subcommands: init/verify/show/commit --from).
 Phase-6 decisions (discuss 2026-06-22): new `blocking:` section (browser_extension + native_apps) · scope = product + re-sign instance · curfew canonical 20:45 (sanctioned re-baseline, not a token loosen) · LXCF-02 parity target = Python ngcommon.py/guard.py
@@ -37,7 +40,7 @@ P0 RESOLVED (2026-06-22): the Python trust stack was recovered (ngcommon.py + gu
 Superseded: the milestone-open B1 choice (socket commit-helper) was re-curated to sudo; B2 (SIGKILL vs hyprctl closewindow) → Phase 8 planning; B3 (StayFree lock-down + URLBlocklist) → Phase 7/10.
 Decisions locked at milestone open: Linux-only (retire Windows DPAPI/PowerShell paths) · no research pass (brief sufficient)
 
-Phase progress: [██░░░░░░░░] 1/5 phases complete (v2.0); Phase 6 COMPLETE (2/2 plans)
+Phase progress: [████░░░░░░] 2/5 phases complete (v2.0); Phase 7 COMPLETE (2/2 plans)
 
 > v1.0 (Windows) shipped 2026-06-10: phases 1–5 complete, 20/20 plans. Last v1.0 activity
 > 2026-06-16 (260616-grc: grace "+8" live across the curfew boundary; single-instance

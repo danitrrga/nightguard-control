@@ -30,7 +30,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Milestone v2.0 · Linux Port — active** (supersedes v1.0; see `.planning/INGEST-CONFLICTS.md`):
 - [x] **Phase 6: Config Cleanup** - Retire the dead Windows `uwp`/`package_id` entry; redefine targets as `browser_extension` + `native_apps` (completed 2026-06-22)
-- [ ] **Phase 7: Root Integrity Wall** *(highest value)* - Root-own key + sanctioned config; watchdog → systemd system service; sign via `sudo`→control-CLI (socket helper deleted)
+- [x] **Phase 7: Root Integrity Wall** *(highest value)* - Root-own key + sanctioned config; watchdog → systemd system service; sign via `sudo`→control-CLI (socket helper deleted) (completed 2026-06-22)
 - [ ] **Phase 8: Native Blocker** *(folded into the watchdog)* - Root watchdog tick kills blacklisted Hyprland window classes during curfew (≤60s; no separate service)
 - [ ] **Phase 9: ActivityWatch** *(parked — optional)* - Install aw-watcher-window + afk; sync screen-time into LifeOS (replaces StayFree analytics)
 - [ ] **Phase 10: Linux App (omarchy TUI)** - Terminal/TUI (not Tauri), aether-themed, thin client over the Python control-CLI
@@ -161,7 +161,7 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
 **Prereq**: the Python trust stack is restored + version-controlled (P0 / the 06-02 blocker).
 **Plans**: 2 plans
   - [x] 07-01-PLAN.md — Root-own key+sanctioned+state AND watchdog→systemd **system** service, as one prove-then-switch cutover (ROOT-01, ROOT-02) — **⛔ blocked on P0**
-  - [ ] 07-02-PLAN.md — Control-CLI signs as root via `sudo` + in-CLI quota + sudoers rule + chown-back (ROOT-03, ROOT-04) — **⛔ blocked on P0 + 07-01**
+  - [x] 07-02-PLAN.md — Control-CLI signs as root via `sudo` + in-CLI quota + sudoers rule + chown-back (ROOT-03, ROOT-04) — **⛔ blocked on P0 + 07-01**
 
 ### Phase 8: Native Blocker *(folded into the root watchdog)*
 **Goal**: During an active curfew lock, blacklisted native apps (Steam, Discord, games) are killed/closed by the **root watchdog tick itself** — no separate service. Curated to live inside P7's watchdog so it is un-stoppable from user space.
@@ -211,7 +211,7 @@ v2.0 critical path: 6 → 7 → 8 → 10 (8 folds into the P7 watchdog; 10 is th
 | 4. UI (Moonlit Indigo) | 5/5 | Complete   | 2026-06-09 |
 | 5. Instance Wiring | 3/3 | Complete   | 2026-06-10 |
 | 6. Config Cleanup | 2/2 | Complete   | 2026-06-22 |
-| 7. Root Integrity Wall | 1/2 | In Progress|  |
+| 7. Root Integrity Wall | 2/2 | Complete   | 2026-06-22 |
 | 8. Native Blocker | 0/— | Not started (folded into P7 watchdog tick) | |
 | 9. ActivityWatch | 0/— | Parked (optional) | |
 | 10. Linux App (omarchy TUI) | 0/— | Not started (TUI, not Tauri) | |

@@ -61,10 +61,10 @@ Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 8 
 
 ### Root Integrity Wall (Phase 7)
 
-- [ ] **ROOT-01**: The `.guardkey` (32 bytes) and `config.sanctioned.yaml` move to root ownership (key root:root 0600); the user cannot read the key.
-- [ ] **ROOT-02**: The watchdog runs as a systemd **system** service (replacing the `--user` 60s timer), verifying true time (clock-tamper), the config HMAC (revert to sanctioned on mismatch), and that the StayFree Chromium managed policy is intact.
-- [ ] **ROOT-03**: Allowed edits are signed by **elevating to the existing control-CLI via `sudo`/`pkexec`** — no bespoke daemon or socket. The root-owned key makes the control-CLI the sole signer; it enforces the weekly token quota in-process and writes under flock. The sudo prompt is deliberate anti-impulse friction (aligned with ROOT-04) and idiomatic in the terminal/TUI app. *(Curated 2026-06-22: the Unix-socket commit-helper was deleted — see `.planning/phases/REVIEWS.md`.)*
-- [ ] **ROOT-04**: Hand-forging a valid config is infeasible without the root-owned key; `sudo` is the sole bypass (friction past the impulse threshold, explicitly not an absolute lock). Satisfied by construction once ROOT-01 + ROOT-03 hold.
+- [x] **ROOT-01**: The `.guardkey` (32 bytes) and `config.sanctioned.yaml` move to root ownership (key root:root 0600); the user cannot read the key.
+- [x] **ROOT-02**: The watchdog runs as a systemd **system** service (replacing the `--user` 60s timer), verifying true time (clock-tamper), the config HMAC (revert to sanctioned on mismatch), and that the StayFree Chromium managed policy is intact.
+- [x] **ROOT-03**: Allowed edits are signed by **elevating to the existing control-CLI via `sudo`/`pkexec`** — no bespoke daemon or socket. The root-owned key makes the control-CLI the sole signer; it enforces the weekly token quota in-process and writes under flock. The sudo prompt is deliberate anti-impulse friction (aligned with ROOT-04) and idiomatic in the terminal/TUI app. *(Curated 2026-06-22: the Unix-socket commit-helper was deleted — see `.planning/phases/REVIEWS.md`.)*
+- [x] **ROOT-04**: Hand-forging a valid config is infeasible without the root-owned key; `sudo` is the sole bypass (friction past the impulse threshold, explicitly not an absolute lock). Satisfied by construction once ROOT-01 + ROOT-03 hold.
 
 ### Native Blocker (Phase 8 — folded into the watchdog)
 
@@ -133,10 +133,10 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | WIRE-02 | Phase 5 | Complete |
 | LXCF-01 | Phase 6 | Complete |
 | LXCF-02 | Phase 6 | Complete |
-| ROOT-01 | Phase 7 | Pending |
-| ROOT-02 | Phase 7 | Pending |
-| ROOT-03 | Phase 7 | Pending |
-| ROOT-04 | Phase 7 | Pending |
+| ROOT-01 | Phase 7 | Complete |
+| ROOT-02 | Phase 7 | Complete |
+| ROOT-03 | Phase 7 | Complete |
+| ROOT-04 | Phase 7 | Complete |
 | NBLK-01 | Phase 8 | Pending |
 | NBLK-02 | Phase 8 | Pending |
 | NBLK-03 | Phase 8 | Pending |
