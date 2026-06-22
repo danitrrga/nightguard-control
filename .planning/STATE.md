@@ -2,21 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Linux Port
-status: phase_planning
-stopped_at: Phases 6 + 7 planned & curated; both 06-02 and all of Phase 7 blocked on P0 (restore + commit the absent Python trust stack)
-last_updated: 2026-06-22
-last_activity: 2026-06-22
-prior_milestones:
-  - milestone: v1.0
-    name: Windows
-    status: complete
-    phases: "1-5"
-    completed: 2026-06-10
+status: executing
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-06-22T18:05:46.608Z"
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 4
+  completed_plans: 1
   percent: 0
 ---
 
@@ -27,15 +20,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22 — opened v2.0 · Linux Port)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts. *(v2.0: the wall is now root-backed; `sudo` is the past-the-impulse threshold.)*
-**Current focus:** v2.0 · Linux Port — milestone opened, phases 6–10 roadmapped, none planned yet.
+**Current focus:** Phase 06 — config-cleanup
 
 ## Current Position
 
 Milestone: v2.0 · Linux Port (supersedes v1.0 Windows, shipped)
-Phase: 06 (Config Cleanup) — planned, 0/2; 07 (Root Integrity Wall) — planned, 0/2
-Plan: 06-01 ready to execute (the only unblocked plan)
+Phase: 06 (config-cleanup) — EXECUTING
+Plan: 2 of 2
 Next: restore + commit the Python trust stack (P0) → unblocks 06-02 + all of Phase 7. Meanwhile `/gsd-execute-phase 6` can run 06-01 (Rust classifier) now. Phase 7 decisions: keep files in LifeOS/nightguard + chown (key root:root 0600; sanctioned/guard.json root:root 0644; config.yaml stays user) · watchdog→systemd system unit (prove-then-switch) · sign via sudo→control-CLI (password, narrow sudoers, chown config.yaml back). Phase-8 risk flagged: root watchdog reaching the user's Hyprland socket (/run/user/1000/hypr).
-Status: Phase planning complete for Phases 6 + 7
+Status: Ready to execute
 Phase-6 decisions (discuss 2026-06-22): new `blocking:` section (browser_extension + native_apps) · scope = product + re-sign instance · curfew canonical 20:45 (sanctioned re-baseline, not a token loosen) · LXCF-02 parity target = Python ngcommon.py/guard.py
 CURATION (Musk's algorithm, 2026-06-22 — .planning/phases/REVIEWS.md): ROOT-03 socket commit-helper DELETED → sign via `sudo`/control-CLI · Phase 8 native blocker FOLDED into the root watchdog tick (≤60s leakage) · Phase 10 Tauri → omarchy TUI thin-client over the one Python stack (kept in v2.0) · Phase 9 ActivityWatch parked · LXCF-02 narrowed to single Python stack. Unifying primitive: one root key → one root watchdog → one signer (control-CLI via sudo) → one schema → one HMAC.
 P0 (highest-risk, blocks 06-02 + Phase 7): restore + version-control the Python trust stack (ngcommon/guard/control-CLI/nightguard_watchdog .py) — absent from disk (only stale .pyc), untracked in git as of 2026-06-22 ~15:13.
@@ -86,6 +79,7 @@ Phase progress: [░░░░░░░░░░] 0/5 phases complete (v2.0); Pha
 | Phase 04 P03 | 5 | 2 tasks | 1 files |
 | Phase 04 P04 | 6 | 2 tasks | 8 files |
 | Phase 04 P05 | 8 | 2 tasks | 5 files |
+| Phase 06 P01 | 14 min | 1 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -124,6 +118,7 @@ Recent decisions affecting current work:
 - [Phase 4, 04-05]: Edit view shipped (UI-03/UI-04/UI-05) — vertical slice complete. Single --surface per-field editor (curfew.enabled/start/end) runs classify_change debounced (~250ms) per field -> exact UI-SPEC feedback ("Tightens curfew · free"=accent / "Loosens curfew · costs 1 token"=warn / noop silent); Commit disabled with the locked "available again Monday" reason on a 0-token loosen (UI-04) + "Commit (spends 1 token)" loosen label; one-step "Spend a weekly token?" confirm ONLY on loosening commits (D-08, tighten-only skips). commit_change/use_grace re-render Status ONLY from the returned re-verified StateDto (D-09 — no optimistic token decrement / grace flip; grep-clean). +8 button enabled IFF locked && grace_available_today with the REAL disabled attribute (D-10, not styling-only) + accent .enabled fill; use_grace -> re-render (boundary retargets to grace_end), NtpUnreachable/GraceAlreadyUsedToday surfaced inline amber non-punitively. Added a read-only read_config IPC seam (Rule 3 blocking — the edit classify old/new pair needs the live config text); new_yaml composed by per-field line edit on the loaded config (yamlpath-faithful, comment/format-preserving), absent field left untouched. Reuses plan-04 tokens/scale (no second design system). tsc clean, vite build green, cargo check zero warnings. Task 3 human-verify checkpoint auto-approved under AUTO_MODE; live tauri-dev walkthrough deferred to the phase verifier.
 - [Phase 5, 05-01]: Author's LifeOS instance INITIALIZED and verifying. NIGHTGUARD_DIR (User scope) = C:\Users\20252128\dev\Projects\LifeOS\nightguard (reads back in a fresh process). New `init-instance <data_dir>` subcommand in state_interop_cli composes the locked primitives (canonicalize_bytes + load_or_create_key DPAPI Scope::User + compute_state_hmac A3 + most_recent_monday_midnight DST-aware) — never fixed test state. The data dir now holds config.yaml (canonical bytes, content no-op — curfew 20:45->05:30 + watchdog/StayFree + Spanish-butler msgs intact), a byte-identical config.sanctioned.yaml, a fresh DPAPI .guardkey (unprotects to exactly 32 bytes), and a fully-armed guard.json (weekly_spent=0 -> 3 tokens, week_anchor 2026-06-08, grace=null, ledger=[]). Cross-language parity PROVEN on a real Windows CurrentUser session: state_hmac=94d8... and config_hmac=7618... re-derive identically Rust<->PowerShell, verify-state-hmac exit 0, HMAC(sanctioned)==config_hmac. CARRY-FORWARD: NIGHTGUARD_DIR is already set (do not re-set); the live curfew gate is still the OLD hook (untouched) — WIRE-01 only partially advanced, drift not eliminated until Plan 03's prove-then-switch cutover (T-05-05 accepted).
 - [Phase ?]: [Phase 4, 04-03]: four IPC commands real + signature-frozen. get_state/commit_change/use_grace all return ONE build_state_dto helper re-verifying config_hmac (constant-time verify_bytes over canonicalize_bytes) + state_hmac (A3 compute_state_hmac), worst-casing on tamper EXACTLY like the guard (weekly_spent=3/tokens=0/grace_available=false/maximal_lockout) in one place; lock/boundary from lock_status with active guard.json grace overlaid (boundary_kind=grace_end). classify_change wraps classify+quota::decide (disable-at-0-tokens preview; took a managed AppCtx body-fill, JS shape unchanged). commit_change gates decision.allowed in-command -> true NTP fail-closed -> engine ordered fd-locked commit::commit_change -> re-read (D-09); use_grace -> grace::use_grace -> re-read. No hand-rolled writer, no == on a config tag.
+- [Phase 06]: [Phase 6, 06-01]: direction-classifier FIELD_TABLE re-pointed from the dead Windows watchdog.apps (uwp/package_id) list to the Linux blocking: model — blocking.browser_extension.enabled + blocking.native_apps.enabled (BoolTrueIsStrict), blocking.native_apps.blacklist (ListRemoveLoosens); extension_id intentionally omitted (id change = Noop); watchdog.enabled/check_interval_seconds kept. Grep gate clean. Rule-3 blocker: Windows-only state_interop_cli bin gated to #[cfg(windows)] so the crate compiles on Linux. LXCF-01 product half done; instance half + LXCF-02 remain in the still-blocked 06-02. — config.yaml is signed as opaque canonical bytes, so the schema change is transparent to signing; the classifier table is the only product code reading the blocking keys; Phase 8's native blocker reads blocking.native_apps.blacklist.
 
 ### Pending Todos
 
@@ -158,7 +153,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-09T15:28:12.150Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-instance-wiring/05-CONTEXT.md
+Last session: 2026-06-22T18:05:39.493Z
+Stopped at: Completed 06-01-PLAN.md
+Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).

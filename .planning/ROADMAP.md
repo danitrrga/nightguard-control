@@ -145,7 +145,7 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
   2. The Rust config writer round-trips the new schema through canonical bytes; the Python watchdog's minimal YAML parser reads the same fields.
   3. HMAC sign/verify over the new config is byte-stable across the Rust engine and the Python watchdog (no schema-change drift).
 **Plans**: 2 plans
-  - [ ] 06-01-PLAN.md — Product: re-point the direction-classifier FIELD_TABLE from `watchdog.apps` (uwp) to `blocking.browser_extension` + `blocking.native_apps` + tests (LXCF-01 product half) — **executable now**
+  - [x] 06-01-PLAN.md — Product: re-point the direction-classifier FIELD_TABLE from `watchdog.apps` (uwp) to `blocking.browser_extension` + `blocking.native_apps` + tests (LXCF-01 product half) — **executable now**
   - [ ] 06-02-PLAN.md — Instance: re-baseline LifeOS config.yaml/sanctioned to the `blocking:` schema (curfew 20:45), re-sign guard.json via the Python control CLI, prove Rust↔Python HMAC/parse parity + revert (LXCF-01 instance half, LXCF-02) — **⛔ blocked**: Linux Python tooling (ngcommon/guard/control-CLI/watchdog) currently absent from disk; restore before executing
 
 ### Phase 7: Root Integrity Wall *(highest value)*
@@ -210,7 +210,7 @@ v2.0 critical path: 6 → 7 → 8 → 10 (8 folds into the P7 watchdog; 10 is th
 | 3. Enforcement Guard | 4/4 | Complete   | 2026-06-08 |
 | 4. UI (Moonlit Indigo) | 5/5 | Complete   | 2026-06-09 |
 | 5. Instance Wiring | 3/3 | Complete   | 2026-06-10 |
-| 6. Config Cleanup | 0/2 | Planned (06-01 ready; 06-02 blocked on Linux tooling) | |
+| 6. Config Cleanup | 1/2 | In Progress|  |
 | 7. Root Integrity Wall | 0/2 | Planned (blocked on P0: restore Python stack) | |
 | 8. Native Blocker | 0/— | Not started (folded into P7 watchdog tick) | |
 | 9. ActivityWatch | 0/— | Parked (optional) | |
