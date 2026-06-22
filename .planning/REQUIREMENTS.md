@@ -56,8 +56,8 @@ Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 8 
 
 ### Config Cleanup (Phase 6)
 
-- [ ] **LXCF-01**: The `config.yaml` blocking model is redefined for Linux — the dead Windows `uwp` StayFree `package_id` entry is removed; targets become `browser_extension` (StayFree, policy-managed) + `native_apps` (Hyprland window-class blacklist).
-- [ ] **LXCF-02**: The Python stack (`ngcommon.py` parser + signer) reads and signs the new schema (canonical-bytes round-trip; the minimal YAML parser handles it; HMAC unaffected). The repo's Rust classifier (06-01) agrees on the schema *shape* for product hygiene, but Linux runtime uses the **single Python crypto stack** — cross-language byte-parity is no longer a runtime requirement (it returns only if a Rust signer is ever revived). *(Narrowed 2026-06-22 per curation.)*
+- [x] **LXCF-01**: The `config.yaml` blocking model is redefined for Linux — the dead Windows `uwp` StayFree `package_id` entry is removed; targets become `browser_extension` (StayFree, policy-managed) + `native_apps` (Hyprland window-class blacklist).
+- [x] **LXCF-02**: The Python stack (`ngcommon.py` parser + signer) reads and signs the new schema (canonical-bytes round-trip; the minimal YAML parser handles it; HMAC unaffected). The repo's Rust classifier (06-01) agrees on the schema *shape* for product hygiene, but Linux runtime uses the **single Python crypto stack** — cross-language byte-parity is no longer a runtime requirement (it returns only if a Rust signer is ever revived). *(Narrowed 2026-06-22 per curation.)*
 
 ### Root Integrity Wall (Phase 7)
 
@@ -131,8 +131,8 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | UI-05 | Phase 4 | Complete |
 | WIRE-01 | Phase 5 | Complete |
 | WIRE-02 | Phase 5 | Complete |
-| LXCF-01 | Phase 6 | Pending |
-| LXCF-02 | Phase 6 | Pending |
+| LXCF-01 | Phase 6 | Complete |
+| LXCF-02 | Phase 6 | Complete |
 | ROOT-01 | Phase 7 | Pending |
 | ROOT-02 | Phase 7 | Pending |
 | ROOT-03 | Phase 7 | Pending |
