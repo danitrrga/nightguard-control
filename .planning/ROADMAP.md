@@ -138,7 +138,9 @@ Critical path: **Phase 6 → Phase 7 → Phase 10**.
   1. The Windows `uwp` StayFree `package_id` watchdog entry is removed; `config.yaml` defines `browser_extension` + `native_apps` target groups.
   2. The Rust config writer round-trips the new schema through canonical bytes; the Python watchdog's minimal YAML parser reads the same fields.
   3. HMAC sign/verify over the new config is byte-stable across the Rust engine and the Python watchdog (no schema-change drift).
-**Plans**: TBD (run `/gsd-plan-phase 6`)
+**Plans**: 2 plans
+  - [ ] 06-01-PLAN.md — Product: re-point the direction-classifier FIELD_TABLE from `watchdog.apps` (uwp) to `blocking.browser_extension` + `blocking.native_apps` + tests (LXCF-01 product half) — **executable now**
+  - [ ] 06-02-PLAN.md — Instance: re-baseline LifeOS config.yaml/sanctioned to the `blocking:` schema (curfew 20:45), re-sign guard.json via the Python control CLI, prove Rust↔Python HMAC/parse parity + revert (LXCF-01 instance half, LXCF-02) — **⛔ blocked**: Linux Python tooling (ngcommon/guard/control-CLI/watchdog) currently absent from disk; restore before executing
 
 ### Phase 7: Root Integrity Wall *(highest value)*
 **Goal**: The integrity wall becomes root-backed and unforgeable from user space — the key + sanctioned config are root-owned, the watchdog is a systemd system service, and a root commit-helper over a Unix socket is the sole path that can sign a sanctioned write under the weekly quota.
@@ -197,7 +199,7 @@ v2.0 critical path: 6 → 7 → 10; Phases 8 and 9 run independently after Phase
 | 3. Enforcement Guard | 4/4 | Complete   | 2026-06-08 |
 | 4. UI (Moonlit Indigo) | 5/5 | Complete   | 2026-06-09 |
 | 5. Instance Wiring | 3/3 | Complete   | 2026-06-10 |
-| 6. Config Cleanup | 0/— | Not started | |
+| 6. Config Cleanup | 0/2 | Planned (06-01 ready; 06-02 blocked on Linux tooling) | |
 | 7. Root Integrity Wall | 0/— | Not started | |
 | 8. Native Blocker | 0/— | Not started | |
 | 9. ActivityWatch | 0/— | Not started | |

@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Linux Port
-status: milestone_planning
-stopped_at: v2.0 milestone opened (ingested from docs/linux-port-brief.md); roadmap set, phases 6-10 not yet planned
+status: phase_planning
+stopped_at: Phase 6 planned (06-01 product classifier ready; 06-02 instance re-baseline blocked on absent Linux Python tooling)
 last_updated: 2026-06-22
 last_activity: 2026-06-22
 prior_milestones:
@@ -32,14 +32,16 @@ See: .planning/PROJECT.md (updated 2026-06-22 — opened v2.0 · Linux Port)
 ## Current Position
 
 Milestone: v2.0 · Linux Port (supersedes v1.0 Windows, shipped)
-Phase: 06 (Config Cleanup) — not started
-Plan: Not started
-Next: `/gsd-plan-phase 6` — Config Cleanup (redefine the Linux blocking model: drop dead Windows `uwp`/`package_id`; add `browser_extension` + `native_apps`)
-Status: Milestone planning
+Phase: 06 (Config Cleanup) — planned, 0/2 plans executed
+Plan: 06-01 ready to execute
+Next: `/gsd-execute-phase 6` (or run 06-01 alone) — 06-01 redefines the Rust classifier (executable now); 06-02 (instance re-baseline + re-sign) is BLOCKED until the Linux Python tooling is restored to disk
+Status: Phase planning complete for Phase 6
+Phase-6 decisions (discuss 2026-06-22): new `blocking:` section (browser_extension + native_apps) · scope = product + re-sign instance · curfew canonical 20:45 (sanctioned re-baseline, not a token loosen) · LXCF-02 parity target = Python ngcommon.py/guard.py
+Phase-6 BLOCKER: Linux Python tooling (scripts/nightguard/{ngcommon,guard,control-CLI,nightguard_watchdog}.py) is absent from disk (only stale .pyc), untracked in git, dir mid-refactor as of 2026-06-22 ~15:13 — 06-02 cannot run until restored + watchdog quiescent
 Decisions locked at milestone open: Linux-only (retire Windows DPAPI/PowerShell paths) · root commit-helper over a Unix socket (B1) · no research pass (brief sufficient)
 Deferred to phase planning: B2 (SIGKILL vs `hyprctl closewindow`) → Phase 8; B3 (StayFree lock-down depth + optional `URLBlocklist`) → Phase 7/10
 
-Phase progress: [░░░░░░░░░░] 0/5 phases complete (v2.0)
+Phase progress: [░░░░░░░░░░] 0/5 phases complete (v2.0); Phase 6 planned (0/2 plans)
 
 > v1.0 (Windows) shipped 2026-06-10: phases 1–5 complete, 20/20 plans. Last v1.0 activity
 > 2026-06-16 (260616-grc: grace "+8" live across the curfew boundary; single-instance
