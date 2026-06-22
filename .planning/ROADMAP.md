@@ -159,7 +159,9 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
   3. Allowed edits are signed by elevating to the control-CLI via `sudo`/`pkexec`; the root key makes it the only producer of a valid signature, and it enforces the weekly token quota + ordered commit under flock.
   4. A hand-edit to `config.yaml` cannot be made to verify without the root-owned key; `sudo` is the only bypass.
 **Prereq**: the Python trust stack is restored + version-controlled (P0 / the 06-02 blocker).
-**Plans**: TBD (run `/gsd-plan-phase 7`)
+**Plans**: 2 plans
+  - [ ] 07-01-PLAN.md — Root-own key+sanctioned+state AND watchdog→systemd **system** service, as one prove-then-switch cutover (ROOT-01, ROOT-02) — **⛔ blocked on P0**
+  - [ ] 07-02-PLAN.md — Control-CLI signs as root via `sudo` + in-CLI quota + sudoers rule + chown-back (ROOT-03, ROOT-04) — **⛔ blocked on P0 + 07-01**
 
 ### Phase 8: Native Blocker *(folded into the root watchdog)*
 **Goal**: During an active curfew lock, blacklisted native apps (Steam, Discord, games) are killed/closed by the **root watchdog tick itself** — no separate service. Curated to live inside P7's watchdog so it is un-stoppable from user space.
@@ -208,7 +210,7 @@ v2.0 critical path: 6 → 7 → 8 → 10 (8 folds into the P7 watchdog; 10 is th
 | 4. UI (Moonlit Indigo) | 5/5 | Complete   | 2026-06-09 |
 | 5. Instance Wiring | 3/3 | Complete   | 2026-06-10 |
 | 6. Config Cleanup | 0/2 | Planned (06-01 ready; 06-02 blocked on Linux tooling) | |
-| 7. Root Integrity Wall | 0/— | Not started (sign-via-sudo; socket deleted) | |
+| 7. Root Integrity Wall | 0/2 | Planned (blocked on P0: restore Python stack) | |
 | 8. Native Blocker | 0/— | Not started (folded into P7 watchdog tick) | |
 | 9. ActivityWatch | 0/— | Parked (optional) | |
 | 10. Linux App (omarchy TUI) | 0/— | Not started (TUI, not Tauri) | |

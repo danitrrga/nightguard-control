@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Linux Port
 status: phase_planning
-stopped_at: Phase 6 planned (06-01 product classifier ready; 06-02 instance re-baseline blocked on absent Linux Python tooling)
+stopped_at: Phases 6 + 7 planned & curated; both 06-02 and all of Phase 7 blocked on P0 (restore + commit the absent Python trust stack)
 last_updated: 2026-06-22
 last_activity: 2026-06-22
 prior_milestones:
@@ -32,10 +32,10 @@ See: .planning/PROJECT.md (updated 2026-06-22 — opened v2.0 · Linux Port)
 ## Current Position
 
 Milestone: v2.0 · Linux Port (supersedes v1.0 Windows, shipped)
-Phase: 06 (Config Cleanup) — planned, 0/2 plans executed
-Plan: 06-01 ready to execute
-Next: `/gsd-execute-phase 6` (or run 06-01 alone) — 06-01 redefines the Rust classifier (executable now); 06-02 (instance re-baseline + re-sign) is BLOCKED until the Linux Python tooling is restored to disk
-Status: Phase planning complete for Phase 6
+Phase: 06 (Config Cleanup) — planned, 0/2; 07 (Root Integrity Wall) — planned, 0/2
+Plan: 06-01 ready to execute (the only unblocked plan)
+Next: restore + commit the Python trust stack (P0) → unblocks 06-02 + all of Phase 7. Meanwhile `/gsd-execute-phase 6` can run 06-01 (Rust classifier) now. Phase 7 decisions: keep files in LifeOS/nightguard + chown (key root:root 0600; sanctioned/guard.json root:root 0644; config.yaml stays user) · watchdog→systemd system unit (prove-then-switch) · sign via sudo→control-CLI (password, narrow sudoers, chown config.yaml back). Phase-8 risk flagged: root watchdog reaching the user's Hyprland socket (/run/user/1000/hypr).
+Status: Phase planning complete for Phases 6 + 7
 Phase-6 decisions (discuss 2026-06-22): new `blocking:` section (browser_extension + native_apps) · scope = product + re-sign instance · curfew canonical 20:45 (sanctioned re-baseline, not a token loosen) · LXCF-02 parity target = Python ngcommon.py/guard.py
 CURATION (Musk's algorithm, 2026-06-22 — .planning/phases/REVIEWS.md): ROOT-03 socket commit-helper DELETED → sign via `sudo`/control-CLI · Phase 8 native blocker FOLDED into the root watchdog tick (≤60s leakage) · Phase 10 Tauri → omarchy TUI thin-client over the one Python stack (kept in v2.0) · Phase 9 ActivityWatch parked · LXCF-02 narrowed to single Python stack. Unifying primitive: one root key → one root watchdog → one signer (control-CLI via sudo) → one schema → one HMAC.
 P0 (highest-risk, blocks 06-02 + Phase 7): restore + version-control the Python trust stack (ngcommon/guard/control-CLI/nightguard_watchdog .py) — absent from disk (only stale .pyc), untracked in git as of 2026-06-22 ~15:13.
