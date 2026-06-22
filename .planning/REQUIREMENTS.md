@@ -66,6 +66,10 @@ Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 8 
 - [x] **ROOT-03**: Allowed edits are signed by **elevating to the existing control-CLI via `sudo`/`pkexec`** — no bespoke daemon or socket. The root-owned key makes the control-CLI the sole signer; it enforces the weekly token quota in-process and writes under flock. The sudo prompt is deliberate anti-impulse friction (aligned with ROOT-04) and idiomatic in the terminal/TUI app. *(Curated 2026-06-22: the Unix-socket commit-helper was deleted — see `.planning/phases/REVIEWS.md`.)*
 - [x] **ROOT-04**: Hand-forging a valid config is infeasible without the root-owned key; `sudo` is the sole bypass (friction past the impulse threshold, explicitly not an absolute lock). Satisfied by construction once ROOT-01 + ROOT-03 hold.
 
+### Curfew Hook — Linux enforcement (Phase 7.1 — gap-closure)
+
+- [ ] **CURF-01**: `guard.py` is wired as the Claude Code curfew hook so its verdict is actually enforced on Linux — during curfew a session/prompt is blocked with the butler deny message; outside curfew (and during an active grace window) it is allowed. The hook reads the canonical LifeOS config (no `~/.claude` drift; mirrors WIRE-01) and runs the guard in user soft-mode (integrity stays the root watchdog's job). *(Discovered 2026-06-22: the verdict engine returns `deny` correctly but no hook fires it — the Linux equivalent of the retired Windows `nightguard_adapter.ps1` was never wired.)*
+
 ### Native Blocker (Phase 8 — folded into the watchdog)
 
 - [ ] **NBLK-01**: The **root watchdog tick** (the same systemd *system* service from ROOT-02), during an active curfew lock, enumerates Hyprland clients and kills/closes windows whose class is on the `native_apps` blacklist — **no separate service**.
@@ -137,6 +141,7 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | ROOT-02 | Phase 7 | Complete |
 | ROOT-03 | Phase 7 | Complete |
 | ROOT-04 | Phase 7 | Complete |
+| CURF-01 | Phase 7.1 | Pending |
 | NBLK-01 | Phase 8 | Pending |
 | NBLK-02 | Phase 8 | Pending |
 | NBLK-03 | Phase 8 | Pending |
