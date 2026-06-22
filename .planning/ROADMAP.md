@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Instance Wiring** - Point the author's live hook at the canonical LifeOS config and initialize the instance (completed 2026-06-10)
 
 **Milestone v2.0 · Linux Port — active** (supersedes v1.0; see `.planning/INGEST-CONFLICTS.md`):
-- [ ] **Phase 6: Config Cleanup** - Retire the dead Windows `uwp`/`package_id` entry; redefine targets as `browser_extension` + `native_apps`
+- [x] **Phase 6: Config Cleanup** - Retire the dead Windows `uwp`/`package_id` entry; redefine targets as `browser_extension` + `native_apps` (completed 2026-06-22)
 - [ ] **Phase 7: Root Integrity Wall** *(highest value)* - Root-own key + sanctioned config; watchdog → systemd system service; sign via `sudo`→control-CLI (socket helper deleted)
 - [ ] **Phase 8: Native Blocker** *(folded into the watchdog)* - Root watchdog tick kills blacklisted Hyprland window classes during curfew (≤60s; no separate service)
 - [ ] **Phase 9: ActivityWatch** *(parked — optional)* - Install aw-watcher-window + afk; sync screen-time into LifeOS (replaces StayFree analytics)
@@ -146,7 +146,7 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
   3. HMAC sign/verify over the new config is byte-stable across the Rust engine and the Python watchdog (no schema-change drift).
 **Plans**: 2 plans
   - [x] 06-01-PLAN.md — Product: re-point the direction-classifier FIELD_TABLE from `watchdog.apps` (uwp) to `blocking.browser_extension` + `blocking.native_apps` + tests (LXCF-01 product half) — **executable now**
-  - [ ] 06-02-PLAN.md — Instance: re-baseline LifeOS config.yaml/sanctioned to the `blocking:` schema (curfew 20:45), re-sign guard.json via the Python control CLI, prove Rust↔Python HMAC/parse parity + revert (LXCF-01 instance half, LXCF-02) — **⛔ blocked**: Linux Python tooling (ngcommon/guard/control-CLI/watchdog) currently absent from disk; restore before executing
+  - [x] 06-02-PLAN.md — Instance: re-baseline LifeOS config.yaml/sanctioned to the `blocking:` schema (curfew 20:45), re-sign guard.json via the Python control CLI, prove Rust↔Python HMAC/parse parity + revert (LXCF-01 instance half, LXCF-02) — **⛔ blocked**: Linux Python tooling (ngcommon/guard/control-CLI/watchdog) currently absent from disk; restore before executing
 
 ### Phase 7: Root Integrity Wall *(highest value)*
 **Goal**: The integrity wall becomes root-backed and unforgeable from user space — the key + sanctioned config are root-owned, the watchdog is a systemd *system* service, and the existing Python control-CLI (reached via `sudo`/`pkexec`) is the sole signer, enforcing the weekly quota in-process. **No bespoke daemon/socket.**
@@ -210,7 +210,7 @@ v2.0 critical path: 6 → 7 → 8 → 10 (8 folds into the P7 watchdog; 10 is th
 | 3. Enforcement Guard | 4/4 | Complete   | 2026-06-08 |
 | 4. UI (Moonlit Indigo) | 5/5 | Complete   | 2026-06-09 |
 | 5. Instance Wiring | 3/3 | Complete   | 2026-06-10 |
-| 6. Config Cleanup | 1/2 | In Progress|  |
+| 6. Config Cleanup | 2/2 | Complete   | 2026-06-22 |
 | 7. Root Integrity Wall | 0/2 | Planned (blocked on P0: restore Python stack) | |
 | 8. Native Blocker | 0/— | Not started (folded into P7 watchdog tick) | |
 | 9. ActivityWatch | 0/— | Parked (optional) | |
