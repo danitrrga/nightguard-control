@@ -29,20 +29,40 @@
 //! Exit codes: 0 = success, 1 = error (bad args / IO / DPAPI / serde),
 //!             2 = verify-state-hmac tag mismatch (distinct from a generic error).
 
+// This harness drives the Phase-2 Windows DPAPI/PowerShell state_hmac interop gate; its key
+// lifecycle (`load_or_create_key`) is `#[cfg(windows)]`-only in trust-kernel. On non-Windows
+// hosts (the v2.0 Linux port) it has no purpose and cannot link, so the whole CLI is gated to
+// Windows with a no-op stub elsewhere, keeping the Windows behavior byte-for-byte unchanged.
+#[cfg(not(windows))]
+fn main() {
+    eprintln!("state_interop_cli is Windows-only (DPAPI state_hmac interop gate); no-op on this platform.");
+}
+
+#[cfg(windows)]
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use std::process::ExitCode;
 
+#[cfg(windows)]
 use chrono::Utc;
+#[cfg(windows)]
 use mutation_engine::commit::with_commit_lock;
+#[cfg(windows)]
 use mutation_engine::state::{GraceWindow, GuardState, LedgerEntry, MutationError};
+#[cfg(windows)]
 use mutation_engine::week::most_recent_monday_midnight;
+#[cfg(windows)]
 use trust_kernel::canon::canonicalize_bytes;
+#[cfg(windows)]
 use trust_kernel::hmac::{sign_bytes, tag_to_hex};
+#[cfg(windows)]
 use trust_kernel::key::load_or_create_key;
 
 /// Exit code for a state_hmac verification failure (distinct from a generic error).
+#[cfg(windows)]
 const EXIT_VERIFY_FAILED: u8 = 2;
 
+#[cfg(windows)]
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let cmd = args.get(1).map(String::as_str).unwrap_or("");
@@ -70,6 +90,7 @@ fn main() -> ExitCode {
 /// Build the FIXED, deterministic `GuardState` both sides agree on. Literal values only —
 /// a known `config_hmac` hex, a representative ledger entry, an active grace window — so the
 /// parity check is over a fully-populated, stable state (not an all-default one).
+#[cfg(windows)]
 fn fixed_guard_state() -> GuardState {
     GuardState {
         // A known 64-hex config_hmac (arbitrary but fixed) — the field is set, not blank.
@@ -94,6 +115,7 @@ fn fixed_guard_state() -> GuardState {
 /// Produce the EXACT pre-sign canonical bytes the recipe signs: serialize with `state_hmac`
 /// blanked, then `canonicalize_bytes`. This is the same byte form `GuardState::compute_state_hmac`
 /// signs internally — we expose it so the PS side can HMAC the identical bytes.
+#[cfg(windows)]
 fn canonical_signbytes(state: &GuardState) -> Result<Vec<u8>, String> {
     let mut blanked = state.clone();
     blanked.state_hmac = String::new();
@@ -102,6 +124,7 @@ fn canonical_signbytes(state: &GuardState) -> Result<Vec<u8>, String> {
 }
 
 /// `emit-state-hmac <key_path> <out_json_path>`
+#[cfg(windows)]
 fn cmd_emit_state_hmac(
     key_path: Option<&String>,
     out_json_path: Option<&String>,
@@ -134,6 +157,7 @@ fn cmd_emit_state_hmac(
 }
 
 /// `verify-state-hmac <key_path> <json_path> <expected_hex>`
+#[cfg(windows)]
 fn cmd_verify_state_hmac(
     key_path: Option<&String>,
     json_path: Option<&String>,
@@ -174,6 +198,7 @@ fn cmd_verify_state_hmac(
 /// guard's `Test-LockHeld` circuit-breaker observes a held lock and skips the revert (D-06),
 /// then observes a free lock after release. A 30s safety timeout prevents a wedged gate from
 /// hanging the holder forever.
+#[cfg(windows)]
 fn cmd_hold_commit_lock(
     lock_dir: Option<&String>,
     ready_path: Option<&String>,
@@ -225,6 +250,7 @@ fn cmd_hold_commit_lock(
 ///   7. `compute_state_hmac(&key)` via the SINGLE locked A3 recipe; fill it in; write `guard.json`.
 ///
 /// Prints `config_hmac=<hex>` and `state_hmac=<hex>`.
+#[cfg(windows)]
 fn cmd_init_instance(data_dir: Option<&String>) -> Result<u8, String> {
     let data_dir = data_dir.ok_or("init-instance requires <data_dir>")?;
     let data_dir = PathBuf::from(data_dir);

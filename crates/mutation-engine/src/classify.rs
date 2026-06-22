@@ -15,8 +15,13 @@
 //! | `clock_protection.max_offset_minutes` | increase | decrease |
 //! | `watchdog.enabled` | true→false | false→true |
 //! | `watchdog.check_interval_seconds` | increase | decrease |
-//! | `watchdog.apps` | remove app | add app |
+//! | `blocking.browser_extension.enabled` | true→false | false→true |
+//! | `blocking.native_apps.enabled` | true→false | false→true |
+//! | `blocking.native_apps.blacklist` | remove a window class | add a window class |
 //! | `timezone` | any change (potential bypass) | — |
+//!
+//! (`blocking.browser_extension.extension_id` is intentionally NOT classified — an id change
+//! is neither a tighten nor a loosen, so it is omitted from the table and reads as Noop.)
 //!
 //! **Commit rule:** one edit session = at most one token. If ANY field loosens the commit
 //! is a loosening commit (costs 1 token, requires `weekly_spent < 3`). All tighten/neutral
@@ -51,7 +56,7 @@ enum FieldKind {
     NumberIncreaseLoosens,
     /// List where *adding* an entry loosens (e.g. `allow_commands`).
     ListAddLoosens,
-    /// List where *removing* an entry loosens (e.g. `watchdog.apps`).
+    /// List where *removing* an entry loosens (e.g. `blocking.native_apps.blacklist`).
     ListRemoveLoosens,
     /// A `schedule.<day>` window string (`off` or `HH:MM-HH:MM`).
     Schedule,
@@ -120,9 +125,22 @@ const FIELD_TABLE: &[FieldSpec] = &[
         keys: &["watchdog", "check_interval_seconds"],
         kind: FieldKind::NumberIncreaseLoosens,
     },
+    // The Linux `blocking:` model (D-1/D-2). `watchdog:` keeps revert-watchdog cadence only;
+    // what gets blocked during curfew now lives under `blocking:`. `extension_id` is NOT a row
+    // here (an id change is neither tighten nor loosen -> Noop by omission).
     FieldSpec {
-        label: "watchdog.apps",
-        keys: &["watchdog", "apps"],
+        label: "blocking.browser_extension.enabled",
+        keys: &["blocking", "browser_extension", "enabled"],
+        kind: FieldKind::BoolTrueIsStrict,
+    },
+    FieldSpec {
+        label: "blocking.native_apps.enabled",
+        keys: &["blocking", "native_apps", "enabled"],
+        kind: FieldKind::BoolTrueIsStrict,
+    },
+    FieldSpec {
+        label: "blocking.native_apps.blacklist",
+        keys: &["blocking", "native_apps", "blacklist"],
         kind: FieldKind::ListRemoveLoosens,
     },
     FieldSpec {
@@ -353,7 +371,7 @@ fn parse_list(s: &str) -> Vec<String> {
 }
 
 /// Compare two lists. `add_loosens` selects polarity: an added entry loosens (commands)
-/// or a removed entry loosens (watchdog apps).
+/// or a removed entry loosens (the native-apps blacklist).
 fn compare_lists(old: &str, new: &str, add_loosens: bool) -> Direction {
     let old_set: Vec<String> = parse_list(old);
     let new_set: Vec<String> = parse_list(new);
