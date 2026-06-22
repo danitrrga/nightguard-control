@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Linux Port
-status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-06-22T18:05:46.608Z"
+status: phase_complete
+stopped_at: Completed Phase 6 (06-01 + 06-02 + Python trust-stack recovery)
+last_updated: "2026-06-22T19:35:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 1
-  percent: 0
+  completed_plans: 2
+  percent: 20
 ---
 
 # Project State
@@ -20,22 +20,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22 — opened v2.0 · Linux Port)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts. *(v2.0: the wall is now root-backed; `sudo` is the past-the-impulse threshold.)*
-**Current focus:** Phase 06 — config-cleanup
+**Current focus:** Phase 06 — config-cleanup ✅ COMPLETE → next: Phase 7 (root integrity wall)
 
 ## Current Position
 
 Milestone: v2.0 · Linux Port (supersedes v1.0 Windows, shipped)
-Phase: 06 (config-cleanup) — EXECUTING
-Plan: 2 of 2
-Next: restore + commit the Python trust stack (P0) → unblocks 06-02 + all of Phase 7. Meanwhile `/gsd-execute-phase 6` can run 06-01 (Rust classifier) now. Phase 7 decisions: keep files in LifeOS/nightguard + chown (key root:root 0600; sanctioned/guard.json root:root 0644; config.yaml stays user) · watchdog→systemd system unit (prove-then-switch) · sign via sudo→control-CLI (password, narrow sudoers, chown config.yaml back). Phase-8 risk flagged: root watchdog reaching the user's Hyprland socket (/run/user/1000/hypr).
-Status: Ready to execute
+Phase: 06 (config-cleanup) — COMPLETE (2/2 plans; LXCF-01 + LXCF-02 verified 2026-06-22)
+Plan: 2 of 2 done
+Next: Phase 7 (root integrity wall) via `/gsd-discuss-phase 7` → `/gsd-plan-phase 7`. P0 is RESOLVED — the Python trust stack (ngcommon/guard/nightguard_ctl/nightguard_watchdog .py) is recovered, validated, and git-tracked in LifeOS (commit 33df4c3). Phase 7 decisions still standing: keep files in LifeOS/nightguard + chown (key root:root 0600; sanctioned/guard.json root:root 0644; config.yaml stays user) · watchdog→systemd system unit (prove-then-switch) · sign via sudo→control-CLI (password, narrow sudoers, chown config.yaml back). Phase-8 risk flagged: root watchdog reaching the user's Hyprland socket (/run/user/1000/hypr).
+Status: Phase complete — ready for Phase 7
+
+NOTE (2026-06-22): the live LifeOS instance now runs the new `blocking:` schema (curfew 20:45), guard.json re-signed (config_hmac=78847ce5…), systemd watchdog healthy (steady `tick: ok`). The control CLI is `LifeOS/scripts/nightguard/nightguard_ctl.py` (subcommands: init/verify/show/commit --from).
 Phase-6 decisions (discuss 2026-06-22): new `blocking:` section (browser_extension + native_apps) · scope = product + re-sign instance · curfew canonical 20:45 (sanctioned re-baseline, not a token loosen) · LXCF-02 parity target = Python ngcommon.py/guard.py
 CURATION (Musk's algorithm, 2026-06-22 — .planning/phases/REVIEWS.md): ROOT-03 socket commit-helper DELETED → sign via `sudo`/control-CLI · Phase 8 native blocker FOLDED into the root watchdog tick (≤60s leakage) · Phase 10 Tauri → omarchy TUI thin-client over the one Python stack (kept in v2.0) · Phase 9 ActivityWatch parked · LXCF-02 narrowed to single Python stack. Unifying primitive: one root key → one root watchdog → one signer (control-CLI via sudo) → one schema → one HMAC.
-P0 (highest-risk, blocks 06-02 + Phase 7): restore + version-control the Python trust stack (ngcommon/guard/control-CLI/nightguard_watchdog .py) — absent from disk (only stale .pyc), untracked in git as of 2026-06-22 ~15:13.
+P0 RESOLVED (2026-06-22): the Python trust stack was recovered (ngcommon.py + guard.py reconstructed byte-exact from .pyc bytecode, validated against the stored guard.json HMAC oracle; nightguard_ctl.py control-CLI + nightguard_watchdog.py rebuilt), config-revert protection restored (was OFF ~5h), and all four .py sources committed to LifeOS git (33df4c3, __pycache__ ignored). Unblocks Phase 7.
 Superseded: the milestone-open B1 choice (socket commit-helper) was re-curated to sudo; B2 (SIGKILL vs hyprctl closewindow) → Phase 8 planning; B3 (StayFree lock-down + URLBlocklist) → Phase 7/10.
 Decisions locked at milestone open: Linux-only (retire Windows DPAPI/PowerShell paths) · no research pass (brief sufficient)
 
-Phase progress: [░░░░░░░░░░] 0/5 phases complete (v2.0); Phase 6 planned (0/2 plans)
+Phase progress: [██░░░░░░░░] 1/5 phases complete (v2.0); Phase 6 COMPLETE (2/2 plans)
 
 > v1.0 (Windows) shipped 2026-06-10: phases 1–5 complete, 20/20 plans. Last v1.0 activity
 > 2026-06-16 (260616-grc: grace "+8" live across the curfew boundary; single-instance
