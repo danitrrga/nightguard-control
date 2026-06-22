@@ -46,7 +46,7 @@ fn dirs(pairs: &[(&str, Direction)]) -> Vec<(String, Direction)> {
 fn all_tighten_commit_is_free_and_allowed() {
     let d = dirs(&[
         ("curfew.start", Direction::Tighten),
-        ("watchdog.apps", Direction::Tighten),
+        ("blocking.native_apps.blacklist", Direction::Tighten),
     ]);
     let dec = decide(&d, &state_current_week(0), now(), TZ);
     assert!(dec.allowed);
@@ -70,7 +70,7 @@ fn all_noop_commit_writes_nothing() {
 fn mixed_loosen_commit_costs_one_token_when_under_budget() {
     let d = dirs(&[
         ("curfew.start", Direction::Loosen),
-        ("watchdog.apps", Direction::Tighten),
+        ("blocking.native_apps.blacklist", Direction::Tighten),
     ]);
     let dec = decide(&d, &state_current_week(1), now(), TZ);
     assert!(dec.allowed);

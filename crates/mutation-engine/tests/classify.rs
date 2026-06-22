@@ -188,7 +188,7 @@ fn watchdog_check_interval_increase_is_loosen() {
 
 // ---------------------------------------------------------------------------
 // Lists: allow_commands add = Loosen / remove = Tighten;
-//        watchdog.apps remove = Loosen / add = Tighten
+//        blocking.native_apps.blacklist remove = Loosen / add = Tighten
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -208,19 +208,105 @@ fn curfew_allow_commands_remove_is_tighten() {
 }
 
 #[test]
-fn watchdog_apps_remove_is_loosen() {
-    let old = "watchdog:\n  apps: [discord.exe, steam.exe]\n";
-    let new = "watchdog:\n  apps: [discord.exe]\n";
+fn blocking_native_apps_blacklist_remove_is_loosen() {
+    // Removing a Hyprland window class from the kill list un-blocks that app -> loosen.
+    let old = "blocking:\n  native_apps:\n    blacklist: [steam, discord]\n";
+    let new = "blocking:\n  native_apps:\n    blacklist: [steam]\n";
     let dirs = classify_change(old, new).unwrap();
-    assert_eq!(dir_of(&dirs, "watchdog.apps"), Direction::Loosen);
+    assert_eq!(
+        dir_of(&dirs, "blocking.native_apps.blacklist"),
+        Direction::Loosen
+    );
 }
 
 #[test]
-fn watchdog_apps_add_is_tighten() {
-    let old = "watchdog:\n  apps: [discord.exe]\n";
-    let new = "watchdog:\n  apps: [discord.exe, steam.exe]\n";
+fn blocking_native_apps_blacklist_add_is_tighten() {
+    let old = "blocking:\n  native_apps:\n    blacklist: [steam]\n";
+    let new = "blocking:\n  native_apps:\n    blacklist: [steam, discord]\n";
     let dirs = classify_change(old, new).unwrap();
-    assert_eq!(dir_of(&dirs, "watchdog.apps"), Direction::Tighten);
+    assert_eq!(
+        dir_of(&dirs, "blocking.native_apps.blacklist"),
+        Direction::Tighten
+    );
+}
+
+// ---------------------------------------------------------------------------
+// blocking.*.enabled booleans (D-2): true->false = Loosen, false->true = Tighten.
+// `extension_id` is intentionally NOT classified (an id change is neither tighten
+// nor loosen -> Noop by omission from the field table).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn blocking_native_apps_enabled_true_to_false_is_loosen() {
+    let old = "blocking:\n  native_apps:\n    enabled: true\n";
+    let new = "blocking:\n  native_apps:\n    enabled: false\n";
+    let dirs = classify_change(old, new).unwrap();
+    assert_eq!(
+        dir_of(&dirs, "blocking.native_apps.enabled"),
+        Direction::Loosen
+    );
+}
+
+#[test]
+fn blocking_native_apps_enabled_false_to_true_is_tighten() {
+    let old = "blocking:\n  native_apps:\n    enabled: false\n";
+    let new = "blocking:\n  native_apps:\n    enabled: true\n";
+    let dirs = classify_change(old, new).unwrap();
+    assert_eq!(
+        dir_of(&dirs, "blocking.native_apps.enabled"),
+        Direction::Tighten
+    );
+}
+
+#[test]
+fn blocking_browser_extension_enabled_true_to_false_is_loosen() {
+    let old = "blocking:\n  browser_extension:\n    enabled: true\n";
+    let new = "blocking:\n  browser_extension:\n    enabled: false\n";
+    let dirs = classify_change(old, new).unwrap();
+    assert_eq!(
+        dir_of(&dirs, "blocking.browser_extension.enabled"),
+        Direction::Loosen
+    );
+}
+
+#[test]
+fn blocking_browser_extension_enabled_false_to_true_is_tighten() {
+    let old = "blocking:\n  browser_extension:\n    enabled: false\n";
+    let new = "blocking:\n  browser_extension:\n    enabled: true\n";
+    let dirs = classify_change(old, new).unwrap();
+    assert_eq!(
+        dir_of(&dirs, "blocking.browser_extension.enabled"),
+        Direction::Tighten
+    );
+}
+
+#[test]
+fn blocking_browser_extension_id_change_is_noop() {
+    // An extension_id change is neither tighten nor loosen: the field is not in the
+    // table, so classify_change never emits it and is_loosening_commit stays false.
+    let old = "blocking:\n  browser_extension:\n    extension_id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n";
+    let new = "blocking:\n  browser_extension:\n    extension_id: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n";
+    let dirs = classify_change(old, new).unwrap();
+    assert!(
+        !dirs.iter().any(|(f, _)| f == "blocking.browser_extension.extension_id"),
+        "extension_id must not be a classified field: {dirs:?}"
+    );
+    assert!(
+        !is_loosening_commit(&dirs),
+        "an extension_id-only change must not be a loosening commit"
+    );
+}
+
+#[test]
+fn blocking_field_absent_on_either_side_is_noop() {
+    // The new 3-deep paths share the defensive A2 behavior: absent on either side -> Noop.
+    let old = "blocking:\n  native_apps:\n    enabled: true\n";
+    let new = "watchdog:\n  enabled: true\n";
+    let dirs = classify_change(old, new).unwrap();
+    assert_eq!(
+        dir_of(&dirs, "blocking.native_apps.enabled"),
+        Direction::Noop
+    );
 }
 
 // ---------------------------------------------------------------------------
