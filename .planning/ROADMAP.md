@@ -168,6 +168,7 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
 **Depends on**: Phase 6 (`native_apps` blacklist) + Phase 7 (the root watchdog this extends)
 **Requirements**: NBLK-01, NBLK-02, NBLK-03
 **Curation note (2026-06-22)**: B2-context — built as a tick extension, not a socket2 listener. ≤60s leakage accepted for v1; an instant socket2 listener is a deferred "accelerate" step only if 60s proves inadequate. Kill mechanism (SIGKILL vs `hyprctl dispatch closewindow`) settled in planning.
+**Risk de-risked (2026-06-22)**: the root→user-Hyprland bridge (root watchdog reaching the user-owned `/run/user/1000/hypr` socket) is **verified feasible** — see `08-NOTES-hyprland-from-root.md` for the proven `runuser`-based approach + edge cases. No need to revert the fold-into-root curation.
 **Success Criteria** (what must be TRUE):
   1. On each tick during an active curfew lock, the root watchdog enumerates Hyprland clients and kills/closes windows whose class is on the `native_apps` blacklist.
   2. Killing honors lock + active-grace state (no kills outside curfew / during grace); cadence = the watchdog tick (≤60s).

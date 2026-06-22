@@ -134,6 +134,8 @@ None yet.
 - [Phase 1]: DPAPI + HMAC Rust↔PowerShell interop is the single genuine technical risk — must pass the byte-identical round-trip spike as the phase exit gate.
 - [Phase 2]: Verify `sntpc 0.10.1` `sync::get_time` signature and `yamlpatch` round-trip against the actual PowerShell minimal YAML parser at integration.
 - [Phase 3]: Verify hook-path resolution under Claude Code junctions before wiring (`$PSScriptRoot\..` may resolve to the drifted `~/.claude/nightguard`).
+- [v2.0 P0 — HIGHEST RISK]: the Linux Python trust stack (`ngcommon`/`guard`/control-CLI/`nightguard_watchdog` .py) is absent from disk (only stale `.pyc`) and untracked in git. Blocks 06-02 and all of Phase 7. Restore + commit before any execution.
+- [Phase 8 — DE-RISKED 2026-06-22]: root watchdog reaching the user-owned Hyprland socket (`/run/user/1000/hypr`). Verified feasible — `runuser`-to-user + per-tick `$HIS` discovery (root traverses via CAP_DAC_OVERRIDE; socket node is world-rwx). Full approach + edge cases + live-proof command in `.planning/phases/08-native-blocker/08-NOTES-hyprland-from-root.md`. Not a blocker; implement in Phase 8.
 
 ### Quick Tasks Completed
 
