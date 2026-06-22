@@ -1,13 +1,20 @@
 # Nightguard Control
 
+**Current milestone: v2.0 · Linux Port** (active) — supersedes the shipped v1.0 (Windows).
+
 ## What This Is
 
-A Windows desktop app (Tauri v2) that is the **single sanctioned editor** for a
+A Linux desktop app (Tauri v2) that is the **single sanctioned editor** for a
 "nightguard" curfew configuration — a self-binding ("anti-me") discipline tool. It
 rate-limits how often you can *weaken* your own curfew, grants a small once-daily timed
-bypass, and pairs with a guard hook that **auto-reverts any out-of-band hand edits** to
-the config. The repo is the clean, publishable product; the author runs a personal
+bypass, and pairs with a root-owned guard that **auto-reverts any out-of-band hand edits**
+to the config. The repo is the clean, publishable product; the author runs a personal
 instance wired into his LifeOS (see Context).
+
+> **v1.0 → v2.0:** v1.0 shipped Windows-only (DPAPI key, PowerShell guard, Scheduled
+> Task) and is preserved as a completed/tagged milestone. v2.0 ports the system to Linux
+> (CachyOS + Hyprland) and moves the integrity wall behind a **root** privilege boundary.
+> See `docs/linux-port-brief.md` and `.planning/INGEST-CONFLICTS.md` for the full delta.
 
 ## Core Value
 
@@ -17,28 +24,36 @@ reverts. Everything else is secondary to that guarantee holding.
 
 ## Requirements
 
-### Validated
+### Validated (v1.0 — shipped on Windows)
 
-(None yet — ship to validate)
+- [x] App is the only sanctioned path to edit the curfew config; raw config is HMAC-signed.
+- [x] An integrity guard detects hand-edits (HMAC mismatch) and auto-reverts to the last sanctioned snapshot.
+- [x] Loosening the curfew costs 1 of 3 weekly tokens; tightening/neutral edits are always free and unlimited (direction classifier).
+- [x] Weekly token budget resets Monday 00:00 in the configured timezone.
+- [x] A once-per-day "+8 minutes" button grants a time-boxed bypass of an active lock, NTP-true-time boxed, then re-locks. Does not cost a weekly token.
+- [x] State (`guard.json`) is signed too; tampering fails closed (no loosening, grace treated as used).
+- [x] UI: "Moonlit Indigo" — left icon rail, flat KPI cards, single periwinkle accent, status + countdown, 3-dot token meter, grace indicator, live per-field loosen/tighten feedback in the editor.
 
-### Active
+> The signing key (v1.0: Windows DPAPI; both Rust app + PowerShell guard verify the same
+> HMAC) is **superseded** in v2.0 by a root-owned file key + commit-helper — see Active.
 
-- [ ] App is the only sanctioned path to edit the curfew config; raw config is HMAC-signed.
-- [ ] An integrity guard hook detects hand-edits (HMAC mismatch) on session/prompt and auto-reverts to the last sanctioned snapshot.
-- [ ] Loosening the curfew costs 1 of 3 weekly tokens; tightening/neutral edits are always free and unlimited (direction classifier).
-- [ ] Weekly token budget resets Monday 00:00 in the configured timezone.
-- [ ] A once-per-day "+8 minutes" button grants a time-boxed bypass of an active lock, NTP-true-time boxed, then re-locks. Does not cost a weekly token.
-- [ ] Signing key is stored via Windows DPAPI (CurrentUser); both the app (Rust) and the guard (PowerShell) can verify the same HMAC.
-- [ ] State (`guard.json`) is signed too; tampering fails closed (no loosening, grace treated as used).
-- [ ] UI: "Moonlit Indigo" — left icon rail, flat Material KPI cards, single periwinkle accent, locked = bright text + moon badge, status + countdown, 3-dot token meter, grace indicator, live per-field loosen/tighten feedback in the editor.
+### Active (v2.0 · Linux Port)
+
+- [ ] **Linux-only:** the product targets Linux (CachyOS + Hyprland); the Windows DPAPI/PowerShell paths are retired from the product surface.
+- [ ] **Config blocking model** redefined for Linux: `browser_extension` (StayFree, policy-managed) + `native_apps` (Hyprland window-class blacklist); the dead Windows `uwp`/`package_id` entry is removed.
+- [ ] **Root integrity wall:** `.guardkey` + sanctioned config are root-owned (root:root 0600 key); the watchdog runs as a systemd **system** service (true-time + HMAC-revert + managed-policy check).
+- [ ] **Root commit-helper:** a root service over a Unix socket enforces the weekly token quota, signs, and writes — the *only* path that can produce a valid signature. The user-run app cannot forge a config; `sudo` is the sole bypass.
+- [ ] **Native-app blocking:** a `--user` service on Hyprland's socket2 `openwindow` event kills/closes blacklisted window classes during an active curfew lock (event-driven, grace-aware).
+- [ ] **Usage tracking via ActivityWatch** (aw-watcher-window + afk → :5600) with a sync script feeding screen-time into LifeOS, replacing StayFree analytics.
+- [ ] **Tauri port:** the DPAPI key module is swapped for a commit-helper socket client; the engine recompiles + runs on Linux with existing Rust tests passing unchanged; the app never holds the signing key.
 
 ### Out of Scope
 
-- Cross-platform (macOS/Linux) — Windows-only; DPAPI + the PowerShell guard are Windows-bound.
+- **macOS port** — Linux + (historical) Windows only.
+- **DNS/hosts-level sinkhole** — deferred (not dropped) to a later milestone.
 - Multi-user / accounts — single-operator tool.
-- Antigravity-side integrity guard — the curfew gate stays cross-agent, but auto-revert is PowerShell/Windows for now.
 - Editing anything beyond the nightguard curfew config — not a general settings editor.
-- Making the system literally unbreakable — the user is admin; goal is friction past the impulse threshold, explicitly not an absolute lock.
+- Making the system literally unbreakable — the user is admin (root); goal is friction past the impulse threshold (`sudo` = the threshold), explicitly not an absolute lock.
 
 ## Context
 
@@ -57,13 +72,13 @@ reverts. Everything else is secondary to that guarantee holding.
   instance configuration, not part of the published product surface.
 - Full approved design: `docs/design-spec.md` (copied from the brainstorming spec).
 
-## Constraints
+## Constraints (v2.0)
 
-- **Tech stack**: Tauri v2, Rust backend (sole writer/signer), vanilla TS + Vite frontend — keep deps lean.
-- **Platform**: Windows-only (DPAPI, PowerShell guard).
-- **Security**: HMAC-SHA256 over config + state; key at rest via DPAPI (CurrentUser); atomic writes; fail-closed on tamper.
-- **Interop**: Rust app and PowerShell guard must verify the *same* HMAC key (shared DPAPI blob).
-- **Design**: Moonlit Indigo palette (`--bg #0c0e14 --surface #161a24 --border #242a38 --text #e8eaf0 --dim #8b91a3 --accent #7aa2ff`), Roboto, YouTube-Studio aesthetic, own brand (no borrowed logos).
+- **Tech stack**: Tauri v2, Rust backend/engine (ports as-is), vanilla TS + Vite frontend; Python watchdog; systemd units — keep deps lean.
+- **Platform**: Linux-only (CachyOS + Hyprland/omarchy). The integrity wall is root-backed; native-app blocking needs the Hyprland session, so the blocker runs `--user` while the watchdog + key run as root.
+- **Security**: HMAC-SHA256 over config + state; **key at rest is a root-owned file** (root:root 0600); signing happens only inside a root commit-helper reached over a Unix socket; atomic writes; fail-closed on tamper.
+- **Interop**: the Rust engine and the Python watchdog verify the *same* HMAC key (root-owned file); the StayFree browser extension stays force-installed via a root-owned Chromium managed policy.
+- **Design**: Moonlit Indigo palette (`--bg #0c0e14 --surface #161a24 --border #242a38 --text #e8eaf0 --dim #8b91a3 --accent #7aa2ff`), Roboto, YouTube-Studio aesthetic, own brand (no borrowed logos). *(Carried over from v1.0 unchanged.)*
 
 ## Key Decisions
 
@@ -73,8 +88,13 @@ reverts. Everything else is secondary to that guarantee holding.
 | Only loosening costs a token | Asymmetry is what makes a self-binding pact actually bind | — Pending |
 | 3 tokens/week, reset Monday 00:00 | Predictable calendar-week budget | — Pending |
 | +8 = once-daily 8-min timed bypass (not a schedule shift) | Matches user's intent: brief access to plan, then re-lock | — Pending |
-| DPAPI-stored HMAC key shared by Rust + PowerShell | Both layers verify same signature; hand-edits can't forge it | — Pending |
-| Publishable generic repo + personal LifeOS instance | App is a product; personal config/wiring stays in LifeOS | — Pending |
+| DPAPI-stored HMAC key shared by Rust + PowerShell | Both layers verify same signature; hand-edits can't forge it | ✅ v1.0 — superseded by root file key in v2.0 |
+| Publishable generic repo + personal LifeOS instance | App is a product; personal config/wiring stays in LifeOS | ✅ v1.0 |
+| **[v2.0] Linux-only; retire Windows DPAPI/PowerShell paths** | Author moved to CachyOS; Windows surface is dead for the personal instance | — v2.0 |
+| **[v2.0] Root-backed integrity wall** (key + sanctioned config + watchdog all root) | `sudo` becomes the past-the-impulse threshold; user can't read the key to forge a signature | — v2.0 |
+| **[v2.0] Root commit-helper over a Unix socket** (vs pkexec-per-commit / user-readable key) | App stays freely usable; signing + quota live behind a real privilege boundary; only `sudo` bypasses | — v2.0 |
+| **[v2.0] Keep StayFree as the browser layer** (force-installed Chromium extension) | No native Linux StayFree client, but the extension runs on Linux; don't rebuild URL-blocklist machinery | — v2.0 |
+| **[v2.0] ActivityWatch for usage tracking** | Linux-native, open-source, scriptable; replaces StayFree desktop analytics | — v2.0 |
 
 ## Evolution
 
@@ -94,4 +114,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-04 after initialization*
+*Last updated: 2026-06-22 — opened milestone v2.0 · Linux Port (ingested from `docs/linux-port-brief.md`).*

@@ -43,9 +43,41 @@
 - [ ] **WIRE-01**: The live curfew hook reads the canonical config directly (propagation fix), eliminating the `~/.claude` vs LifeOS drift.
 - [ ] **WIRE-02**: The author's instance (`LifeOS/nightguard`) is configured as the app's target config path, with key + state initialized.
 
-## v2 Requirements
+## v2.0 Requirements · Linux Port
 
-### Grace Polish
+**Defined:** 2026-06-22 (ingested from `docs/linux-port-brief.md`; supersession delta in `.planning/INGEST-CONFLICTS.md`)
+Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 10**.
+
+### Config Cleanup (Phase 6)
+
+- [ ] **LXCF-01**: The `config.yaml` blocking model is redefined for Linux — the dead Windows `uwp` StayFree `package_id` entry is removed; targets become `browser_extension` (StayFree, policy-managed) + `native_apps` (Hyprland window-class blacklist).
+- [ ] **LXCF-02**: The Rust config writer and the Python watchdog agree on the new schema (round-trips through canonical bytes; the watchdog's minimal YAML parser still reads it); HMAC sign/verify is unaffected.
+
+### Root Integrity Wall (Phase 7)
+
+- [ ] **ROOT-01**: The `.guardkey` (32 bytes) and `config.sanctioned.yaml` move to root ownership (key root:root 0600); the user cannot read the key.
+- [ ] **ROOT-02**: The watchdog runs as a systemd **system** service (replacing the `--user` 60s timer), verifying true time (clock-tamper), the config HMAC (revert to sanctioned on mismatch), and that the StayFree Chromium managed policy is intact.
+- [ ] **ROOT-03**: A root **commit-helper** service exposes a Unix socket that enforces the weekly token quota, signs, and writes the sanctioned artifacts — the only path that can produce a valid signature. The user-run app connects as a client.
+- [ ] **ROOT-04**: Hand-forging a valid config is infeasible without the root-owned key; `sudo` is the sole bypass (friction past the impulse threshold, explicitly not an absolute lock).
+
+### Native Blocker (Phase 8)
+
+- [ ] **NBLK-01**: A `--user` systemd service listens on the Hyprland socket2 `openwindow` event and, during an active curfew lock, kills/closes windows whose class is on the `native_apps` blacklist.
+- [ ] **NBLK-02**: Blocking is curfew- and grace-aware (honors lock status + active grace from the engine) and event-driven — instant on window open, not a poll loop (no up-to-60s leakage).
+- [ ] **NBLK-03**: The native blocker need not be tamper-proof itself; the root watchdog is what prevents disabling it. *(Deferred to phase planning: B2 — SIGKILL vs `hyprctl dispatch closewindow`, per-app or global.)*
+
+### Usage Tracking (Phase 9)
+
+- [ ] **TRAK-01**: ActivityWatch is installed with `aw-watcher-window` + afk feeding `localhost:5600`.
+- [ ] **TRAK-02**: A sync script exports screen-time data into LifeOS, replacing StayFree desktop analytics.
+
+### Tauri Port (Phase 10)
+
+- [ ] **PORT-01**: The DPAPI key-store module is replaced by a commit-helper Unix-socket client; the rest of the Rust engine ports unchanged.
+- [ ] **PORT-02**: The app recompiles and runs on Linux (CachyOS); the existing `trust-kernel` + `mutation-engine` Rust tests pass unchanged.
+- [ ] **PORT-03**: Sanctioned edits from the app go through the root commit-helper (quota enforced server-side); the app never holds the signing key. *(Deferred to phase planning: B3 — StayFree extension lock-down depth + optional `URLBlocklist`.)*
+
+## Backlog (future polish — not scheduled)
 
 - **GRACE-01**: A short pre-delay and/or deliberate confirm before granting grace (One Sec-style pause).
 - **GRACE-02**: Beeminder-style reframing copy throughout ("available again Monday", not "denied").
@@ -54,13 +86,15 @@
 
 | Feature | Reason |
 |---------|--------|
-| Cross-platform (macOS/Linux) | DPAPI + PowerShell guard are Windows-bound |
+| macOS port | Linux + (historical) Windows only |
+| DNS/hosts-level sinkhole | Deferred (not dropped) to a later milestone |
 | Multi-user / accounts | Single-operator tool |
-| Antigravity-side integrity guard | Curfew gate stays cross-agent; auto-revert is PowerShell/Windows for now |
 | Gamification (streaks/XP/forests) | Serves retention metrics this tool lacks; creates incentives to game the budget |
 | Cloud sync / social / referee / master-off / quick presets | Each is a new escape hatch or attack surface |
 | General-purpose settings editor | Scope is the nightguard curfew config only |
-| Absolute unbreakability | User is admin; goal is friction past the impulse threshold, explicitly not a literal lock |
+| Absolute unbreakability | User is admin (root); goal is friction past the impulse threshold (`sudo` = the threshold), not a literal lock |
+
+> **Superseded from v1.0 Out of Scope:** "Cross-platform (macOS/Linux) — Windows-bound" — Linux is now the *primary* target (the Windows-bound DPAPI + PowerShell guard are retired). The "Antigravity-side integrity guard" item is moot now that auto-revert is the root systemd watchdog rather than a Windows hook.
 
 ## Traceability
 
@@ -89,14 +123,28 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | UI-03 | Phase 4 | Complete |
 | UI-04 | Phase 4 | Complete |
 | UI-05 | Phase 4 | Complete |
-| WIRE-01 | Phase 5 | Pending |
-| WIRE-02 | Phase 5 | Pending |
+| WIRE-01 | Phase 5 | Complete |
+| WIRE-02 | Phase 5 | Complete |
+| LXCF-01 | Phase 6 | Pending |
+| LXCF-02 | Phase 6 | Pending |
+| ROOT-01 | Phase 7 | Pending |
+| ROOT-02 | Phase 7 | Pending |
+| ROOT-03 | Phase 7 | Pending |
+| ROOT-04 | Phase 7 | Pending |
+| NBLK-01 | Phase 8 | Pending |
+| NBLK-02 | Phase 8 | Pending |
+| NBLK-03 | Phase 8 | Pending |
+| TRAK-01 | Phase 9 | Pending |
+| TRAK-02 | Phase 9 | Pending |
+| PORT-01 | Phase 10 | Pending |
+| PORT-02 | Phase 10 | Pending |
+| PORT-03 | Phase 10 | Pending |
 
 **Coverage:**
-- v1 requirements: 23 total
-- Mapped to phases: 23
+- v1.0 requirements: 23 total — all mapped, shipped.
+- v2.0 requirements: 13 total (LXCF×2, ROOT×4, NBLK×3, TRAK×2, PORT×3) — mapped to phases 6–10.
 - Unmapped: 0 ✓
 
 ---
-*Requirements defined: 2026-06-04*
-*Last updated: 2026-06-04 after roadmap creation (traceability finalized)*
+*Requirements defined: 2026-06-04 (v1.0); 2026-06-22 (v2.0 · Linux Port)*
+*Last updated: 2026-06-22 after opening the v2.0 milestone (traceability extended to phases 6–10)*

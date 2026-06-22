@@ -1,37 +1,49 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: milestone_complete
-stopped_at: Milestone complete (Phase 05 was final phase)
-last_updated: 2026-06-11T16:05:23.406Z
-last_activity: 2026-06-10
+milestone: v2.0
+milestone_name: Linux Port
+status: milestone_planning
+stopped_at: v2.0 milestone opened (ingested from docs/linux-port-brief.md); roadmap set, phases 6-10 not yet planned
+last_updated: 2026-06-22
+last_activity: 2026-06-22
+prior_milestones:
+  - milestone: v1.0
+    name: Windows
+    status: complete
+    phases: "1-5"
+    completed: 2026-06-10
 progress:
   total_phases: 5
-  completed_phases: 4
-  total_plans: 20
-  completed_plans: 20
-  percent: 80
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-04)
+See: .planning/PROJECT.md (updated 2026-06-22 — opened v2.0 · Linux Port)
 
-**Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts.
-**Current focus:** Milestone complete
+**Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts. *(v2.0: the wall is now root-backed; `sudo` is the past-the-impulse threshold.)*
+**Current focus:** v2.0 · Linux Port — milestone opened, phases 6–10 roadmapped, none planned yet.
 
 ## Current Position
 
-Phase: 05
+Milestone: v2.0 · Linux Port (supersedes v1.0 Windows, shipped)
+Phase: 06 (Config Cleanup) — not started
 Plan: Not started
-Next: 05-02-PLAN.md — build deployable hooks (adapter + watchdog rewrite + install/deploy)
-Status: Milestone complete
-Last activity: 2026-06-16 - 260616-grc: grace "+8" button goes live across the curfew boundary; + single-instance lock (tauri-plugin-single-instance — 2nd launch focuses the resident window) + release rebuild (new exe; Raycast Start-Menu shortcut already targets it) + fixed release builds booting in dev mode (declared the custom-protocol feature; manual cargo builds must pass --features custom-protocol)
+Next: `/gsd-plan-phase 6` — Config Cleanup (redefine the Linux blocking model: drop dead Windows `uwp`/`package_id`; add `browser_extension` + `native_apps`)
+Status: Milestone planning
+Decisions locked at milestone open: Linux-only (retire Windows DPAPI/PowerShell paths) · root commit-helper over a Unix socket (B1) · no research pass (brief sufficient)
+Deferred to phase planning: B2 (SIGKILL vs `hyprctl closewindow`) → Phase 8; B3 (StayFree lock-down depth + optional `URLBlocklist`) → Phase 7/10
 
-Phase progress: [████████░░] 4/5 phases complete (Phase 04: 5/5 plans)
+Phase progress: [░░░░░░░░░░] 0/5 phases complete (v2.0)
+
+> v1.0 (Windows) shipped 2026-06-10: phases 1–5 complete, 20/20 plans. Last v1.0 activity
+> 2026-06-16 (260616-grc: grace "+8" live across the curfew boundary; single-instance
+> lock; release rebuild; custom-protocol feature fix). Retained below as accumulated context.
 
 ## Performance Metrics
 

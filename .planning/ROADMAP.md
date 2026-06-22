@@ -21,11 +21,19 @@ instance wiring points the author's live LifeOS hook at the canonical config, cl
 
 Decimal phases appear between their surrounding integers in numeric order.
 
+**Milestone v1.0 (Windows) — shipped:**
 - [x] **Phase 1: Trust Kernel** - HMAC + DPAPI + atomic store with a Rust↔PowerShell interop round-trip as the exit gate (completed 2026-06-04)
 - [x] **Phase 2: Mutation Engine** - Direction classifier, weekly token quota, NTP-true grace, atomic ordered commit (completed 2026-06-05)
 - [x] **Phase 3: Enforcement Guard** - PowerShell verify→auto-revert with fail-closed paths and grace re-check (completed 2026-06-08)
 - [x] **Phase 4: UI (Moonlit Indigo)** - Status, token meter, +8 button, and live per-field editor feedback (completed 2026-06-09)
 - [x] **Phase 5: Instance Wiring** - Point the author's live hook at the canonical LifeOS config and initialize the instance (completed 2026-06-10)
+
+**Milestone v2.0 · Linux Port — active** (supersedes v1.0; see `.planning/INGEST-CONFLICTS.md`):
+- [ ] **Phase 6: Config Cleanup** - Retire the dead Windows `uwp`/`package_id` entry; redefine targets as `browser_extension` + `native_apps`
+- [ ] **Phase 7: Root Integrity Wall** *(highest value)* - Root-own key + sanctioned config; watchdog → systemd system service; build the root commit-helper (Unix socket + quota + sign)
+- [ ] **Phase 8: Native Blocker** - Hyprland socket2 `openwindow` `--user` listener; curfew/grace-gated kill-by-window-class
+- [ ] **Phase 9: ActivityWatch** - Install aw-watcher-window + afk; sync screen-time into LifeOS (replaces StayFree analytics)
+- [ ] **Phase 10: Tauri Port** *(biggest lift)* - Swap the DPAPI key module for the commit-helper socket client; recompile for Linux; existing Rust tests pass unchanged
 
 ## Phase Details
 
@@ -106,15 +114,91 @@ Decimal phases appear between their surrounding integers in numeric order.
   - [x] 05-02-PLAN.md — Build deployable hooks: adapter (verdict→CC block + allow-pass + butler msgs), watchdog rewrite (canonical config + StayFree), byte-exact install/deploy + integrity re-stamp; confirm CC block schema (WIRE-01)
   - [x] 05-03-PLAN.md — Prove-then-switch cutover: deploy + D-11 verify gate, then retire legacy gate / swap settings.json / restart watchdog LAST (WIRE-01, WIRE-02)
 
+---
+
+## Milestone v2.0 · Linux Port
+
+**Overview**: v2.0 ports the system from Windows to Linux (CachyOS + Hyprland) and
+moves the integrity wall behind a **root** privilege boundary. The Rust engine is
+platform-agnostic and ports almost as-is — only the key-store/signing module changes,
+from in-process DPAPI to a client of a root commit-helper reached over a Unix socket.
+The build sequences from the cheap, de-risking cleanup outward to the biggest lift:
+config schema first (P6) so both the Rust writer and the Python watchdog agree on the
+new Linux blocking model; then the root integrity wall + commit-helper (P7), which is
+the highest-value piece and the dependency for the app port; the native-app blocker
+(P8) and ActivityWatch (P9) hang off the cleaned config and the engine independently;
+the Tauri port (P10) lands last because it consumes the commit-helper socket P7 builds.
+Critical path: **Phase 6 → Phase 7 → Phase 10**.
+
+### Phase 6: Config Cleanup
+**Goal**: `config.yaml` describes a Linux blocking model — the dead Windows `uwp`/`package_id` StayFree entry is gone, replaced by `browser_extension` (StayFree, policy-managed) + `native_apps` (Hyprland window-class blacklist) — and both the Rust writer and the Python watchdog read it identically with HMAC sign/verify unaffected.
+**Depends on**: Phase 5 (v1.0 engine)
+**Requirements**: LXCF-01, LXCF-02
+**Success Criteria** (what must be TRUE):
+  1. The Windows `uwp` StayFree `package_id` watchdog entry is removed; `config.yaml` defines `browser_extension` + `native_apps` target groups.
+  2. The Rust config writer round-trips the new schema through canonical bytes; the Python watchdog's minimal YAML parser reads the same fields.
+  3. HMAC sign/verify over the new config is byte-stable across the Rust engine and the Python watchdog (no schema-change drift).
+**Plans**: TBD (run `/gsd-plan-phase 6`)
+
+### Phase 7: Root Integrity Wall *(highest value)*
+**Goal**: The integrity wall becomes root-backed and unforgeable from user space — the key + sanctioned config are root-owned, the watchdog is a systemd system service, and a root commit-helper over a Unix socket is the sole path that can sign a sanctioned write under the weekly quota.
+**Depends on**: Phase 6
+**Requirements**: ROOT-01, ROOT-02, ROOT-03, ROOT-04
+**Open question to resolve in planning**: B1 is settled (root commit-helper over a Unix socket).
+**Success Criteria** (what must be TRUE):
+  1. `.guardkey` and `config.sanctioned.yaml` are root-owned (key root:root 0600); a non-root user cannot read the key.
+  2. The watchdog runs as a systemd **system** service (not `--user`), verifying true time, the config HMAC (revert to sanctioned on mismatch), and the StayFree managed policy.
+  3. A root commit-helper over a Unix socket enforces the weekly token quota, signs, and writes sanctioned artifacts; it is the only producer of a valid signature.
+  4. A hand-edit to `config.yaml` cannot be made to verify without the root-owned key; `sudo` is the only bypass.
+**Plans**: TBD (run `/gsd-plan-phase 7`)
+
+### Phase 8: Native Blocker
+**Goal**: During an active curfew lock, blacklisted native apps (Steam, Discord, games) are killed/closed the instant they open, via a Hyprland session-scoped listener that honors the engine's lock + grace state.
+**Depends on**: Phase 6 (`native_apps` blacklist) + the engine's lock_status/grace
+**Requirements**: NBLK-01, NBLK-02, NBLK-03
+**Open question to resolve in planning**: B2 — SIGKILL vs `hyprctl dispatch closewindow` (per-app or global).
+**Success Criteria** (what must be TRUE):
+  1. A `--user` systemd service listens on Hyprland's socket2 `openwindow` event and acts on blacklisted window classes.
+  2. Action fires only during an active curfew lock, honoring active grace windows; it is event-driven (instant), not a poll loop.
+  3. The blocker is protected by the root watchdog (disabling it is what the root layer prevents), not by self-hardening.
+**Plans**: TBD (run `/gsd-plan-phase 8`)
+
+### Phase 9: ActivityWatch
+**Goal**: Screen-time tracking is restored on Linux via ActivityWatch and flows into LifeOS, replacing the StayFree desktop analytics that have no Linux client.
+**Depends on**: None (independent; can run anytime after Phase 6)
+**Requirements**: TRAK-01, TRAK-02
+**Success Criteria** (what must be TRUE):
+  1. ActivityWatch runs with `aw-watcher-window` + afk feeding `localhost:5600`.
+  2. A sync script exports screen-time data into LifeOS on a schedule.
+**Plans**: TBD (run `/gsd-plan-phase 9`)
+
+### Phase 10: Tauri Port *(biggest lift)*
+**Goal**: The desktop app runs on Linux as the sole sanctioned editor — the DPAPI key module is replaced by a commit-helper socket client, the app holds no key, and the existing Rust engine tests pass unchanged.
+**Depends on**: Phase 7 (commit-helper socket)
+**Requirements**: PORT-01, PORT-02, PORT-03
+**Open question to resolve in planning**: B3 — StayFree extension lock-down depth + optional `URLBlocklist`.
+**Success Criteria** (what must be TRUE):
+  1. The DPAPI key-store module is replaced by a commit-helper Unix-socket client; the rest of the engine ports unchanged.
+  2. The app recompiles and runs on Linux (CachyOS); the existing `trust-kernel` + `mutation-engine` Rust tests pass unchanged.
+  3. Sanctioned edits go through the root commit-helper (quota enforced server-side); the app never holds the signing key.
+**Plans**: TBD (run `/gsd-plan-phase 10`)
+**UI hint**: yes (Tauri frontend re-validation on Linux)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order. v1.0: 1 → 2 → 3 → 4 → 5 (shipped).
+v2.0 critical path: 6 → 7 → 10; Phases 8 and 9 run independently after Phase 6.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Trust Kernel | 3/3 | Complete   | 2026-06-04 |
 | 2. Mutation Engine | 5/5 | Complete   | 2026-06-05 |
-| 3. Enforcement Guard | 3/4 | In Progress|  |
+| 3. Enforcement Guard | 4/4 | Complete   | 2026-06-08 |
 | 4. UI (Moonlit Indigo) | 5/5 | Complete   | 2026-06-09 |
 | 5. Instance Wiring | 3/3 | Complete   | 2026-06-10 |
+| 6. Config Cleanup | 0/— | Not started | |
+| 7. Root Integrity Wall | 0/— | Not started | |
+| 8. Native Blocker | 0/— | Not started | |
+| 9. ActivityWatch | 0/— | Not started | |
+| 10. Tauri Port | 0/— | Not started | |
