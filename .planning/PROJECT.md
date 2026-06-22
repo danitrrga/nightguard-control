@@ -41,11 +41,11 @@ reverts. Everything else is secondary to that guarantee holding.
 
 - [ ] **Linux-only:** the product targets Linux (CachyOS + Hyprland); the Windows DPAPI/PowerShell paths are retired from the product surface.
 - [ ] **Config blocking model** redefined for Linux: `browser_extension` (StayFree, policy-managed) + `native_apps` (Hyprland window-class blacklist); the dead Windows `uwp`/`package_id` entry is removed.
-- [ ] **Root integrity wall:** `.guardkey` + sanctioned config are root-owned (root:root 0600 key); the watchdog runs as a systemd **system** service (true-time + HMAC-revert + managed-policy check).
-- [ ] **Root commit-helper:** a root service over a Unix socket enforces the weekly token quota, signs, and writes — the *only* path that can produce a valid signature. The user-run app cannot forge a config; `sudo` is the sole bypass.
-- [ ] **Native-app blocking:** a `--user` service on Hyprland's socket2 `openwindow` event kills/closes blacklisted window classes during an active curfew lock (event-driven, grace-aware).
-- [ ] **Usage tracking via ActivityWatch** (aw-watcher-window + afk → :5600) with a sync script feeding screen-time into LifeOS, replacing StayFree analytics.
-- [ ] **Tauri port:** the DPAPI key module is swapped for a commit-helper socket client; the engine recompiles + runs on Linux with existing Rust tests passing unchanged; the app never holds the signing key.
+- [ ] **Root integrity wall:** `.guardkey` + sanctioned config are root-owned (root:root 0600 key); the watchdog runs as a systemd **system** service (true-time + HMAC-revert + managed-policy check + native-app kill).
+- [ ] **Sign via sudo (no daemon):** allowed edits are signed by elevating to the existing control-CLI via `sudo`/`pkexec` (the bespoke socket commit-helper was curated out). The root key makes the control-CLI the sole signer; `sudo` is the only bypass, and the prompt is deliberate anti-impulse friction.
+- [ ] **Native-app blocking folded into the watchdog tick:** during a curfew lock the root watchdog kills blacklisted Hyprland window classes (≤60s leakage accepted; un-stoppable from user space — no separate service).
+- [ ] **Usage tracking via ActivityWatch** (aw-watcher-window + afk → :5600) with a sync script feeding screen-time into LifeOS, replacing StayFree analytics. *(Parked — orthogonal analytics; optional this milestone.)*
+- [ ] **Linux app = omarchy TUI** (not Tauri): a terminal-native, command-driven, minimal app themed via *aether*, built as a **thin client over the one Python trust stack** (it calls the control-CLI to sign; never holds the key) — so Linux runs a single HMAC implementation.
 
 ### Out of Scope
 
@@ -92,7 +92,9 @@ reverts. Everything else is secondary to that guarantee holding.
 | Publishable generic repo + personal LifeOS instance | App is a product; personal config/wiring stays in LifeOS | ✅ v1.0 |
 | **[v2.0] Linux-only; retire Windows DPAPI/PowerShell paths** | Author moved to CachyOS; Windows surface is dead for the personal instance | — v2.0 |
 | **[v2.0] Root-backed integrity wall** (key + sanctioned config + watchdog all root) | `sudo` becomes the past-the-impulse threshold; user can't read the key to forge a signature | — v2.0 |
-| **[v2.0] Root commit-helper over a Unix socket** (vs pkexec-per-commit / user-readable key) | App stays freely usable; signing + quota live behind a real privilege boundary; only `sudo` bypasses | — v2.0 |
+| **[v2.0] Sign via `sudo`/control-CLI** (curated 2026-06-22; replaced the planned Unix-socket commit-helper) | Reuses the existing signer with zero new daemon/protocol; the sudo prompt IS the anti-impulse friction (aligned with the friction-not-lock goal) and is idiomatic in a terminal app | — v2.0 |
+| **[v2.0] One trust stack on Linux (Python); app is a thin TUI client** (curated; was Tauri + a 2nd Rust crypto stack) | Avoids maintaining two byte-identical HMAC stacks; the omarchy TUI calls the control-CLI to sign rather than re-implementing crypto | — v2.0 |
+| **[v2.0] Native blocking folded into the root watchdog tick** (curated; was a separate `--user` socket2 service) | One fewer service, un-stoppable from user space, ≤60s leakage accepted; socket2 only if 60s proves inadequate | — v2.0 |
 | **[v2.0] Keep StayFree as the browser layer** (force-installed Chromium extension) | No native Linux StayFree client, but the extension runs on Linux; don't rebuild URL-blocklist machinery | — v2.0 |
 | **[v2.0] ActivityWatch for usage tracking** | Linux-native, open-source, scriptable; replaces StayFree desktop analytics | — v2.0 |
 

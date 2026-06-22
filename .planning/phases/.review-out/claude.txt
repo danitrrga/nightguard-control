@@ -1,0 +1,127 @@
+Review written to `.planning/phases/.review-out/claude.txt`. Here it is.
+
+---
+
+# Musk-Algorithm Scope Review — Phases 6/7/8
+
+**The one fact that reframes everything:** on Linux today, **only the Python stack runs** — watchdog reverts, `guard.py` enforces curfew+grace, `ngcommon.py` signs, the control CLI commits under flock, already mirroring the Rust contract byte-for-byte. The Rust/Tauri app does **not** run on Linux (that's P10). Almost every dumb requirement below traces to designing for a Rust app that isn't there yet.
+
+## 1. Question the requirements
+
+**Load-bearing:**
+- **ROOT-01** (root-own the key) — *the* v2.0 upgrade. Today the key is a user-readable 0600 file, so the impulsive self can just re-sign a loosened config and beat the revert. Root ownership is what turns "reverts" into "can't forge without crossing a friction threshold."
+- **ROOT-02** (watchdog → systemd *system* service) — a necessary consequence of ROOT-01 (a `--user` watchdog can't read a root key).
+- **ROOT-04** (sudo = sole bypass, friction not lock) — load-bearing as philosophy, and it quietly kills ROOT-03.
+- **LXCF-01** (Linux blocking schema) — real cleanup; the contract every layer reads.
+
+**Dumb / scope-creep:**
+- **ROOT-03 (the socket commit-helper) is the dumbest surviving requirement** — dumb *because* a smart person chose it (B1 opt 1). Its only consumer is the Rust app that doesn't exist on Linux. The Python control CLI **already** enforces quota + signs + writes under flock in the right order. ROOT-03 re-implements a working CLI as a daemon + socket protocol + peer-cred auth + client, purely so a future GUI feels seamless.
+- **NBLK-01/02 as a separate event-driven service** — new scope, adjacent to core value. A `--user` listener is `systemctl --user stop`-able by the person it polices (NBLK-03 admits this). If it needs the root watchdog to be trustworthy, it should *live in* the root watchdog.
+- **LXCF-02's cross-language parity proof** — only load-bearing because two crypto stacks must agree. At runtime there's one (Python). The tax exists to serve P10.
+
+## 2. Delete (most impactful first)
+
+**(a) Delete ROOT-03 entirely.** Root owns the key; sign by invoking the existing control CLI via `pkexec`/`sudo`. Preserves every claimed property (quota, sole-signer, ordered commit) with **zero new code** — no daemon, no socket, no protocol.
+
+**(b) Delete Phase 8 as a service; fold window-kill into the root watchdog tick.** It already runs as root every 60s and already knows lock/grace state. ~15 lines: during a lock, enumerate Hyprland clients, kill blacklisted classes. Deletes a service *and* makes the blocker un-stoppable from user space. Accept ≤60s leakage.
+
+**(c) Defer Phase 10 → delete a whole crypto stack at runtime.** The Rust engine only matters on Linux if the GUI ships there. A GUI isn't the core value; a signer you must deliberately invoke is — and the control CLI already is one. Deferring P10 leaves **one HMAC implementation**, kills ROOT-03's only consumer, and shrinks LXCF-02 to "Python parses the new schema."
+
+**Add-back (the ≥10% test):** keep **06-01** (re-point the Rust classifier) — not for Linux, but because the repo is the *publishable product* and shouldn't ship a dead Windows shape. Cheap, off the critical path. That honest add-back says the cuts are aggressive, not reckless.
+
+## 3. Cohesion
+
+The unifying primitive is real: **one root-owned key → one root systemd watchdog (verify-revert + true-time + browser-policy + native-kill) → one signer (control CLI behind sudo) → one config schema → one HMAC (Python).** 6/7/8 only *feel* like three phases because of the unstated assumption that the Rust app is live on Linux. Remove it (defer P10) and they fuse into one phase, one deploy, one cutover. **The cohesion decision and the Phase-10 decision are the same decision.**
+
+## 4. Trade-offs, honestly
+
+- **pkexec/sudo prompt vs. seamless socket:** the password prompt isn't a cost — it's the *product*. ROOT-04's whole point is friction past the impulse. A seamless socket makes loosening feel free, which is exactly the late-night behavior the tool exists to interrupt. The socket is **anti-aligned** with core value.
+- **≤60s leakage vs. instant socket2:** 60s is fine for impulse control; the repeated open→die→open→die loop *is* the deterrent. Build socket2 only if the folded-in version proves inadequate with evidence — a later "accelerate" step, not an upfront second service.
+
+## 5. Curated minimum
+
+- **Root-own the key (ROOT-01) + root systemd watchdog (ROOT-02)** — the only thing that actually upgrades core value on Linux.
+- **Delete the socket helper (ROOT-03); sign via the control CLI behind pkexec/sudo** — the prompt *is* the anti-impulse friction.
+- **Delete Phase 8 as a service; fold window-kill into the root watchdog tick** — fewer parts, un-stoppable from user space, ≤60s accepted.
+- **Defer Phase 10; the CLI is the sanctioned editor on Linux** — collapses two crypto stacks to one, removes the parity tax LXCF-02 exists to pay.
+- **First, get the Python trust stack into git** — it's the load-bearing security layer, currently untracked and unrecoverable, and the actual blocker on 06-02.
+
+One note beyond the brief: that last bullet genuinely alarmed me. Your entire Linux integrity layer exists only as live files + stale `.pyc`, not version-controlled. That's the highest-risk fact in the whole plan — I'd fix it before any phase work.
+stack that already runs:
+- 6 = point the contract (config schema) at the Linux blocking model.
+- 7 = move key + watchdog + signer behind root.
+- 8 = the watchdog also kills blacklisted windows.
+
+They feel separate today ONLY because of the unstated assumption that the Rust app is
+a live participant on Linux. Remove that (defer P10) and they fuse into one phase with
+one deploy and one prove-then-switch cutover. The cohesion decision and the Phase-10
+decision are the same decision: keep P10 and you own two crypto stacks and a socket
+forever; defer it and 6/7/8 collapse into one coherent thing.
+
+---
+
+## 4. Trade-offs, honestly
+
+pkexec/sudo password-per-loosen vs. seamless socket. The password prompt is not a cost
+to minimize — it is the product. ROOT-04 says the goal is friction past the impulse
+threshold, not an absolute lock. A seamless socket makes loosening feel free and
+instant, exactly the late-night behavior the tool exists to interrupt. Forcing the
+impulsive self to stop and type a root credential is the speed-bump. The socket is
+anti-aligned with core value; deleting it improves the product on philosophy alone,
+before counting saved code. (Caveat: pkexec needs a polkit auth agent under Hyprland;
+if flaky, sudo in a terminal is the fallback and is even more deliberate — fine.)
+
+<=60s native-block leakage vs. instant socket2. For impulse control, 60s is
+acceptable, and the repeated "open Steam -> dies within a minute -> open again ->
+dies again" loop is itself the deterrent. Instant kill is polish. Build socket2 ONLY
+if the folded-in 60s version proves inadequate with real evidence — a later
+Step-4 "accelerate" decision, not an upfront second service.
+
+---
+
+## 5. Bare-minimum recommendation
+
+Collapse Phases 6+7+8 into ONE phase: "Root trust layer + Linux config model."
+
+P0 (do first — the scary one): commit the Python stack to version control. The entire
+Linux trust layer currently exists only as live files + stale .pyc, not git-tracked,
+actively edited. The load-bearing security component is one rm from unrecoverable.
+This is also the 06-02 blocker — clearing it unblocks everything.
+
+Then, in order:
+1. ROOT-01: root-own .guardkey + config.sanctioned.yaml.
+2. ROOT-02: watchdog -> root systemd system service (verify-revert + true-time +
+   browser-policy), AND fold blacklisted-window-kill into the same tick (deletes
+   Phase 8 / NBLK as a separate service; <=60s leakage accepted).
+3. Sign via the control CLI invoked through pkexec/sudo — root key makes it the sole
+   signer, quota enforced in-CLI (deletes ROOT-03 / the socket helper; satisfies
+   ROOT-04 by construction).
+4. LXCF-01 instance: rewrite live config to the blocking: schema + re-sign via the
+   control CLI (curfew 20:45 as sanctioned re-baseline, not a quota loosen).
+5. 06-01 repo hygiene: keep, off the critical path (publishable-repo cleanliness).
+
+EXPLICITLY cut/deferred:
+- ROOT-03 socket commit-helper -> DELETED (CLI-via-sudo replaces it).
+- Phase 8 separate event-driven blocker (NBLK-01/02) -> DELETED, folded into the root
+  watchdog tick.
+- Phase 10 Tauri port (PORT-01/02/03) -> DEFERRED post-milestone. CLI is the
+  sanctioned editor on Linux. Removes the second crypto stack and the socket-client
+  design; shrinks LXCF-02 to single-stack.
+- LXCF-02 cross-language parity proof -> SHRUNK to "Python parses new schema."
+  Cross-language parity returns only if/when P10 is revived.
+- Phase 9 (ActivityWatch) -> leave parked; analytics, orthogonal to the trust story.
+  Droppable from this milestone with no loss to core value.
+
+CURATED MINIMUM (5 bullets):
+- Root-own the key (ROOT-01) + run the watchdog as a root systemd service (ROOT-02).
+  This, and only this, upgrades the core value on Linux; the rest serves it or is creep.
+- Delete the socket commit-helper (ROOT-03); sign via the existing control CLI behind
+  pkexec/sudo. The password prompt IS the anti-impulse friction, not a cost.
+- Delete Phase 8 as a service; fold window-kill into the root watchdog tick. One fewer
+  service, un-stoppable from user space, <=60s leakage accepted.
+- Defer Phase 10 (Tauri port); the CLI is the sanctioned editor on Linux. Collapses
+  two crypto stacks to one and removes the parity tax LXCF-02 exists to pay.
+- First, get the Python trust stack into git. It is the load-bearing security layer,
+  currently untracked and unrecoverable — the highest-risk fact in the plan and the
+  blocker on 06-02.
+EXIT 0

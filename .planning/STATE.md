@@ -37,9 +37,10 @@ Plan: 06-01 ready to execute
 Next: `/gsd-execute-phase 6` (or run 06-01 alone) — 06-01 redefines the Rust classifier (executable now); 06-02 (instance re-baseline + re-sign) is BLOCKED until the Linux Python tooling is restored to disk
 Status: Phase planning complete for Phase 6
 Phase-6 decisions (discuss 2026-06-22): new `blocking:` section (browser_extension + native_apps) · scope = product + re-sign instance · curfew canonical 20:45 (sanctioned re-baseline, not a token loosen) · LXCF-02 parity target = Python ngcommon.py/guard.py
-Phase-6 BLOCKER: Linux Python tooling (scripts/nightguard/{ngcommon,guard,control-CLI,nightguard_watchdog}.py) is absent from disk (only stale .pyc), untracked in git, dir mid-refactor as of 2026-06-22 ~15:13 — 06-02 cannot run until restored + watchdog quiescent
-Decisions locked at milestone open: Linux-only (retire Windows DPAPI/PowerShell paths) · root commit-helper over a Unix socket (B1) · no research pass (brief sufficient)
-Deferred to phase planning: B2 (SIGKILL vs `hyprctl closewindow`) → Phase 8; B3 (StayFree lock-down depth + optional `URLBlocklist`) → Phase 7/10
+CURATION (Musk's algorithm, 2026-06-22 — .planning/phases/REVIEWS.md): ROOT-03 socket commit-helper DELETED → sign via `sudo`/control-CLI · Phase 8 native blocker FOLDED into the root watchdog tick (≤60s leakage) · Phase 10 Tauri → omarchy TUI thin-client over the one Python stack (kept in v2.0) · Phase 9 ActivityWatch parked · LXCF-02 narrowed to single Python stack. Unifying primitive: one root key → one root watchdog → one signer (control-CLI via sudo) → one schema → one HMAC.
+P0 (highest-risk, blocks 06-02 + Phase 7): restore + version-control the Python trust stack (ngcommon/guard/control-CLI/nightguard_watchdog .py) — absent from disk (only stale .pyc), untracked in git as of 2026-06-22 ~15:13.
+Superseded: the milestone-open B1 choice (socket commit-helper) was re-curated to sudo; B2 (SIGKILL vs hyprctl closewindow) → Phase 8 planning; B3 (StayFree lock-down + URLBlocklist) → Phase 7/10.
+Decisions locked at milestone open: Linux-only (retire Windows DPAPI/PowerShell paths) · no research pass (brief sufficient)
 
 Phase progress: [░░░░░░░░░░] 0/5 phases complete (v2.0); Phase 6 planned (0/2 plans)
 

@@ -46,36 +46,42 @@
 ## v2.0 Requirements · Linux Port
 
 **Defined:** 2026-06-22 (ingested from `docs/linux-port-brief.md`; supersession delta in `.planning/INGEST-CONFLICTS.md`)
-Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 10**.
+**Curated:** 2026-06-22 via Musk's algorithm (`.planning/phases/REVIEWS.md`) — deleted the socket commit-helper (sign via `sudo`); folded the native blocker into the watchdog tick; reshaped the app from Tauri → omarchy TUI thin-client over the one Python stack. The unifying primitive: **one root key → one root watchdog → one signer (control-CLI behind sudo) → one config schema → one HMAC (Python).**
+Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 8 → 10**.
+
+> **P0 (highest-risk, do before any phase work):** the Linux Python trust stack
+> (`ngcommon.py`/`guard.py`/control-CLI/`nightguard_watchdog.py`) is the load-bearing security
+> layer and is currently **untracked + absent from disk** (only stale `.pyc`). Restore it and
+> get it into version control — it's also the standing 06-02 blocker.
 
 ### Config Cleanup (Phase 6)
 
 - [ ] **LXCF-01**: The `config.yaml` blocking model is redefined for Linux — the dead Windows `uwp` StayFree `package_id` entry is removed; targets become `browser_extension` (StayFree, policy-managed) + `native_apps` (Hyprland window-class blacklist).
-- [ ] **LXCF-02**: The Rust config writer and the Python watchdog agree on the new schema (round-trips through canonical bytes; the watchdog's minimal YAML parser still reads it); HMAC sign/verify is unaffected.
+- [ ] **LXCF-02**: The Python stack (`ngcommon.py` parser + signer) reads and signs the new schema (canonical-bytes round-trip; the minimal YAML parser handles it; HMAC unaffected). The repo's Rust classifier (06-01) agrees on the schema *shape* for product hygiene, but Linux runtime uses the **single Python crypto stack** — cross-language byte-parity is no longer a runtime requirement (it returns only if a Rust signer is ever revived). *(Narrowed 2026-06-22 per curation.)*
 
 ### Root Integrity Wall (Phase 7)
 
 - [ ] **ROOT-01**: The `.guardkey` (32 bytes) and `config.sanctioned.yaml` move to root ownership (key root:root 0600); the user cannot read the key.
 - [ ] **ROOT-02**: The watchdog runs as a systemd **system** service (replacing the `--user` 60s timer), verifying true time (clock-tamper), the config HMAC (revert to sanctioned on mismatch), and that the StayFree Chromium managed policy is intact.
-- [ ] **ROOT-03**: A root **commit-helper** service exposes a Unix socket that enforces the weekly token quota, signs, and writes the sanctioned artifacts — the only path that can produce a valid signature. The user-run app connects as a client.
-- [ ] **ROOT-04**: Hand-forging a valid config is infeasible without the root-owned key; `sudo` is the sole bypass (friction past the impulse threshold, explicitly not an absolute lock).
+- [ ] **ROOT-03**: Allowed edits are signed by **elevating to the existing control-CLI via `sudo`/`pkexec`** — no bespoke daemon or socket. The root-owned key makes the control-CLI the sole signer; it enforces the weekly token quota in-process and writes under flock. The sudo prompt is deliberate anti-impulse friction (aligned with ROOT-04) and idiomatic in the terminal/TUI app. *(Curated 2026-06-22: the Unix-socket commit-helper was deleted — see `.planning/phases/REVIEWS.md`.)*
+- [ ] **ROOT-04**: Hand-forging a valid config is infeasible without the root-owned key; `sudo` is the sole bypass (friction past the impulse threshold, explicitly not an absolute lock). Satisfied by construction once ROOT-01 + ROOT-03 hold.
 
-### Native Blocker (Phase 8)
+### Native Blocker (Phase 8 — folded into the watchdog)
 
-- [ ] **NBLK-01**: A `--user` systemd service listens on the Hyprland socket2 `openwindow` event and, during an active curfew lock, kills/closes windows whose class is on the `native_apps` blacklist.
-- [ ] **NBLK-02**: Blocking is curfew- and grace-aware (honors lock status + active grace from the engine) and event-driven — instant on window open, not a poll loop (no up-to-60s leakage).
-- [ ] **NBLK-03**: The native blocker need not be tamper-proof itself; the root watchdog is what prevents disabling it. *(Deferred to phase planning: B2 — SIGKILL vs `hyprctl dispatch closewindow`, per-app or global.)*
+- [ ] **NBLK-01**: The **root watchdog tick** (the same systemd *system* service from ROOT-02), during an active curfew lock, enumerates Hyprland clients and kills/closes windows whose class is on the `native_apps` blacklist — **no separate service**.
+- [ ] **NBLK-02**: Killing is curfew- and grace-aware (reuses the watchdog's lock/grace state). Cadence = the watchdog tick (**≤60s leakage accepted for v1**; an instant socket2 listener is a deferred "accelerate" step, built only if 60s proves inadequate with evidence).
+- [ ] **NBLK-03**: Because the kill lives **inside the root watchdog**, it is un-stoppable from user space (no `systemctl --user stop` escape). *(B2 kill mechanism — SIGKILL vs `hyprctl dispatch closewindow` — settled in phase planning.)* *(Curated 2026-06-22: folded into the watchdog tick — see REVIEWS.md.)*
 
 ### Usage Tracking (Phase 9)
 
 - [ ] **TRAK-01**: ActivityWatch is installed with `aw-watcher-window` + afk feeding `localhost:5600`.
 - [ ] **TRAK-02**: A sync script exports screen-time data into LifeOS, replacing StayFree desktop analytics.
 
-### Tauri Port (Phase 10)
+### Linux App (Phase 10 — omarchy TUI, was "Tauri Port")
 
-- [ ] **PORT-01**: The DPAPI key-store module is replaced by a commit-helper Unix-socket client; the rest of the Rust engine ports unchanged.
-- [ ] **PORT-02**: The app recompiles and runs on Linux (CachyOS); the existing `trust-kernel` + `mutation-engine` Rust tests pass unchanged.
-- [ ] **PORT-03**: Sanctioned edits from the app go through the root commit-helper (quota enforced server-side); the app never holds the signing key. *(Deferred to phase planning: B3 — StayFree extension lock-down depth + optional `URLBlocklist`.)*
+- [ ] **PORT-01**: The Linux app is a **terminal/TUI** app (not Tauri) — omarchy-native, command-driven, minimal aesthetic, themed live via **aether** for responsive colors that track the desktop theme.
+- [ ] **PORT-02**: The TUI is a **thin client over the one Python trust stack** — it reads state from `guard.json`/the guard and signs allowed edits by invoking the control-CLI via `sudo`/`pkexec` (ROOT-03). It does **not** re-implement signing, so Linux runs a **single HMAC implementation** (no second crypto stack to keep in byte-parity).
+- [ ] **PORT-03**: The TUI never holds the signing key; the weekly quota is enforced by the control-CLI. *(Phase-planning choices: exact TUI stack; aether theming integration; B3 StayFree lock-down depth + optional `URLBlocklist` lands here or in P7.)* *(Curated 2026-06-22: Tauri → omarchy TUI thin-client — see REVIEWS.md.)*
 
 ## Backlog (future polish — not scheduled)
 
