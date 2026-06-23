@@ -204,7 +204,11 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
   3. Phase 8's root SIGKILL for `steam`/`discord` remains active as a root-signed backstop that StayFree's user-editable rules cannot reconfigure away.
   4. StayFree's own curfew rules rely on its type-test friction only (accepted soft tier); the hard guarantee for the critical apps comes from the Phase 8 backstop.
 **Decisions**: see `.planning/phases/09-stayfree-desktop/09-CONTEXT.md`
-**Plans**: TBD (run `/gsd-plan-phase 9`)
+**Supersession (2026-06-23 planning)**: D-05 DROPPED — Phase 8 native-kill was descoped + reverted (`8055b86`); it is NOT retained as a backstop and is NOT re-instated here. The hard floor is the **curfew layer** (Claude-Code hook + root config-revert + root-locked StayFree *browser* policy). On spike-FAIL there is no native-app hard guarantee (accepted, eyes-open). Success Criteria 3 & 4 above are superseded accordingly — see `09-CONTEXT.md` SUPERSEDED banner.
+**Plans**: 3 plans (spike-first, branch-on-result)
+  - [ ] 09-01-PLAN.md — Wave 0 D-09 gating spike (install + observe blocks-vs-tracks under Hyprland) + record PASS/FAIL/PARTIAL verdict + rewrite stale TRAK-01/02 to StayFree terms (TRAK-01, TRAK-02) — **unconditional**
+  - [ ] 09-02-PLAN.md — **IF spike PASS**: fold a tick-shaped keep-alive (pgrep probe + runuser respawn) into the root watchdog `tick()` so StayFree can't be quit (TRAK-01)
+  - [ ] 09-03-PLAN.md — **IF spike FAIL/PARTIAL** (predicted): record StayFree = analytics-only, keep-alive moot/not-built, re-open CONTEXT per D-09 (TRAK-01, TRAK-02)
 
 ### Phase 10: Linux App — omarchy TUI *(was "Tauri Port")*
 **Goal**: The Linux app is the sole sanctioned editor as a **terminal/TUI** — omarchy-native, command-driven, minimal, themed live via *aether* — built as a **thin client over the one Python trust stack** (it calls the control-CLI to sign via `sudo`; never holds the key).
