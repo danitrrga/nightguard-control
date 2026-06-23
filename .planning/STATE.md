@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Linux Port
-status: ready_to_plan
-stopped_at: Phase 07.1 complete (3/3) — ready to discuss Phase 08
-last_updated: 2026-06-23T11:12:22.007Z
+status: planning
+stopped_at: Phase 8 context gathered
+last_updated: "2026-06-23T11:52:22.522Z"
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 7
-  completed_plans: 27
+  completed_plans: 7
   percent: 50
 ---
 
@@ -166,7 +166,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-23T10:44:55.624Z
-Stopped at: Completed 07.1-02-PLAN.md (curfew adapter built + /plan signed live)
-Resume file: None
+Last session: 2026-06-23T11:52:22.518Z
+Stopped at: Phase 8 context gathered
+Resume file: .planning/phases/08-native-blocker/08-CONTEXT.md
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
