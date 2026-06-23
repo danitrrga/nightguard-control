@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Linux Port
-status: phase_complete
-stopped_at: Completed Phase 7 (07-01 root watchdog/key chown + 07-02 sign-via-sudo + quota)
-last_updated: "2026-06-22T20:50:00.000Z"
+status: completed
+stopped_at: Phase 07.1 context gathered
+last_updated: "2026-06-23T09:25:30.364Z"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 2
-  total_plans: 6
+  total_plans: 4
   completed_plans: 4
-  percent: 40
+  percent: 33
 ---
 
 # Project State
@@ -159,7 +159,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-22T18:05:39.493Z
-Stopped at: Completed 06-01-PLAN.md
-Resume file: None
+Last session: 2026-06-23T09:25:30.358Z
+Stopped at: Phase 07.1 context gathered
+Resume file: .planning/phases/07.1-curfew-hook/07.1-CONTEXT.md
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
