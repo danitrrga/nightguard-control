@@ -32,8 +32,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Config Cleanup** - Retire the dead Windows `uwp`/`package_id` entry; redefine targets as `browser_extension` + `native_apps` (completed 2026-06-22)
 - [x] **Phase 7: Root Integrity Wall** *(highest value)* - Root-own key + sanctioned config; watchdog → systemd system service; sign via `sudo`→control-CLI (socket helper deleted) (completed 2026-06-22)
 - [x] **Phase 7.1: Curfew Hook (Linux)** *(gap-closure)* - Wire guard.py as the Claude Code curfew hook so a `deny` verdict actually blocks sessions; the engine works but the Linux hook was never wired (planned 2026-06-23) (completed 2026-06-23)
-- [~] **Phase 8: Native Blocker** *(DESCOPED 2026-06-23)* - Dropped per user decision: native-app blocking not needed; the curfew layer (Claude-Code hook block + config-revert + root-locked browser policy) is sufficient. Code reverted from the live trust stack.
-- [ ] **Phase 9: ActivityWatch** *(parked — optional)* - Install aw-watcher-window + afk; sync screen-time into LifeOS (replaces StayFree analytics)
+- [x] **Phase 8: Native Blocker** *(folded into the watchdog)* - Root watchdog tick kills blacklisted Hyprland window classes during curfew (≤60s; no separate service) (completed 2026-06-23)
+- [ ] **Phase 9: StayFree Desktop** *(supersedes ActivityWatch — re-scoped 2026-06-23)* - Install `stayfree-desktop` (AUR) as the primary app+website blocker + analytics; root watchdog gains a keep-alive supervisor so it cannot be quit; Phase 8 root kill retained as a root-owned backstop floor. Gated on a Hyprland/Wayland-blocking spike.
 - [ ] **Phase 10: Linux App (omarchy TUI)** - Terminal/TUI (not Tauri), aether-themed, thin client over the Python control-CLI
 
 ## Phase Details
@@ -179,9 +179,8 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
   - [x] 07.1-02-PLAN.md — Port `nightguard_adapter.py` (verdict→exit-2 + allowlist + butler messages, fail-closed) + add `/plan` to `config.yaml` via the signed control-CLI (CURF-01 core)
   - [x] 07.1-03-PLAN.md — Full-D-04 generator wiring: idempotent global `UserPromptSubmit` hook into `~/.claude/settings.json` + end-to-end enforcement verification (CURF-01)
 
-### Phase 8: Native Blocker *(DESCOPED 2026-06-23 — not built)*
-**Status**: Dropped per user decision (2026-06-23). Native-app blocking is not needed — the curfew layer (Claude-Code hook block + config-revert + root-locked StayFree browser policy) is sufficient enforcement. The phase was executed and then reverted: guard.py and nightguard_watchdog.py were restored to their pre-Phase-8 state (LifeOS `3e64c81`), removing the root-watchdog SIGKILL path. NBLK-01/02/03 are descoped. Planning artifacts (PLAN/SUMMARY/REVIEW) retained for history.
-**Original Goal** *(not pursued)*: During an active curfew lock, blacklisted native apps (Steam, Discord, games) are killed/closed by the **root watchdog tick itself** — no separate service. Curated to live inside P7's watchdog so it is un-stoppable from user space.
+### Phase 8: Native Blocker *(folded into the root watchdog)*
+**Goal**: During an active curfew lock, blacklisted native apps (Steam, Discord, games) are killed/closed by the **root watchdog tick itself** — no separate service. Curated to live inside P7's watchdog so it is un-stoppable from user space.
 **Depends on**: Phase 6 (`native_apps` blacklist) + Phase 7 (the root watchdog this extends)
 **Requirements**: NBLK-01, NBLK-02, NBLK-03
 **Curation note (2026-06-22)**: B2-context — built as a tick extension, not a socket2 listener. ≤60s leakage accepted for v1; an instant socket2 listener is a deferred "accelerate" step only if 60s proves inadequate. Kill mechanism (SIGKILL vs `hyprctl dispatch closewindow`) settled in planning.
@@ -190,17 +189,21 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
   1. On each tick during an active curfew lock, the root watchdog enumerates Hyprland clients and kills/closes windows whose class is on the `native_apps` blacklist.
   2. Killing honors lock + active-grace state (no kills outside curfew / during grace); cadence = the watchdog tick (≤60s).
   3. The kill lives inside the **root** watchdog, so it cannot be stopped from user space (`systemctl --user stop` does not apply).
-**Plans**: 2 plans *(executed then reverted — descoped)*
-  - [~] 08-01-PLAN.md — guard.py D-09 refactor: expose a side-effect-free `curfew_verdict(cfg, state)` (reverted)
-  - [~] 08-02-PLAN.md — Fold the native-kill step into the root watchdog `tick()` (reverted)
+**Plans**: 2 plans
+  - [x] 08-01-PLAN.md — guard.py D-09 refactor: expose a side-effect-free `curfew_verdict(cfg, state)` and re-express `decide()` in terms of it (NBLK-02)
+  - [x] 08-02-PLAN.md — Fold the native-kill step into the root watchdog `tick()`: runuser→hyprctl enumerate, substring/dedup match, SIGKILL-by-pid, butler notify, verdict-gated (NBLK-01, NBLK-02, NBLK-03)
 
-### Phase 9: ActivityWatch
-**Goal**: Screen-time tracking is restored on Linux via ActivityWatch and flows into LifeOS, replacing the StayFree desktop analytics that have no Linux client.
-**Depends on**: None (independent; can run anytime after Phase 6)
-**Requirements**: TRAK-01, TRAK-02
+### Phase 9: StayFree Desktop *(was "ActivityWatch" — re-scoped 2026-06-23)*
+**Goal**: StayFree desktop (AUR `stayfree-desktop`) becomes the primary app+website blocker and the screen-time/analytics source on Linux, supervised by the root watchdog so it cannot be quit to escape — with Phase 8's root kill retained as a root-owned backstop floor for the critical native apps.
+**Depends on**: Phase 7 (root watchdog) + Phase 8 (root native kill, demoted to backstop)
+**Requirements**: TRAK-01, TRAK-02 (screen-time/analytics now sourced from StayFree, not ActivityWatch)
+**Gating spike (run FIRST)**: Prove StayFree desktop actually *blocks* (not just tracks) under Hyprland/Wayland. If it cannot block on Wayland → fall back to StayFree-analytics-only and Phase 8 stays primary.
 **Success Criteria** (what must be TRUE):
-  1. ActivityWatch runs with `aw-watcher-window` + afk feeding `localhost:5600`.
-  2. A sync script exports screen-time data into LifeOS on a schedule.
+  1. `stayfree-desktop` is installed and configured as the primary app+website blocker; its analytics replace the parked ActivityWatch idea (ActivityWatch retired).
+  2. The root watchdog `tick()` keeps StayFree running — if the user kills it, it is respawned into the user session (runuser bridge), so it cannot be escaped by quitting.
+  3. Phase 8's root SIGKILL for `steam`/`discord` remains active as a root-signed backstop that StayFree's user-editable rules cannot reconfigure away.
+  4. StayFree's own curfew rules rely on its type-test friction only (accepted soft tier); the hard guarantee for the critical apps comes from the Phase 8 backstop.
+**Decisions**: see `.planning/phases/09-stayfree-desktop/09-CONTEXT.md`
 **Plans**: TBD (run `/gsd-plan-phase 9`)
 
 ### Phase 10: Linux App — omarchy TUI *(was "Tauri Port")*
@@ -220,7 +223,7 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
 
 **Execution Order:**
 Phases execute in numeric order. v1.0: 1 → 2 → 3 → 4 → 5 (shipped).
-v2.0 critical path: 6 → 7 → 8 → 10 (8 folds into the P7 watchdog; 10 is the TUI thin-client). Phase 9 (ActivityWatch) is parked/optional.
+v2.0 critical path: 6 → 7 → 8 → 10 (8 folds into the P7 watchdog; 10 is the TUI thin-client). Phase 9 (StayFree Desktop, re-scoped from ActivityWatch 2026-06-23) depends on 7+8 and is gated on a Wayland-blocking spike; ActivityWatch retired.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -231,6 +234,6 @@ v2.0 critical path: 6 → 7 → 8 → 10 (8 folds into the P7 watchdog; 10 is th
 | 5. Instance Wiring | 3/3 | Complete   | 2026-06-10 |
 | 6. Config Cleanup | 2/2 | Complete   | 2026-06-22 |
 | 7. Root Integrity Wall | 2/2 | Complete   | 2026-06-22 |
-| 8. Native Blocker | — | Descoped (reverted) | 2026-06-23 |
+| 8. Native Blocker | 2/2 | Complete   | 2026-06-23 |
 | 9. ActivityWatch | 0/— | Parked (optional) | |
 | 10. Linux App (omarchy TUI) | 0/— | Not started (TUI, not Tauri) | |
