@@ -11,8 +11,16 @@ findings:
   warning: 4
   info: 3
   total: 8
+critical_resolved: 1
 status: issues_found
 ---
+
+> **CR-01 RESOLVED (2026-06-23, commit `27da8ad` in LifeOS):** `curfew_verdict` now
+> checks `in_curfew` BEFORE the clock-tamper gate, so `outside_curfew` always wins
+> outside the window and the watchdog kill can never fire in daytime. Verified: an
+> NTP-verified daytime clock skew now returns `outside_curfew` (kill suppressed); an
+> in-curfew skew still returns `clock_tamper`. `decide()` hook contract intact for the
+> in-curfew/daytime cases. The 4 warnings + 3 info findings below remain open (advisory).
 
 # Phase 8: Code Review Report
 
