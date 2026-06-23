@@ -72,9 +72,9 @@ Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 8 
 
 ### Native Blocker (Phase 8 — folded into the watchdog)
 
-- [ ] **NBLK-01**: The **root watchdog tick** (the same systemd *system* service from ROOT-02), during an active curfew lock, enumerates Hyprland clients and kills/closes windows whose class is on the `native_apps` blacklist — **no separate service**.
+- [x] **NBLK-01**: The **root watchdog tick** (the same systemd *system* service from ROOT-02), during an active curfew lock, enumerates Hyprland clients and kills/closes windows whose class is on the `native_apps` blacklist — **no separate service**.
 - [x] **NBLK-02**: Killing is curfew- and grace-aware (reuses the watchdog's lock/grace state). Cadence = the watchdog tick (**≤60s leakage accepted for v1**; an instant socket2 listener is a deferred "accelerate" step, built only if 60s proves inadequate with evidence).
-- [ ] **NBLK-03**: Because the kill lives **inside the root watchdog**, it is un-stoppable from user space (no `systemctl --user stop` escape). *(B2 kill mechanism — SIGKILL vs `hyprctl dispatch closewindow` — settled in phase planning.)* *(Curated 2026-06-22: folded into the watchdog tick — see REVIEWS.md.)*
+- [x] **NBLK-03**: Because the kill lives **inside the root watchdog**, it is un-stoppable from user space (no `systemctl --user stop` escape). *(B2 kill mechanism — SIGKILL vs `hyprctl dispatch closewindow` — settled in phase planning.)* *(Curated 2026-06-22: folded into the watchdog tick — see REVIEWS.md.)*
 
 ### Usage Tracking (Phase 9)
 
@@ -142,9 +142,9 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | ROOT-03 | Phase 7 | Complete |
 | ROOT-04 | Phase 7 | Complete |
 | CURF-01 | Phase 7.1 | Complete |
-| NBLK-01 | Phase 8 | Pending |
+| NBLK-01 | Phase 8 | Complete |
 | NBLK-02 | Phase 8 | Complete |
-| NBLK-03 | Phase 8 | Pending |
+| NBLK-03 | Phase 8 | Complete |
 | TRAK-01 | Phase 9 | Pending |
 | TRAK-02 | Phase 9 | Pending |
 | PORT-01 | Phase 10 | Pending |

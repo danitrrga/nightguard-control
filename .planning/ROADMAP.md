@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Config Cleanup** - Retire the dead Windows `uwp`/`package_id` entry; redefine targets as `browser_extension` + `native_apps` (completed 2026-06-22)
 - [x] **Phase 7: Root Integrity Wall** *(highest value)* - Root-own key + sanctioned config; watchdog → systemd system service; sign via `sudo`→control-CLI (socket helper deleted) (completed 2026-06-22)
 - [x] **Phase 7.1: Curfew Hook (Linux)** *(gap-closure)* - Wire guard.py as the Claude Code curfew hook so a `deny` verdict actually blocks sessions; the engine works but the Linux hook was never wired (planned 2026-06-23) (completed 2026-06-23)
-- [ ] **Phase 8: Native Blocker** *(folded into the watchdog)* - Root watchdog tick kills blacklisted Hyprland window classes during curfew (≤60s; no separate service)
+- [x] **Phase 8: Native Blocker** *(folded into the watchdog)* - Root watchdog tick kills blacklisted Hyprland window classes during curfew (≤60s; no separate service) (completed 2026-06-23)
 - [ ] **Phase 9: ActivityWatch** *(parked — optional)* - Install aw-watcher-window + afk; sync screen-time into LifeOS (replaces StayFree analytics)
 - [ ] **Phase 10: Linux App (omarchy TUI)** - Terminal/TUI (not Tauri), aether-themed, thin client over the Python control-CLI
 
@@ -191,7 +191,7 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
   3. The kill lives inside the **root** watchdog, so it cannot be stopped from user space (`systemctl --user stop` does not apply).
 **Plans**: 2 plans
   - [x] 08-01-PLAN.md — guard.py D-09 refactor: expose a side-effect-free `curfew_verdict(cfg, state)` and re-express `decide()` in terms of it (NBLK-02)
-  - [ ] 08-02-PLAN.md — Fold the native-kill step into the root watchdog `tick()`: runuser→hyprctl enumerate, substring/dedup match, SIGKILL-by-pid, butler notify, verdict-gated (NBLK-01, NBLK-02, NBLK-03)
+  - [x] 08-02-PLAN.md — Fold the native-kill step into the root watchdog `tick()`: runuser→hyprctl enumerate, substring/dedup match, SIGKILL-by-pid, butler notify, verdict-gated (NBLK-01, NBLK-02, NBLK-03)
 
 ### Phase 9: ActivityWatch
 **Goal**: Screen-time tracking is restored on Linux via ActivityWatch and flows into LifeOS, replacing the StayFree desktop analytics that have no Linux client.
@@ -230,6 +230,6 @@ v2.0 critical path: 6 → 7 → 8 → 10 (8 folds into the P7 watchdog; 10 is th
 | 5. Instance Wiring | 3/3 | Complete   | 2026-06-10 |
 | 6. Config Cleanup | 2/2 | Complete   | 2026-06-22 |
 | 7. Root Integrity Wall | 2/2 | Complete   | 2026-06-22 |
-| 8. Native Blocker | 1/2 | In Progress|  |
+| 8. Native Blocker | 2/2 | Complete   | 2026-06-23 |
 | 9. ActivityWatch | 0/— | Parked (optional) | |
 | 10. Linux App (omarchy TUI) | 0/— | Not started (TUI, not Tauri) | |
