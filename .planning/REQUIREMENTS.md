@@ -68,7 +68,7 @@ Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 8 
 
 ### Curfew Hook — Linux enforcement (Phase 7.1 — gap-closure)
 
-- [ ] **CURF-01**: `guard.py` is wired as the Claude Code curfew hook so its verdict is actually enforced on Linux — during curfew a session/prompt is blocked with the butler deny message; outside curfew (and during an active grace window) it is allowed. The hook reads the canonical LifeOS config (no `~/.claude` drift; mirrors WIRE-01) and runs the guard in user soft-mode (integrity stays the root watchdog's job). *(Discovered 2026-06-22: the verdict engine returns `deny` correctly but no hook fires it — the Linux equivalent of the retired Windows `nightguard_adapter.ps1` was never wired.)*
+- [x] **CURF-01**: `guard.py` is wired as the Claude Code curfew hook so its verdict is actually enforced on Linux — during curfew a session/prompt is blocked with the butler deny message; outside curfew (and during an active grace window) it is allowed. The hook reads the canonical LifeOS config (no `~/.claude` drift; mirrors WIRE-01) and runs the guard in user soft-mode (integrity stays the root watchdog's job). *(Discovered 2026-06-22: the verdict engine returns `deny` correctly but no hook fires it — the Linux equivalent of the retired Windows `nightguard_adapter.ps1` was never wired.)*
 
 ### Native Blocker (Phase 8 — folded into the watchdog)
 
@@ -141,7 +141,7 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | ROOT-02 | Phase 7 | Complete |
 | ROOT-03 | Phase 7 | Complete |
 | ROOT-04 | Phase 7 | Complete |
-| CURF-01 | Phase 7.1 | Pending |
+| CURF-01 | Phase 7.1 | Complete |
 | NBLK-01 | Phase 8 | Pending |
 | NBLK-02 | Phase 8 | Pending |
 | NBLK-03 | Phase 8 | Pending |
