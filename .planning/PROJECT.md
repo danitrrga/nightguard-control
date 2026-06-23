@@ -116,4 +116,5 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-22 — opened milestone v2.0 · Linux Port (ingested from `docs/linux-port-brief.md`).*
+*Last updated: 2026-06-23 — Phase 7.1 (Curfew Hook) complete: `nightguard_adapter.py` wired as the Claude Code `UserPromptSubmit` hook via the LifeOS generator; a `deny` verdict now actually blocks sessions on Linux (CURF-01 closed, 3/3 verified). Curfew enforcement (curfew→Claude-Code block) is now LIVE alongside config-revert + browser block. Remaining v2.0: Phase 8 (native-app blocker).*
+*Prior: 2026-06-22 — opened milestone v2.0 · Linux Port (ingested from `docs/linux-port-brief.md`).*
