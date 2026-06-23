@@ -190,7 +190,7 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
   2. Killing honors lock + active-grace state (no kills outside curfew / during grace); cadence = the watchdog tick (≤60s).
   3. The kill lives inside the **root** watchdog, so it cannot be stopped from user space (`systemctl --user stop` does not apply).
 **Plans**: 2 plans
-  - [ ] 08-01-PLAN.md — guard.py D-09 refactor: expose a side-effect-free `curfew_verdict(cfg, state)` and re-express `decide()` in terms of it (NBLK-02)
+  - [x] 08-01-PLAN.md — guard.py D-09 refactor: expose a side-effect-free `curfew_verdict(cfg, state)` and re-express `decide()` in terms of it (NBLK-02)
   - [ ] 08-02-PLAN.md — Fold the native-kill step into the root watchdog `tick()`: runuser→hyprctl enumerate, substring/dedup match, SIGKILL-by-pid, butler notify, verdict-gated (NBLK-01, NBLK-02, NBLK-03)
 
 ### Phase 9: ActivityWatch
@@ -230,6 +230,6 @@ v2.0 critical path: 6 → 7 → 8 → 10 (8 folds into the P7 watchdog; 10 is th
 | 5. Instance Wiring | 3/3 | Complete   | 2026-06-10 |
 | 6. Config Cleanup | 2/2 | Complete   | 2026-06-22 |
 | 7. Root Integrity Wall | 2/2 | Complete   | 2026-06-22 |
-| 8. Native Blocker | 0/2 | Planned (2 plans, 2 waves) | |
+| 8. Native Blocker | 1/2 | In Progress|  |
 | 9. ActivityWatch | 0/— | Parked (optional) | |
 | 10. Linux App (omarchy TUI) | 0/— | Not started (TUI, not Tauri) | |
