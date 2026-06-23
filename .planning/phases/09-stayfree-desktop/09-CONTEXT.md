@@ -10,9 +10,16 @@ investigation into integrating StayFree (see `<investigation>`).
 
 Make **StayFree desktop** (AUR `stayfree-desktop`, an Electron AppImage) the **primary
 app + website blocker and analytics source** on Linux, and make it **inescapable** by
-having the **root watchdog keep it alive** (respawn if the user kills it). Phase 8's root
-SIGKILL is **demoted to a backstop floor** for the critical native apps (`steam`/`discord`)
-so a root-owned hard guarantee survives even if StayFree's user-editable rules are changed.
+having the **root watchdog keep it alive** (respawn if the user kills it).
+
+> **SUPERSEDED 2026-06-23 (planning decision):** The original draft demoted Phase 8's root
+> SIGKILL to a "backstop floor" for `steam`/`discord`. But Phase 8 was **descoped and reverted
+> from the live stack** earlier the same day (commit `8055b86`: "native-app blocking not
+> needed; the curfew layer is sufficient") — that code no longer exists. Per the user's
+> planning decision, **D-05 is dropped**: the **hard floor is the curfew layer** (Claude-Code
+> hook block + root config-revert + root-locked StayFree browser policy), NOT a Phase 8
+> native-kill. D-02/D-05/D-06 below are revised accordingly. On spike-FAIL there is **no
+> native app-kill** — accepted, consistent with the 18:59 descope.
 
 **In scope:**
 - Install + configure `stayfree-desktop` as the primary blocker.
@@ -20,7 +27,9 @@ so a root-owned hard guarantee survives even if StayFree's user-editable rules a
   (runuser→user-session bridge, same pattern as the Phase 8 enumerate/kill) that respawns
   StayFree if it is not running.
 - StayFree analytics replace the (now retired) ActivityWatch idea (TRAK-01/02).
-- Retain Phase 8's root native-kill for `steam`/`discord` as a backstop.
+- ~~Retain Phase 8's root native-kill for `steam`/`discord` as a backstop.~~ **DROPPED** (see
+  SUPERSEDED note above): the curfew layer is the hard floor; Phase 8 native-kill stays
+  descoped/reverted and is NOT re-instated by this phase.
 
 **Out of scope:**
 - Syncing StayFree's blocklist into nightguard's config (proven infeasible — see `<investigation>`).
@@ -60,8 +69,10 @@ blocker itself and make it inescapable via a root keep-alive supervisor.
 ### Architecture (the role split)
 - **D-01:** **StayFree desktop is the primary blocker** (apps + websites, categories,
   schedules) and the **analytics source** — retiring the parked ActivityWatch idea entirely.
-- **D-02:** **nightguard root watchdog = supervisor + backstop**, not the primary blocker.
-  Its new job is to *keep StayFree alive*, not to enumerate/kill the full app set.
+- **D-02 (revised 2026-06-23):** **nightguard root watchdog = StayFree keep-alive supervisor**,
+  not the primary blocker and **not a native-kill backstop**. Its new job is to *keep StayFree
+  alive*. The existing curfew-layer steps (config-revert, browser-policy) remain; no native-kill
+  step is added (Phase 8 stays descoped).
 
 ### Keep-alive supervisor (the "I cannot escape" mechanism)
 - **D-03:** Fold a **keep-alive step into the existing root `nightguard_watchdog.py` `tick()`**
@@ -71,20 +82,24 @@ blocker itself and make it inescapable via a root keep-alive supervisor.
 - **D-04:** Respawn cadence = the watchdog tick (≤60s gap accepted for v1, consistent with
   Phase 8's leakage budget). Detect "already running" (e.g. `pgrep`) to avoid duplicate instances.
 
-### Backstop floor (the root-owned hard guarantee)
-- **D-05:** **Keep Phase 8's root SIGKILL for `steam`/`discord`** as a root-signed backstop
-  that StayFree's UI/account cannot reconfigure away. This is the hard floor; StayFree is the
-  soft+broad layer on top. Phase 8 is **demoted, not deleted**.
+### Hard floor (the root-owned guarantee) — REVISED
+- **D-05 (DROPPED 2026-06-23):** ~~Keep Phase 8's root SIGKILL for `steam`/`discord` as a
+  backstop.~~ Phase 8 was descoped + reverted (`8055b86`); there is no native-kill code to
+  retain. **The hard floor is the curfew layer**: the Claude-Code hook block + root
+  config-revert + root-locked StayFree **browser** policy (the already-shipped enforcement).
+  This phase does **not** re-instate native app-kill. If steam/discord hard-blocking is later
+  wanted, that is a new phase, not this one.
 
 ### Rule-tampering posture (accepted residual risk)
-- **D-06:** StayFree's own block/schedule rules are protected **only by its type-test
-  (Strict Mode) friction** — accepted as the *soft tier*. The user can still reconfigure
-  StayFree's rules at 3am by routing around the type-test (web dashboard / leveldb edit); we
-  **do not** try to root-lock StayFree's rule store (too fragile — it cloud-syncs). The hard
-  guarantee for the apps that matter comes from the D-05 backstop, not from StayFree.
-- **Implication:** "keep it running" closes the *quit-the-app* escape, NOT the
-  *reconfigure-the-rule* escape. This is a deliberate, eyes-open downgrade vs Phase 8's
-  root-signed blacklist, traded for StayFree's UX/analytics/category breadth.
+- **D-06 (revised 2026-06-23):** StayFree's own block/schedule rules are protected **only by
+  its type-test (Strict Mode) friction** — accepted as the *soft tier*. The user can still
+  reconfigure StayFree's rules at 3am by routing around the type-test; we **do not** root-lock
+  StayFree's rule store (it cloud-syncs). With D-05 dropped, there is **no native-app hard
+  guarantee** in this phase — the only hard enforcement is the curfew layer (browser/website +
+  config-revert + hook), which does not cover native desktop apps. This is an eyes-open
+  acceptance, consistent with the 2026-06-23 decision that "native blocking is not needed."
+- **Implication:** "keep StayFree running" closes the *quit-the-app* escape for StayFree's own
+  (soft) blocking, NOT the *reconfigure-the-rule* escape and NOT native-app blocking.
 
 ### Gating spike (run FIRST, before any build)
 - **D-09:** **Prove StayFree desktop actually *blocks* (not merely tracks) under
@@ -114,11 +129,13 @@ blocker itself and make it inescapable via a root keep-alive supervisor.
   keep-alive is curfew-gated.
 - `LifeOS/scripts/nightguard/ngcommon.py` — config/state helpers.
 
-### Phase 8 (the proven root→user bridge + the backstop being retained)
+### Phase 8 (the proven root→user bridge — backstop NOT retained, see D-05 DROPPED)
 - `.planning/phases/08-native-blocker/08-NOTES-hyprland-from-root.md` — the verified
   `runuser`→user-session bridge (XDG_RUNTIME_DIR, HIS discovery) reused for respawn (D-03).
-- `.planning/phases/08-native-blocker/08-CONTEXT.md` — D-01..D-10 of the native kill that
-  becomes the D-05 backstop (SIGKILL-by-pid, substring class match, `steam`/`discord`).
+  **This is the only Phase 8 artifact still load-bearing for Phase 9.**
+- `.planning/phases/08-native-blocker/08-CONTEXT.md` — D-01..D-10 of the native kill.
+  **Historical only:** Phase 8 was descoped + reverted (`8055b86`); its native-kill is NOT
+  re-instated and is NOT a Phase 9 backstop (D-05 dropped).
 
 ### Investigation artifacts (this phase's pivot rationale)
 - `.planning/phases/09-stayfree-desktop/09-spike-sf_extract.py` — read-only PoC proving the StayFree-sync path is ~15% / 0%-curfew.
@@ -146,7 +163,8 @@ blocker itself and make it inescapable via a root keep-alive supervisor.
 ### Established Patterns
 - Watchdog is a systemd **system oneshot** (one tick per fire) — keep-alive must be
   tick-shaped (check-then-respawn), not a persistent supervisor loop.
-- Phase 8 native-kill (`steam`/`discord`) stays in `tick()` unchanged as the D-05 backstop.
+- No Phase 8 native-kill exists in `tick()` (descoped + reverted, `8055b86`); the keep-alive
+  step is added next to the existing config-revert + browser-policy steps, not next to a kill.
 
 ### Integration Points
 - New keep-alive step slots into `tick()` next to the Phase 8 kill; both use the same
