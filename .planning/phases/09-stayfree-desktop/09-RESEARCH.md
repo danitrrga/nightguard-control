@@ -23,7 +23,7 @@ The research strongly predicts the spike will **fail (analytics-only fallback)**
 | Keep-alive / respawn supervision | Root watchdog `tick()` (system oneshot) | — | D-03: must live in root so `systemctl --user stop` can't disable it; reaches user session via runuser bridge |
 | Foreground-app / idle detection | StayFree (X11 APIs) | — | **This is the spike's failure point on Wayland** |
 | Screen-time analytics (TRAK-01/02) | StayFree local store + its own UI / cloud | — | D-01: analytics source; export path unverified (see Open Questions) |
-| Critical-app hard guarantee (steam/discord) | Root watchdog Phase 8 SIGKILL-by-pid | — | D-05: root-signed, StayFree cannot reconfigure it away |
+| Critical-app hard guarantee (steam/discord) | **DROPPED (D-05, 2026-06-23)** — hard floor is the curfew layer (hook + config-revert + browser policy) | — | Phase 8 native-kill was descoped + reverted (`8055b86`); see SUPERSEDED banner in 09-CONTEXT.md |
 | Rule-tamper resistance | StayFree type-test (Strict Mode) only | — | D-06: accepted soft tier; NOT root-locked |
 
 ## Standard Stack
@@ -286,12 +286,14 @@ Electron/Chromium can be forced onto X11 via `--ozone-platform=x11`, and StayFre
 | A5 | appimagelauncher may intercept the launch | Pitfall 3 | Could break root respawn; verify in spike |
 | A6 | Keep-alive runs every tick (not curfew-gated) | Patterns | CONTEXT leans this; planner confirms |
 
-## Open Questions
+## Open Questions (RESOLVED: all four answered empirically by the 09-01 Wave 0 spike)
 
-1. **Does StayFree desktop block native Wayland apps on Hyprland?** — THE spike question (D-09). Evidence says no; must be proven empirically. Recommendation: run spike Wave 0 before any build.
-2. **Where does StayFree store local usage data, and is there any export?** — Unknown (closed source). Recommendation: discover in spike; if no clean export, TRAK-02 = "view in StayFree UI" (acceptable).
-3. **Does login/account gate blocking?** — Likely. Recommendation: complete login in spike Step 2.
-4. **Does appimagelauncherd prompt on root-launched respawn?** — Recommendation: test the runuser launch in the spike; add `APPIMAGELAUNCHER_DISABLE=1` to env if needed.
+These are spike-empirical questions — they cannot be answered before execution and ARE the spike's deliverable (09-01). Each is gated by the Wave 0 spike before any build runs.
+
+1. **Does StayFree desktop block native Wayland apps on Hyprland?** — THE spike question (D-09). Evidence says no; proven empirically by the spike. RESOLVED: see 09-01 Task 2 Step 4 (blocking test) → recorded verdict in `09-NOTES-spike-verdict.md`.
+2. **Where does StayFree store local usage data, and is there any export?** — Unknown (closed source). RESOLVED: see 09-01 Task 2 Step 6 (local-store discovery); if no clean export, TRAK-02 = "view in StayFree UI" (acceptable per CONTEXT).
+3. **Does login/account gate blocking?** — Likely. RESOLVED: see 09-01 Task 2 Step 2 (complete login during spike).
+4. **Does appimagelauncherd prompt on root-launched respawn?** — RESOLVED: see 09-01 Task 2 Step 1 (test the runuser launch); add `APPIMAGELAUNCHER_DISABLE=1` to env if it prompts.
 
 ## Phase Requirements
 
