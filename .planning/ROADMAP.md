@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Milestone v2.0 · Linux Port — active** (supersedes v1.0; see `.planning/INGEST-CONFLICTS.md`):
 - [x] **Phase 6: Config Cleanup** - Retire the dead Windows `uwp`/`package_id` entry; redefine targets as `browser_extension` + `native_apps` (completed 2026-06-22)
 - [x] **Phase 7: Root Integrity Wall** *(highest value)* - Root-own key + sanctioned config; watchdog → systemd system service; sign via `sudo`→control-CLI (socket helper deleted) (completed 2026-06-22)
-- [ ] **Phase 7.1: Curfew Hook (Linux)** *(gap-closure)* - Wire guard.py as the Claude Code curfew hook so a `deny` verdict actually blocks sessions; the engine works but the Linux hook was never wired (planned 2026-06-23)
+- [x] **Phase 7.1: Curfew Hook (Linux)** *(gap-closure)* - Wire guard.py as the Claude Code curfew hook so a `deny` verdict actually blocks sessions; the engine works but the Linux hook was never wired (planned 2026-06-23) (completed 2026-06-23)
 - [ ] **Phase 8: Native Blocker** *(folded into the watchdog)* - Root watchdog tick kills blacklisted Hyprland window classes during curfew (≤60s; no separate service)
 - [ ] **Phase 9: ActivityWatch** *(parked — optional)* - Install aw-watcher-window + afk; sync screen-time into LifeOS (replaces StayFree analytics)
 - [ ] **Phase 10: Linux App (omarchy TUI)** - Terminal/TUI (not Tauri), aether-themed, thin client over the Python control-CLI
@@ -177,7 +177,7 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
 **Plans**: 3 plans
   - [x] 07.1-01-PLAN.md — Wave-0 runtime probe: capture the UserPromptSubmit `prompt` field + record the substring-vs-leading-token matcher decision (Q1)
   - [x] 07.1-02-PLAN.md — Port `nightguard_adapter.py` (verdict→exit-2 + allowlist + butler messages, fail-closed) + add `/plan` to `config.yaml` via the signed control-CLI (CURF-01 core)
-  - [ ] 07.1-03-PLAN.md — Full-D-04 generator wiring: idempotent global `UserPromptSubmit` hook into `~/.claude/settings.json` + end-to-end enforcement verification (CURF-01)
+  - [x] 07.1-03-PLAN.md — Full-D-04 generator wiring: idempotent global `UserPromptSubmit` hook into `~/.claude/settings.json` + end-to-end enforcement verification (CURF-01)
 
 ### Phase 8: Native Blocker *(folded into the root watchdog)*
 **Goal**: During an active curfew lock, blacklisted native apps (Steam, Discord, games) are killed/closed by the **root watchdog tick itself** — no separate service. Curated to live inside P7's watchdog so it is un-stoppable from user space.
