@@ -1,464 +1,401 @@
-# Architecture Research
+# Architecture Research — v2.1 Desktop Integration
 
-**Domain:** Self-binding desktop config editor + always-on enforcement hooks (Tauri v2 + PowerShell)
-**Researched:** 2026-06-04
-**Confidence:** HIGH (spec + existing hooks are authoritative; canonicalization/build-order recommendations are MEDIUM, grounded in the existing PowerShell parser semantics)
+**Domain:** omarchy/Hyprland desktop integration for an existing Python Textual TUI (`ngtui`) layered over a separate, root-owned LifeOS trust stack
+**Researched:** 2026-06-24
+**Confidence:** HIGH (verified against the live box: omarchy launch helpers, Waybar config, Hyprland windowrules, `backend.py` seam, `uv 0.11.23`)
 
-## Core Architectural Principle
+> This is a **subsequent-milestone** architecture doc: it describes how the NEW desktop
+> pieces bolt onto the system that v2.0 shipped. It does not re-derive the trust-stack
+> or TUI architecture (see the phase-10 TUI research and `docs/design-spec.md`). The
+> single load-bearing seam it builds on is `ngtui/ngtui/backend.py` and its
+> `_resolve_stack_dir()` / `NIGHTGUARD_DIR` env bootstrap.
 
-**Enforcement is decoupled from the editor.** The Tauri app is an *on-demand* mutator
-(it writes and signs). The PowerShell hooks are the *always-firing* enforcers (they read
-and verify). The app being closed must never weaken any guarantee — therefore **no
-enforcement decision may depend on the app running**. The app's only job is to produce
-correctly-signed artifacts; the guard's only job is to trust-or-revert those artifacts at
-prompt time.
+---
 
-This yields a hard rule that drives every boundary below:
-
-> **The Rust app is the sole *writer* and *signer*. The PowerShell guard is the sole
-> *runtime enforcer*. Each piece of trust logic has exactly one authoritative
-> implementation; the other side only *verifies* or *re-checks*, never re-derives a
-> looser answer.**
-
-## Standard Architecture
-
-### System Overview
+## 1. System Overview — where the new pieces sit
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                       TAURI APP (on demand)                            │
-│                                                                        │
-│  ┌────────────────────┐         ┌──────────────────────────────────┐  │
-│  │  Frontend (TS/Vite)│  invoke │  Rust backend (SOLE writer/signer)│  │
-│  │  - display state   │ ──────► │  - direction classifier (canon.)  │  │
-│  │  - edit INTENT     │ ◄────── │  - quota engine (3/wk, grace)     │  │
-│  │  - live feedback   │  state  │  - HMAC sign/verify               │  │
-│  │  (NO trust logic)  │         │  - atomic writer (tmp→rename)     │  │
-│  └────────────────────┘         │  - SNTP (display/quota math)      │  │
-│                                 └──────────────┬───────────────────┘  │
-└────────────────────────────────────────────────┼──────────────────────┘
-                                                  │ writes (atomic, signed)
-                          ┌───────────────────────▼───────────────────────┐
-                          │      SHARED TRUST ARTIFACTS (LifeOS/nightguard)│
-                          │  config.yaml          (canonical, human-read)  │
-                          │  config.sanctioned.yaml (revert target)        │
-                          │  guard.json           (signed state)           │
-                          │  .guardkey            (DPAPI blob, CurrentUser) │
-                          └───────────────────────▲───────────────────────┘
-                                                  │ reads (verify only)
-┌─────────────────────────────────────────────────┴──────────────────────┐
-│                    POWERSHELL HOOKS (always firing)                      │
-│                                                                          │
-│  SessionStart + UserPromptSubmit:                                        │
-│  ┌────────────────────────────┐   ┌──────────────────────────────────┐  │
-│  │ nightguard_integrity_guard │   │ nightguard_curfew_guard (exists)  │  │
-│  │ (NEW): verify → revert      │   │ + grace-window re-check (own NTP) │  │
-│  │ config_hmac / state_hmac    │   │ + curfew schedule eval (CANON.)   │  │
-│  └────────────┬───────────────┘   └──────────────────────────────────┘  │
-│               │ shares: ntp_utils.ps1, DPAPI unprotect, canon-hash       │
+┌──────────────────────────────────────────────────────────────────────────┐
+│  DESKTOP SURFACE  (user session, key-less, NEW in v2.1)                    │
+│                                                                            │
+│   Waybar bar           App launcher (wofi/walker)        Hyprland          │
+│   ┌────────────┐       ┌──────────────────────┐         ┌──────────────┐  │
+│   │custom/     │       │ nightguard.desktop    │         │ windowrule:  │  │
+│   │ nightguard │       │  Exec=omarchy-launch- │         │ float org.   │  │
+│   │ (icon+     │       │   tui ngtui           │         │ omarchy.ngtui│  │
+│   │  status)   │       └──────────┬───────────┘         └──────┬───────┘  │
+│   └─────┬──────┘                  │ left-click /                │          │
+│         │ exec (poll/signal)      │ .desktop launch             │ tags the │
+│         │   ngtui status --json   │                             │ window   │
+│         │ on-click → omarchy-     ▼                             ▼          │
+│         │   launch-or-focus-tui ngtui  ──►  floating terminal ── runs ──┐  │
+│         │ on-click-right → ngtui menu / wofi                            │  │
+│         └────────────────────────────────────────────┐                 │  │
+└──────────────────────────────────────────────────────┼─────────────────┼──┘
+                                                        │ both import     │
+                                                        ▼ ngtui.backend   │
+┌──────────────────────────────────────────────────────────────────────────┐
+│  ngtui PACKAGE  (this repo — installed by `uv tool install`)              │
+│  isolated venv at ~/.local/share/uv/tools/ngtui/  ; shim on PATH          │
+│                                                                            │
+│   console_scripts:                                                         │
+│     ngtui            → ngtui.__main__:main         (the TUI — existing)    │
+│     ngtui status     → ngtui.status_cli:main       (Waybar JSON — NEW)     │
+│       (a subcommand on the same shim — see §3)                            │
+│                                                                            │
+│   backend.py  ── _resolve_stack_dir() reads NIGHTGUARD_STACK_DIR or the    │
+│                  baked-in author default, sys.path.insert, imports ───────┐│
+└──────────────────────────────────────────────────────────────────────────┼┘
+                                                                            │ import
+                                                                            ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  LifeOS TRUST STACK  (SEPARATE repo — NOT shipped by this milestone)      │
+│   /home/danitrrga/dev/Projects/LifeOS/scripts/nightguard/                  │
+│     ngcommon.py · guard.py · nightguard_ctl.py · nightguard.sudoers        │
+│     systemd/ (root system watchdog)                                        │
+│   key-less reads (load_state / curfew_verdict) ← Waybar + TUI read path    │
+│   sign path: TUI shells `sudo /usr/bin/python3 nightguard_ctl.py commit`   │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Responsibilities
 
-| Component | Responsibility (owns) | Must NOT do |
-|-----------|----------------------|-------------|
-| **Frontend (TS/Vite)** | Render state; capture edit *intent*; echo the classifier/quota result the backend returns for live feedback | Classify direction; decide allowed/denied; touch any trust file; compute quota |
-| **Rust backend** | Sole writer + signer; direction classifier; quota/grace engine; HMAC sign+verify; atomic writes; SNTP for *display/quota* | Enforce at runtime (it isn't always running); be trusted by the guard beyond its signature |
-| **integrity_guard.ps1 (NEW)** | At every prompt: verify `config_hmac` + `state_hmac`; auto-revert on mismatch; fail closed on state tamper | Edit config except via the sanctioned-copy / strict-default revert; classify direction; spend tokens |
-| **curfew_guard.ps1 (exists)** | Sole runtime authority on "are we in curfew now?"; re-check grace window with its own NTP | Trust app-side time; widen any window |
-| **Shared artifacts** | Single source of truth on disk | — |
-| **.guardkey (DPAPI)** | Shared HMAC secret both sides Unprotect | Ever be stored plaintext |
+| Component | New/Modified | Responsibility | Runs as | Key access |
+|-----------|--------------|----------------|---------|------------|
+| `ngtui` console script | existing | Launch the Textual TUI (the editor) | user | none (sign via sudo) |
+| `ngtui status --json` | **NEW** | Emit one Waybar JSON line from the read-only verdict/token surface | user | **none — key-less reads only** |
+| `nightguard.desktop` | **NEW (shipped)** | Launcher entry; `Exec=` opens the TUI in a floating terminal | — | — |
+| brand icon (`hicolor/.../nightguard.png` + scalable) | **NEW (shipped)** | Icon for `.desktop` + Waybar | — | — |
+| Hyprland windowrule | **NEW (split)** | `float`/`center`/`size` the `org.omarchy.ngtui` window | — | — |
+| Waybar module snippet | **NEW (split)** | Wire `custom/nightguard` into the user's bar | — | — |
+| autostart unit / `exec-once` | **NEW (instance)** | Optional login pin | user | none |
+| `PKGBUILD` | **NEW (shipped)** | AUR packaging; declares the trust-stack dependency | — | — |
 
-## Single-Source-of-Truth Map (resolves the "no duplication" gate)
+---
 
-Three pieces of logic are tempting to duplicate. Each gets exactly one home:
+## 2. The launcher-environment problem (THE core integration risk)
 
-| Logic | Single home | Other side's role | Why |
-|-------|-------------|-------------------|-----|
-| **Direction classifier** (tighten/loosen/noop per field) | **Rust only** | Frontend renders the result; PowerShell never runs it | Classification only gates *writes*, and only the app writes. The guard never needs to know *why* a config changed — only whether the current `config.yaml` matches the signed `config_hmac`. A hand-edit is reverted regardless of its "direction". So the classifier is write-time, app-only. |
-| **Curfew evaluation** ("in curfew now?") | **PowerShell `curfew_guard.ps1` only** | Rust *re-implements a read-only mirror* for display ("opens in 2h13m"), explicitly labeled non-authoritative | The guard is the enforcer and runs even when the app is closed. The app's curfew calc is cosmetic; if they ever disagree, the guard wins by construction (it's the one that blocks). Keep the app's mirror tiny and clearly marked, OR (preferred) have the app shell out to read the same schedule semantics. See note below. |
-| **Canonicalization + HMAC** | **Shared algorithm, two implementations** (Rust + PowerShell), pinned by a conformance test vector | Both implement; a cross-language test fixture guarantees byte-identical output | This is the one unavoidable two-implementation case (Rust signs, PowerShell verifies). De-risk it with a committed set of `(input.yaml → canonical-bytes → hex-hmac)` vectors that **both** test suites must reproduce. |
+**Verified facts about `uv tool install` (uv 0.11.23):**
+- It builds an **isolated venv** at `~/.local/share/uv/tools/ngtui/` and drops thin
+  shims for every `[project.scripts]` entry into `~/.local/bin` (on PATH via
+  `uv tool update-shell`).
+- The shim execs the venv interpreter directly. It does **NOT** source the dev shell,
+  the project `.venv`, or any `env NIGHTGUARD_STACK_DIR=… NIGHTGUARD_DIR=…` prefix the
+  author currently uses to run from the repo (PROJECT.md line 152).
+- `.desktop` `Exec=` and a Waybar `exec` run in an even more minimal environment than an
+  interactive shell (login env only; no `.bashrc`/`.zshrc` interactive block).
 
-**On curfew-eval duplication (the explicit question):** Do **not** port the YAML→minutes
-curfew math into Rust as a second authority. Two acceptable options, in preference order:
+**Consequence:** when `ngtui` is launched from the bar / app menu, the **only** thing
+that resolves the external LifeOS stack is `backend.py`'s baked-in defaults:
+`_DEFAULT_STACK_DIR = ".../LifeOS/scripts/nightguard"` and the `os.environ.setdefault`
+of `NIGHTGUARD_DIR`. Those defaults already point at the author's paths and
+`_resolve_stack_dir()` fails closed if `nightguard_ctl.py` is absent. **So for the
+author's own box, the globally-installed launcher works with zero env injection** — the
+defaults ARE the launcher's environment.
 
-1. **Preferred — app mirrors, guard rules.** Rust computes a *display-only* "locked?/opens-in"
-   estimate from the same canonical model it already parses. Mark it `// non-authoritative:
-   curfew_guard.ps1 is the enforcer`. Because the guard re-evaluates at prompt time with its
-   own NTP, an app display bug can never loosen anything — worst case the UI is briefly wrong.
-2. **Stronger but heavier — single eval binary.** Extract curfew evaluation into one
-   place (e.g. the guard exposes a `--explain` mode the app shells out to). Higher coupling,
-   slower app; only worth it if display/enforcement drift becomes a real complaint. YAGNI for v1.
+**Design decision — do NOT make the launcher inject env (for the author).** The repo
+defaults are the contract. Injecting `NIGHTGUARD_STACK_DIR` into the `.desktop`/Waybar
+exec would (a) duplicate the path in a third place that can drift, and (b) push
+author-specific paths into shipped, publishable artifacts — violating the two-layer
+split. Instead:
 
-The existing `curfew_guard.ps1` already encodes the canonical schedule semantics (overnight
-wrap at line 195-199, per-day `schedule.<day>` overrides, `off` days, `block_when_offline`,
-`clock_protection`). The Rust mirror must match *those* semantics exactly — read them from
-the script, do not invent new ones.
+| Audience | How the launcher resolves the stack |
+|----------|-------------------------------------|
+| **Author (this box)** | `backend.py` defaults already point at LifeOS → launcher needs no env. The `.desktop`/Waybar exec stay path-free and shippable. |
+| **Other installers (AUR/README)** | Set `NIGHTGUARD_STACK_DIR`/`NIGHTGUARD_DIR` **once, globally** — `~/.config/environment.d/nightguard.conf` (systemd user env, picked up by uwsm/Hyprland and thus by Waybar `exec` and `.desktop` `Exec`). This is the single sanctioned env hook; the launcher artifacts stay generic. |
 
-## Shared Trust Artifacts — Owner / Writer / Reader
+> **environment.d is the right injection point**, not the `.desktop` file: omarchy runs
+> the session under uwsm (`uwsm-app` wraps every launch — confirmed in
+> `omarchy-launch-tui`), so `~/.config/environment.d/*.conf` variables are exported into
+> the whole graphical session, reaching both Waybar's `exec` child and the terminal the
+> `.desktop` spawns. One file, session-wide, instance-owned.
 
-| File | Owner | Writer | Reader | Notes |
-|------|-------|--------|--------|-------|
-| `config.yaml` | Rust app | **Rust only** (atomic) | curfew_guard, integrity_guard, watchdog | Canonical, human-readable. Hand-edits here are the attack the system reverts. |
-| `config.sanctioned.yaml` | Rust app | **Rust only** (atomic, written in lockstep with `config.yaml`) | integrity_guard (revert source) | The "known-good" snapshot. Written byte-identical to `config.yaml` at every successful commit. |
-| `guard.json` | Shared | **Rust** (commit/grace) **and** integrity_guard (fail-closed downgrade only) | both sides | Signed state. The guard may *downgrade* (set `weekly_spent=3`, grace=used) on tamper but never *upgrade*. |
-| `.guardkey` | Rust app | **Rust only**, once, on first run | both sides Unprotect | 32-byte HMAC key, DPAPI-CurrentUser encrypted. Both processes run as the same Windows user, so both can `Unprotect`. |
+**Open item for the build phase:** the baked-in `_DEFAULT_STACK_DIR` is fine for the
+author but is an author-specific literal in a "publishable" package. Recommend the
+packaging phase change the default to fail with a clear "set NIGHTGUARD_STACK_DIR"
+message when the path is absent **and** the env is unset, rather than hard-coding one
+user's home. (Today it already RuntimeErrors if the dir lacks `nightguard_ctl.py`, so
+the failure is already loud — this is a message-quality refinement, LOW urgency.)
 
-### `guard.json` shape (from spec)
+---
+
+## 3. Waybar module ↔ app data flow
+
+### The status reader is a NEW key-less entry point in THIS package
+
+The read surface already exists as pure helpers in `ngtui/ngtui/widgets/status.py`
+(`verdict_display`, `token_meter`) sourcing everything from `backend` (`read_state`,
+`live_verdict`, `tokens_left`, `sanctioned_config`). A Waybar reader is a thin
+**non-Textual** main that calls the same `backend` functions and prints one JSON line.
+
+**Decision: ship it as a second entry point in `pyproject.toml`/`__main__`, NOT a
+standalone script.** Rationale:
+- It must import `ngtui.backend` to reuse the verdict/token logic and the
+  stack-resolution bootstrap — a standalone script outside the package would have to
+  re-implement `sys.path` surgery and re-derive verdict mapping (drift risk, DRY
+  violation, and it would need the same env story solved twice).
+- A console entry rides the same isolated venv + PATH shim that `uv tool install`
+  already produces, so `omarchy`/Waybar can call it by bare name.
+- It keeps the desktop surface inside the published product (the Waybar reader is
+  generic; only the *wiring* into the user's bar is instance-specific).
+
+**Two viable shapes — recommend the subcommand:**
+
+| Option | Shape | Verdict |
+|--------|-------|---------|
+| **A. Subcommand (recommended)** | `ngtui status --json` — `__main__:main` parses argv; bare `ngtui` runs the TUI, `ngtui status --json` prints Waybar JSON and exits | One shim, one name on PATH, discoverable (`ngtui --help`), matches the question's "new `ngtui status --json`". Importing `ngtui.app`/Textual is deferred so `status` stays light. |
+| **B. Separate entry** | `ngtui-status` → `ngtui.status_cli:main` | Cleaner separation, but adds a second PATH name and a second thing to remember. Use only if argv routing in `__main__` feels heavy. |
+
+> If you pick A, refactor `__main__.main()` to dispatch: `status` → a `status_cli`
+> module that imports only `backend` (NOT `ngtui.app`, so no Textual/TTY import on the
+> hot Waybar poll path); anything else → `NightguardApp().run()`.
+
+### Waybar JSON contract (verified field set)
+
+`return-type: "json"` accepts: `text`, `alt`, `tooltip`, `class`, `percentage`. Map the
+existing verdict/token model onto them:
 
 ```json
 {
-  "config_hmac":  "<hex sha256-hmac of canonical config bytes>",
-  "state_hmac":   "<hex sha256-hmac of canonical state bytes, excluding state_hmac>",
-  "ledger":       [{ "ts": "<NTP iso>", "fields": ["curfew.start"], "direction": "loosen" }],
-  "weekly_spent": 0,
-  "week_anchor":  "2026-06-01",
-  "grace":        { "date": "2026-06-04", "window_start": "<NTP iso>", "window_end": "<NTP iso>" }
+  "text": "",                         // brand glyph or short status mark
+  "alt": "locked",                     // drives format-icons if you want per-state glyphs
+  "tooltip": "LOCKED · curfew until 06:00\n2 of 3 tokens · resets Mon 2026-06-29",
+  "class": "locked",                   // CSS hook: locked|open|grace|tamper|offline|unavailable
+  "percentage": 66                     // optional: tokens_left/WEEKLY_TOKENS*100, or grace remaining
 }
 ```
 
-## The Guard Verify → Revert Sequence (authoritative, runs on EVERY prompt)
+- `class` ← the verdict role (reuse `verdict_display`'s colour-role string).
+- `tooltip` ← verdict caption + `token_meter` text.
+- **Fail-closed in the reader too:** unknown/exception → emit
+  `{"text":"","class":"unavailable"}` (exactly the omarchy `weather.sh` precedent) and
+  exit 0, so a transient stack error never breaks the bar.
 
-This is the heart of enforcement. `nightguard_integrity_guard.ps1` runs on **SessionStart**
-and **UserPromptSubmit**, *before* `curfew_guard.ps1` in the hook chain (integrity first so
-curfew always evaluates a trusted config).
+### Refresh strategy
 
-```
-STEP 0  Unprotect .guardkey via DPAPI (CurrentUser).
-        └─ FAIL (cannot decrypt / missing): fail closed.
-           Run curfew_guard against a hardcoded STRICT DEFAULT, treat quota=spent,
-           grace=used. Log to tamper.log. Do NOT trust any on-disk config. → done.
+| Mechanism | Use it for |
+|-----------|-----------|
+| `interval` (e.g. 30–60s) | Baseline poll — cheap; the reader is a sub-100ms key-less read of `guard.json` + config. |
+| `signal` (`SIGRTMIN+N`) | **Push refresh after a commit.** When the TUI commits an edit, have it `kill -SIGRTMIN+N $(pidof waybar)` so the bar updates immediately instead of waiting for the next interval. This is the clean coupling between the editor and the bar — no shared state, just a signal. |
 
-STEP 1  Compute H = HMAC( canonical_bytes(config.yaml) ).
-        Compare H to guard.json.config_hmac.
+### Key-less / no-root property — CONFIRMED
 
-        ├─ MATCH  → config is sanctioned. Go to STEP 4 (verify state).
-        └─ MISMATCH → hand-edit detected. Go to STEP 2.
+The Waybar reader calls only `read_state()` (`ng.load_state()`), `live_verdict()`
+(`guard.curfew_verdict()`), `sanctioned_config()`/`sanctioned_text()`
+(`ng.file_bytes(ng.SANCTIONED)`), and `tokens_left()` (`ctl.quota_decide`). **None of
+these read the key or compute an HMAC** — `backend.py`'s docstring states the key reader
+returns `None` for a non-root caller and is never invoked. The only privileged path in
+`backend` is `commit()`, which the status reader never touches. Therefore the Waybar
+module **runs as the user, needs no sudo, and never prompts** — exactly the constraint.
+The one prerequisite: the sanctioned config + `guard.json` must be **user-readable** for
+a user-level read. (v2.0 set `.guardkey` + sanctioned config root:root 0600 — verify the
+config/state files the reader needs are readable by the user; if the sanctioned config is
+0600 root-only, the reader can't see it and the bar shows `unavailable`. This is a
+**phase-A verification item**, flagged in PITFALLS.)
 
-STEP 2  Verify the revert target:
-        Compute Hs = HMAC( canonical_bytes(config.sanctioned.yaml) ).
-        (The sanctioned file's expected hmac is config_hmac too, since the app writes
-         config.yaml and config.sanctioned.yaml byte-identical at commit.)
+---
 
-        ├─ Hs == guard.json.config_hmac  (sanctioned is good):
-        │     ATOMIC copy config.sanctioned.yaml → config.yaml (tmp→rename).
-        │     Append tamper.log {ts, "reverted to sanctioned"}.
-        │     The sneaky edit silently vanishes. Continue to STEP 4.
-        │
-        └─ Hs != config_hmac  (BOTH tampered):
-              ATOMIC write hardcoded STRICT DEFAULT → config.yaml AND → config.sanctioned.yaml.
-              (Strict default = curfew.enabled:true, conservative window e.g. 21:30–06:00,
-               block_when_offline:true, clock_protection:true.)
-              Re-sign guard.json.config_hmac to the strict default's hmac.
-              Append tamper.log {ts, "both tampered, strict default applied"}.
-              Continue to STEP 4.   ← fail CLOSED (toward more restriction)
+## 4. Click actions
 
-STEP 4  Verify state: compute Hstate = HMAC( canonical_bytes(guard.json minus state_hmac) ).
-        Compare to guard.json.state_hmac.
+The omarchy bar already demonstrates every pattern this milestone needs (verified in
+`~/.config/waybar/config.jsonc` and `~/.local/share/omarchy/bin/`):
 
-        ├─ MATCH → state trusted. Curfew/grace/quota use guard.json as-is.
-        └─ MISMATCH → state tampered. Fail closed IN MEMORY for this run:
-              treat weekly_spent = 3 (no loosening possible) and grace = used.
-              Do NOT rewrite guard.json (only the app re-signs state on next sync).
-              Append tamper.log {ts, "state_hmac invalid, fail-closed quota"}.
-
-STEP 5  Hand control to curfew_guard.ps1, which now evaluates a TRUSTED config.yaml
-        and (if locked) re-checks any grace window with its OWN NTP (STEP G below).
+```jsonc
+"custom/nightguard": {
+  "exec": "ngtui status --json",
+  "return-type": "json",
+  "interval": 60,
+  "signal": 8,                                  // pick a free SIGRTMIN+N
+  "on-click":       "omarchy-launch-or-focus-tui ngtui",
+  "on-click-right": "ngtui menu",               // or a wofi menu — see below
+  "tooltip": true
+}
 ```
 
-### Grace re-check (inside curfew_guard, own NTP)
+- **Left-click → open/focus the TUI.** Use `omarchy-launch-or-focus-tui ngtui`
+  (verified helper): it focuses an existing `org.omarchy.ngtui` window if one is open,
+  else launches `omarchy-launch-tui ngtui` →
+  `xdg-terminal-exec --app-id=org.omarchy.ngtui -e ngtui`. This single helper gives the
+  stable window class AND the focus-don't-duplicate behavior for free.
+- **Right-click → status/actions menu.** Two options:
+  - **`wofi`/`walker` menu (recommend for v1):** a tiny instance script lists actions
+    (Open editor · Use +8 grace · Show ledger) and dispatches. Lower coupling; the menu
+    items just shell `ngtui`/launch helpers. omarchy already ships `omarchy-launch-walker`.
+  - **`ngtui menu` subcommand:** a third argv route that prints/handles actions. More
+    self-contained but pulls menu UX into the package. Defer unless you want the menu
+    shippable. Recommendation: **wofi menu lives in the instance; keep the package to
+    `ngtui` + `ngtui status`.**
 
-```
-G1  If guard.json.grace present AND state_hmac valid AND grace.date == NTP-true today:
-G2     true_now = curfew_guard's own Get-TrueTime (NOT app time, NOT system clock if tampered)
-G3     if grace.window_start <= true_now < grace.window_end  → exit 0 (let prompt through)
-G4     else → grace expired/not-yet → fall through to normal curfew block.
-```
+**Floating-terminal requirement** is satisfied by the Hyprland windowrule keying on the
+`org.omarchy.ngtui` app-id (next section), NOT by the launch command — so left-click,
+the `.desktop`, and autostart all produce the same floating window with one rule.
 
-The guard timestamps the window with NTP *as recorded by the app*, but the **liveness
-check** (G3) uses the guard's own NTP read at prompt time. So even if the app's clock was
-skewed when it stamped `window_end`, the guard can only ever *shorten* the effective window
-relative to true time — it cannot widen it past 8 real minutes from a true-time start,
-because clock_protection (curfew_guard lines 151-167) already blocks on >max_offset drift.
+---
 
-## Time Authority Division (confirming the question)
+## 5. Repo-vs-instance placement (the two-layer split)
 
-**The split is sound.** Confirmed division:
+| Artifact | Lives in | Shipped/Installed? | Why |
+|----------|----------|--------------------|-----|
+| `ngtui` TUI entry | **repo** (`pyproject.toml`) | installed by `uv tool install` | the product |
+| `ngtui status --json` reader | **repo** (`pyproject.toml`, new `status_cli` module) | installed | generic, key-less, reusable |
+| Brand icon (PNG sizes + scalable SVG) | **repo** (`packaging/icons/` or `ngtui/assets/`) | installed into `hicolor` by PKGBUILD/`make install` | own-brand, part of the product identity (PROJECT: "no borrowed logos") |
+| `nightguard.desktop` (generic, path-free `Exec`) | **repo** (`packaging/`) | installed to `/usr/share/applications` (AUR) or `~/.local/share/applications` (README) | generic launcher; `Exec=omarchy-launch-tui ngtui` carries no author paths |
+| Hyprland windowrule snippet | **repo provides the snippet** (`packaging/hypr/nightguard.conf` as a documented include) | **instance applies it** (author's `~/.config/hypr/`) | the *rule text* is generic and shippable as a doc/snippet; *installing it into a user's live Hyprland config* is instance wiring |
+| Waybar module snippet | **repo provides the snippet** (`packaging/waybar/nightguard.jsonc`) | **instance merges it** into `~/.config/waybar/config.jsonc` | same: generic snippet, instance applies |
+| `~/.config/environment.d/nightguard.conf` (`NIGHTGUARD_STACK_DIR`/`NIGHTGUARD_DIR`) | **instance / dotfiles** | not shipped | author-specific paths; the ONE place that injects them session-wide |
+| Autostart (`exec-once` in Hyprland autostart.conf, or a user systemd unit) | **instance / dotfiles** | not shipped | personal "pin on login" preference |
+| `PKGBUILD` | **repo** (`packaging/aur/`) | the AUR artifact | the publish surface |
+| LifeOS trust stack (`ngcommon`/`guard`/`nightguard_ctl`/sudoers/watchdog) | **LifeOS (separate repo)** | NOT this milestone | declared as a *dependency*, never vendored |
 
-| Concern | Authority | Rationale |
-|---------|-----------|-----------|
-| Display countdown, "opens in", quota refill date | App SNTP (cosmetic) | Wrong display never weakens enforcement |
-| Quota math input (which week are we in) | App SNTP at commit time → writes `week_anchor` | The app is the only writer; anchor is *data*, re-verified by state_hmac |
-| **Curfew lock decision** | curfew_guard's own NTP | Always-on, app-independent |
-| **Grace window liveness** | curfew_guard's own NTP at prompt time | Prevents app-clock-error window widening |
-| **Clock-tamper detection** | curfew_guard (`Test-ClockTampered`, exists) | Already enforced; bounds how far any clock can drift |
+**Guiding rule:** *snippet text is generic → repo; applying a snippet into a live user
+config, and any literal author path → instance/dotfiles.* The `.desktop` and icon are
+the only desktop artifacts that get *installed* by the package; the windowrule and Waybar
+entry are *documented snippets the user (or an install script) merges*, because Hyprland
+and Waybar configs are user-owned single files, not drop-in directories you can safely
+overwrite.
 
-**Week-anchor reset — where computed:** Compute it in **Rust at commit/grace time** and
-store it in `guard.json.week_anchor` (a Monday ISO date in `Europe/Amsterdam`). On any
-`commit_change`/`use_grace`/`get_state`, Rust computes `current_monday(NTP-now, tz)`; if it
-differs from stored `week_anchor`, reset `weekly_spent=0` and update `week_anchor` before
-applying the operation, then re-sign. **Do not** make the PowerShell guard reset the week —
-it is a verifier, not a writer of quota. If the app never opens across a Monday boundary,
-quota simply stays unspent (correct: you can't loosen without the app anyway). The guard's
-only quota action is the *downgrade* on state-tamper (weekly_spent→3 in memory).
+---
 
-This keeps the anchor a single-writer value (Rust), verified by `state_hmac`, and avoids a
-race where two processes both try to reset the week.
+## 6. Hyprland windowrule — the float contract
 
-## Canonicalization Strategy (recommended)
+The existing `TodQuickAdd` rule is the exact template (verified in `hyprland.conf`):
 
-**Recommendation: semantic canonicalization, not raw-byte hashing.**
-
-HMAC over the *raw* file bytes would trip the guard on cosmetic reformatting (whitespace,
-key order, quote style, trailing newline) — exactly the false positives the spec wants to
-avoid. HMAC over a parsed-and-normalized form makes cosmetic edits invisible while any
-*semantic* change (a value, an added key, a removed list item) flips the hash.
-
-**Canonical form definition (both Rust and PowerShell must produce identical bytes):**
-
-1. **Parse** `config.yaml` into a typed model (Rust: `serde`-derived struct; PowerShell:
-   the existing `Read-NightguardConfig` hashtable). Parse to *values*, not text.
-2. **Normalize values:** booleans → `true`/`false` lowercase; times → `HH:MM` zero-padded;
-   strings trimmed of surrounding quotes/whitespace (the PS parser already does `.Trim('"',"'")`).
-3. **Serialize to canonical JSON** (not YAML) with: keys sorted lexicographically at every
-   level, arrays in declared order (order is semantic for `allow_commands`/`apps`), no
-   insignificant whitespace, UTF-8, `\n` line endings, no trailing newline.
-4. **HMAC-SHA256** over those canonical JSON bytes with the `.guardkey`.
-
-Why canonical **JSON** rather than canonical YAML for the hashed form: YAML has many
-equivalent serializations and no widely-shared canonical-output guarantee across languages
-(and Rust's `serde_yaml` is deprecated/archived — see Sources). JSON canonicalization is a
-solved, language-agnostic problem (sorted keys, minimal separators). The human-readable file
-stays YAML; only the *hashed projection* is canonical JSON. This cleanly separates "what
-humans read/edit" (YAML) from "what we sign" (canonical bytes).
-
-**De-risk the two implementations** with a committed conformance fixture:
-`tests/fixtures/canon/*.yaml` → `*.canon.json` → `*.hmac.hex`. The Rust test suite and a
-pwsh test must both reproduce the exact hex. This is the single most important test in the
-project — it is the contract between writer and verifier.
-
-`guard.json` uses the same scheme: `state_hmac` is HMAC over the canonical-JSON projection
-of `guard.json` with the `state_hmac` field removed (or set to empty) before hashing.
-
-## Recommended Project Structure
-
-```
-nightguard-control/                 # publishable generic repo
-├── src/                            # frontend (vanilla TS + Vite)
-│   ├── main.ts                     # bootstrap, invoke() wiring
-│   ├── views/
-│   │   ├── main-view.ts            # status hero, token meter, grace, +8 button
-│   │   └── edit-view.ts            # field inputs + live per-field feedback
-│   ├── lib/ipc.ts                  # typed wrappers over invoke(); NO trust logic
-│   └── styles/tokens.css           # Moonlit Indigo palette
-├── src-tauri/
-│   ├── src/
-│   │   ├── lib.rs                  # command registration
-│   │   ├── commands.rs             # get_state/classify_change/commit_change/use_grace
-│   │   ├── model.rs                # Config struct + serde
-│   │   ├── canon.rs                # canonicalization + HMAC (CONTRACT with PS)
-│   │   ├── classifier.rs           # direction classifier (per-field diff table)
-│   │   ├── quota.rs                # 3/wk, week-anchor reset, grace once/day
-│   │   ├── store.rs                # atomic tmp→rename writer; reads/writes artifacts
-│   │   ├── keystore.rs             # DPAPI protect/unprotect .guardkey
-│   │   └── ntp.rs                  # SNTP for display/quota
-│   └── tests/                      # classifier table, quota, canon conformance vectors
-└── docs/design-spec.md
-
-LifeOS/hooks/                       # enforcement (instance + reusable)
-├── nightguard_curfew_guard.ps1     # EXISTS — add grace-window re-check
-├── nightguard_integrity_guard.ps1  # NEW — verify→revert sequence above
-├── nightguard_ntp_utils.ps1        # EXISTS — Get-TrueTime / Test-ClockTampered
-├── nightguard_canon.ps1            # NEW — canonicalization + HMAC mirror of canon.rs
-└── verify_hook_integrity.ps1       # EXISTS — register integrity_guard in SHA256 baseline
-
-LifeOS/nightguard/                  # instance trust artifacts (NOT in published repo)
-├── config.yaml  config.sanctioned.yaml  guard.json  .guardkey  tamper.log
+```conf
+# packaging/hypr/nightguard.conf  (generic snippet; user includes or copies)
+windowrule = float on,   match:class ^(org\.omarchy\.ngtui)$
+windowrule = center on,  match:class ^(org\.omarchy\.ngtui)$
+windowrule = size 900 640, match:class ^(org\.omarchy\.ngtui)$
 ```
 
-### Structure Rationale
+- The `app-id`/class `org.omarchy.ngtui` comes for free from
+  `omarchy-launch-tui ngtui` (`--app-id=org.omarchy.$(basename …)`). This is why the
+  `.desktop` `Exec` should be `omarchy-launch-tui ngtui` (or `omarchy-launch-or-focus-tui`)
+  rather than a raw `alacritty -e ngtui` — it guarantees the class the rule matches.
+- One rule set covers every entry point (launcher, left-click, autostart) since they all
+  produce the same app-id. **HIGH confidence** — this is the established omarchy idiom.
 
-- **`canon.rs` + `nightguard_canon.ps1` are siblings by design** — they are the one
-  intentional duplication, pinned by shared test vectors. Keeping them as named, isolated
-  files makes the contract obvious and reviewable.
-- **`src/lib/ipc.ts` is the only frontend↔backend seam** and contains zero decisions —
-  enforces "frontend = display + intent."
-- **Hooks live in LifeOS, not the app repo**, so they fire whether or not the app is
-  installed/open — the always-on guarantee.
+---
 
-## Data Flow
+## 7. AUR package — what it installs and the dependency story
 
-### Commit flow (the only write path)
+**Installs (into system paths):**
+- the `ngtui` package (as a Python app — see packaging shape below),
+- `/usr/share/applications/nightguard.desktop`,
+- `/usr/share/icons/hicolor/{48x48,128x128,256x256,scalable}/apps/nightguard.{png,svg}`,
+- docs: the Waybar + Hyprland snippets to `/usr/share/doc/ngtui/` (NOT auto-merged into
+  user configs — Arch packaging rule: never write into `~`/user config from a package).
+
+**Packaging shape — two routes:**
+
+| Route | How | Trade-off |
+|-------|-----|-----------|
+| **`python-ngtui` (recommend for AUR)** | Standard PyPA build → `python -m build` → install the wheel into `/usr/lib/python3.x/site-packages` with `depends=(python python-textual)`. `console_scripts` land in `/usr/bin/ngtui`. | Idiomatic Arch Python packaging; system Python resolves `textual`. No uv at runtime. |
+| **uv-tool style** | PKGBUILD wraps `uv tool install` into `$pkgdir`. | Non-idiomatic for AUR; uv as a makedep. Use only if you must pin the isolated-venv model. |
+
+> For the **author**, `uv tool install` from the repo is the real install path (README
+> documents it). The AUR `PKGBUILD` is the *publish* surface for others and should use the
+> idiomatic `python-ngtui` wheel route.
+
+**Declaring the trust-stack dependency (the hard part):** the LifeOS trust stack is NOT
+on the AUR and is the author's private repo — so the package **cannot** list it as a
+`depends=()`. Handle it as a **documented runtime prerequisite**, not a package dep:
+- `optdepends=('nightguard-trust-stack: signing/guard backend (set NIGHTGUARD_STACK_DIR)')`
+  as a signpost,
+- a `post_install()` message in the `.install` file telling the user to point
+  `NIGHTGUARD_STACK_DIR`/`NIGHTGUARD_DIR` at their stack (and that the app fails closed
+  without it — which `_resolve_stack_dir()` already enforces),
+- README documents the contract: ngtui is the *editor*; it requires a compatible
+  `nightguard_ctl.py`/`ngcommon.py`/`guard.py` + the root watchdog + the sudoers entry.
+
+This is honest: the product is genuinely a thin client over a backend it doesn't bundle.
+The dependency is a *protocol/path contract* (`backend.py`'s expected module API + the
+sudoers `Cmnd_Alias` shape), surfaced via env + docs, not an installable package.
+
+---
+
+## 8. Suggested build order (dependency-ordered)
 
 ```
-[Edit view: user changes fields]
-      ↓ classify_change(proposed)            (debounced, live)
-[Rust: classifier.rs diffs proposed vs current canonical model]
-      ↓ {direction, loosens:[...], allowed, reason}
-[Frontend: ⬇ "loosening — costs 1 token" / ⬆ "tightening — free"; disable if 0 tokens]
-      ↓ user clicks Commit → commit_change(proposed)
-[Rust: validate → classify → quota.rs (week reset? enough tokens?) ]
-      ↓ if loosening && weekly_spent>=3 → reject (return reason)
-[Rust store.rs: ATOMIC write config.yaml; ATOMIC write config.sanctioned.yaml;
-      append ledger; weekly_spent += (loosening?1:0); recompute config_hmac+state_hmac;
-      ATOMIC write guard.json]
-      ↓
-[get_state → new UI state]
+Phase A — Global install + stack resolution from a bare env   [foundation; unblocks all]
+  • Add `ngtui status --json` argv route (status_cli module, backend-only import).
+  • `uv tool install` the package; verify the bare `ngtui` shim launches the TUI
+    AND resolves the LifeOS stack with NO dev-shell env (the launcher-env test).
+  • Decide the env-injection point for non-author installs (environment.d) — document.
+  • Verify config/state file perms allow a key-less user read (else bar = unavailable).
+  Gate: `ngtui` and `ngtui status --json` both run from a login shell with no
+        NIGHTGUARD_* prefix; status emits valid Waybar JSON and never prompts/needs root.
+
+Phase B — Launcher + window behavior                          [needs A: a global ngtui]
+  • Brand icon into hicolor (own-brand, shipped).
+  • `nightguard.desktop` (Exec=omarchy-launch-tui ngtui) → appears in wofi/walker.
+  • Hyprland windowrule snippet (float/center/size on org.omarchy.ngtui).
+  Gate: launching from wofi opens a floating, correctly-sized ngtui terminal.
+
+Phase C — Waybar module                                       [needs A: status JSON]
+  • custom/nightguard snippet: exec ngtui status --json, interval+signal, on-click
+    (omarchy-launch-or-focus-tui ngtui), on-click-right (wofi menu or ngtui menu).
+  • Fail-closed to {"unavailable"} on error.
+  • Wire commit→Waybar push refresh (TUI sends SIGRTMIN+N after a successful commit).
+  Gate: bar shows live lock/token state; left-click opens/focuses; right-click menus;
+        state updates within the interval AND immediately after a commit.
+
+Phase D — Autostart / login pin                               [optional; needs B]
+  • Instance exec-once / user systemd unit (dotfiles, not shipped).
+
+Phase E — Publish packaging                                   [last: needs B+C artifacts]
+  • PKGBUILD (python-ngtui wheel route) installing package + .desktop + icons + doc
+    snippets; optdepends + .install message for the trust-stack contract.
+  • README install path (uv tool install for the author; PKGBUILD for others;
+    environment.d for the stack path).
+  Gate: clean-machine dry-run install produces a launchable (or clearly-fails-closed)
+        app with documented dependency wiring.
 ```
 
-### Enforcement flow (every prompt, app may be closed)
+**Why this order:** A is the keystone — the global command + the bare-env stack
+resolution + the status subcommand are the substrate B and C both stand on. B and C are
+independent of each other (both depend only on A) and could run in parallel, but B is the
+smaller/safer "make it appear in the launcher" win and de-risks the window-class contract
+that C's `on-click` reuses. D is a cosmetic pin. E is deliberately last because the
+PKGBUILD packages the artifacts A–C produce and must encode the dependency story those
+phases finalize.
 
-```
-[Claude Code prompt] → SessionStart/UserPromptSubmit
-      ↓
-[integrity_guard.ps1: verify→revert sequence (STEP 0–4)]   ← trusts/repairs config
-      ↓
-[curfew_guard.ps1: trusted config → in curfew? → grace re-check (own NTP)]
-      ↓ decision: block | allow
-```
+---
 
-### Atomic + idempotent write rule (applies to all four files)
+## Component Boundaries — explicit new vs modified
 
-Every write: serialize to a `*.tmp` in the **same directory**, `fsync`, then
-`rename(tmp, target)` (atomic on NTFS for same-volume rename). Never partial-write a trust
-file — a crash mid-write must leave the previous valid file intact, not a torn one. Writes
-are idempotent: committing the same proposed config twice yields identical canonical bytes
-and the same hmac (no spurious ledger churn — a no-op diff writes nothing).
+| Element | Status | File(s) |
+|---------|--------|---------|
+| `ngtui status --json` subcommand router | **NEW** | `ngtui/ngtui/__main__.py` (dispatch), `ngtui/ngtui/status_cli.py` (NEW) |
+| Reuse of verdict/token helpers | **reuse** | `ngtui/ngtui/widgets/status.py` (`verdict_display`, `token_meter`), `ngtui/ngtui/backend.py` |
+| `pyproject.toml` scripts | **MODIFIED** (only if separate `ngtui-status` entry); unchanged for the subcommand route | `ngtui/pyproject.toml` |
+| Brand icon | **NEW (shipped)** | `packaging/icons/nightguard.{svg,png…}` |
+| `.desktop` | **NEW (shipped)** | `packaging/nightguard.desktop` |
+| Hyprland windowrule snippet | **NEW (repo snippet, instance-applied)** | `packaging/hypr/nightguard.conf` |
+| Waybar module snippet | **NEW (repo snippet, instance-applied)** | `packaging/waybar/nightguard.jsonc` |
+| environment.d stack-path file | **NEW (instance/dotfiles)** | `~/.config/environment.d/nightguard.conf` |
+| Autostart | **NEW (instance/dotfiles)** | `~/.config/hypr/autostart.conf` exec-once |
+| Commit→Waybar signal refresh | **MODIFIED** | `ngtui/ngtui/backend.py` `commit()` (emit `SIGRTMIN+N` to waybar on success) |
+| PKGBUILD | **NEW (shipped)** | `packaging/aur/PKGBUILD` (+ `.install`) |
 
-## Architectural Patterns
-
-### Pattern 1: Verifier-downgrades-only
-
-**What:** The PowerShell side may move state toward *more* restriction (revert config,
-strict default, weekly_spent→3, grace→used) but never toward less. Only the signed Rust
-writer can loosen.
-**When:** All guard tamper-handling.
-**Trade-off:** Guarantees fail-closed; cost is that a corrupted state can only be healed by
-opening the app (acceptable — you can't loosen without the app anyway).
-
-### Pattern 2: Cosmetic/semantic split via canonical projection
-
-**What:** Humans read YAML; the system signs a canonical-JSON projection.
-**When:** Any time a human-editable file must be integrity-checked without false positives.
-**Trade-off:** Two parsers must agree (mitigated by conformance vectors); benefit is no
-whitespace/reorder false reverts.
-
-### Pattern 3: Authority-by-who-runs-always
-
-**What:** Put each enforcement decision in the component that runs unconditionally (hooks),
-and treat the app's copies as cosmetic mirrors.
-**When:** Any "what's true right now" question (locked?, grace live?).
-**Trade-off:** Mild display/enforcement drift possible; eliminated risk of app-state
-weakening enforcement.
-
-## Anti-Patterns
-
-### Anti-Pattern 1: Duplicating the direction classifier into PowerShell
-
-**What people do:** Re-implement tighten/loosen in the guard "so it can validate edits."
-**Why wrong:** The guard never validates edits — it reverts anything that doesn't match the
-signature, direction-agnostic. A second classifier is dead weight that can drift and create
-a false sense of two-sided enforcement.
-**Instead:** Classifier lives only in Rust (write-time). Guard only checks the hmac.
-
-### Anti-Pattern 2: Hashing raw file bytes
-
-**What people do:** `HMAC(raw config.yaml)`.
-**Why wrong:** Reformatting, reordering keys, or an editor adding a trailing newline trips
-auto-revert — punishing legitimate states and eroding trust in the tool.
-**Instead:** Canonical-JSON projection (above).
-
-### Anti-Pattern 3: Trusting app/system time for the grace window liveness
-
-**What people do:** App writes `window_end` and the guard just compares to `Get-Date`.
-**Why wrong:** A skewed system clock (or app SNTP bug) could make an 8-minute window last
-hours.
-**Instead:** Guard re-reads its own NTP at prompt time for the liveness check; clock-tamper
-detection bounds drift.
-
-### Anti-Pattern 4: Letting two processes reset the week
-
-**What people do:** Guard also zeroes `weekly_spent` on Monday.
-**Why wrong:** Race + dual-writer on a signed field; the guard would have to re-sign state,
-blurring the writer/verifier boundary.
-**Instead:** Week reset computed in Rust only, on next app interaction.
-
-## Integration Points
-
-### Internal Boundaries
-
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| Frontend ↔ Rust | Tauri `invoke` (typed, `src/lib/ipc.ts`) | One-way trust: frontend sends intent, renders returned state |
-| Rust ↔ artifacts | Atomic file writes (tmp→rename) | Rust is sole writer of config/sanctioned; co-writer of guard.json |
-| Hooks ↔ artifacts | Read + verify; revert/downgrade only | Verifier-downgrades-only pattern |
-| Rust canon.rs ↔ PS nightguard_canon.ps1 | Shared test-vector contract | The one sanctioned duplication |
-| integrity_guard ↔ curfew_guard | Hook ordering (integrity first) | curfew always sees trusted config |
-
-### External Services
-
-| Service | Integration | Notes |
-|---------|-------------|-------|
-| NTP/SNTP | App: SNTP for display/quota; Guard: existing `Get-TrueTime` | Two independent reads by design |
-| Windows DPAPI | CurrentUser protect/unprotect of `.guardkey` | Both processes run as same user |
-| Claude Code hooks | SessionStart + UserPromptSubmit | Verify hook path resolution (see spec open item) |
-
-## Suggested Build Order (coarse 3–5 phase roadmap)
-
-Dependency-ordered so each phase produces something verifiable and nothing later phase
-depends on is missing.
-
-**Phase 1 — Trust kernel (Rust): canonicalization, HMAC, DPAPI, atomic store.**
-The contract everything else rests on. Deliver `canon.rs`, `keystore.rs`, `store.rs`, the
-`Config` model, and the **conformance test vectors**. Verify: round-trip sign/verify;
-tmp→rename survives kill mid-write; DPAPI key generated once and re-readable.
-*Why first:* every other component consumes the signature/store. No UI yet.
-
-**Phase 2 — Mutation engine (Rust): classifier + quota + grace + commands.**
-`classifier.rs` (per-field diff table from spec), `quota.rs` (3/wk, Monday reset in tz,
-grace once/day), and the four commands (`get_state`, `classify_change`, `commit_change`,
-`use_grace`) writing all four artifacts atomically. Verify (TDD): classifier table cases,
-mixed-diff = 1 token, week reset, grace once/day, fail-closed on bad state.
-*Depends on:* Phase 1.
-
-**Phase 3 — Enforcement (PowerShell): integrity guard + grace re-check + canon mirror.**
-`nightguard_integrity_guard.ps1` implementing the verify→revert sequence; `nightguard_canon.ps1`
-mirroring `canon.rs` (must pass the SAME vectors); grace-window re-check added to existing
-`curfew_guard.ps1`; register integrity_guard in `verify_hook_integrity.ps1` baseline; wire
-hook ordering. Verify: scripted tamper→revert; both-tampered→strict default; bad state_hmac→
-fail-closed; canon vectors match Rust byte-for-byte.
-*Depends on:* Phase 1 (canon vectors) + Phase 2 (artifacts to verify). **This is the
-highest-risk phase** — the cross-language canon contract and fail-closed paths. Flag for
-deeper research/extra test time.
-
-**Phase 4 — UI (frontend): main + edit views, Moonlit Indigo, live feedback.**
-Status hero, 3-dot token meter, grace KPI, +8 button (lit only during lock), edit panel
-with live per-field tighten/loosen feedback driven entirely by `classify_change`. Verify:
-manual + the disabled-commit-with-0-tokens rule shows reason + refill date.
-*Depends on:* Phase 2 (commands). Could overlap Phase 3 since they share no code, but the
-UI is meaningless until enforcement proves the artifacts are trusted end-to-end.
-
-**Phase 5 (optional, YAGNI-gated) — Polish: weekly ledger list, instance wiring/propagation fix.**
-Point the live hook at the LifeOS canonical config (zero-copy, fixing today's drift),
-optional ledger view. Verify: hook reads canonical path; no `~/.claude/nightguard` drift.
-
-**Critical path:** P1 → P2 → P3 (canon contract gates P3; P3 gates trust). P4 hangs off P2.
-The signature/canon work in P1 + the cross-language verification in P3 are the load-bearing,
-research-worthy parts; the classifier, quota, and UI are well-specified and low-risk.
+---
 
 ## Sources
 
-- `docs/design-spec.md` and `.planning/PROJECT.md` (authoritative spec) — HIGH
-- `LifeOS/hooks/nightguard_curfew_guard.ps1` (existing curfew/NTP/clock-tamper semantics,
-  overnight wrap, per-day schedule) — HIGH
-- `LifeOS/hooks/nightguard_app_watchdog.ps1` (existing YAML parser conventions) — HIGH
-- serde_yaml deprecation (motivates canonical-JSON-for-hash rather than canonical-YAML):
-  [Rust forum](https://users.rust-lang.org/t/serde-yaml-deprecation-alternatives/108868),
-  [docs.rs serde_yaml 0.9.34+deprecated](https://docs.rs/crate/serde_yaml/latest) — MEDIUM
-- Canonical JSON / sorted-key deterministic serialization (general, language-agnostic
-  practice) — MEDIUM (training + cross-checked against the YAML-ambiguity rationale)
-
----
-*Architecture research for: Tauri self-binding config editor with always-on PowerShell enforcement*
-*Researched: 2026-06-04*
+- Live box inspection (2026-06-24) — `~/.config/waybar/config.jsonc` (custom-module +
+  on-click/on-click-right + json + signal/interval patterns), `~/.config/hypr/*.conf`
+  (`windowrule = float … match:class` template via `TodQuickAdd`),
+  `~/.local/share/omarchy/bin/omarchy-launch-{tui,or-focus-tui,floating-terminal-…}`
+  (app-id `org.omarchy.<basename>`, focus-or-launch, uwsm wrapping),
+  `~/.local/share/omarchy/default/waybar/weather.sh` (fail-closed json precedent),
+  `ngtui/ngtui/backend.py` + `widgets/status.py` (the key-less read seam + verdict/token
+  helpers), `uv 0.11.23`. **HIGH**
+- Waybar wiki — Custom module `return-type: json` fields (`text/alt/tooltip/class/percentage`),
+  `interval`/`signal` (SIGRTMIN+N)/`on-click`/`on-click-right`. **HIGH**
+  https://github.com/Alexays/Waybar/wiki/Module:-Custom
+- uv docs — `uv tool install` isolated venv at `~/.local/share/uv/tools`, PATH shims +
+  `uv tool update-shell`, editable/local-path install (`-e .`). **HIGH**
+  https://docs.astral.sh/uv/concepts/tools/ ·
+  https://docs.astral.sh/uv/reference/installer/
+- Arch packaging convention (no writes into `$HOME`; `optdepends`/`.install` for
+  non-AUR runtime prerequisites). **MEDIUM** (standard practice; not re-verified against a
+  specific guideline URL this session)

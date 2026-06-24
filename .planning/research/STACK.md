@@ -1,210 +1,190 @@
 # Stack Research
 
-**Domain:** Windows-only self-binding desktop app (Tauri v2) — sole sanctioned editor for an HMAC-signed, DPAPI-keyed curfew config, with a PowerShell integrity guard
-**Researched:** 2026-06-04
-**Confidence:** HIGH (all critical claims verified via crates.io API, official Microsoft/Tauri docs, and crate source)
+**Domain:** Desktop packaging / launcher integration for a Python Textual TUI on omarchy (Arch + Hyprland + Waybar) — milestone v2.1 · Desktop App
+**Researched:** 2026-06-24
+**Confidence:** HIGH (most facts verified against the live box: omarchy `bin/`, the running Waybar/Hyprland config, `uv`, and installed terminals)
 
----
+> Supersedes the prior v1.0 STACK research (Windows/Tauri/Rust), which is retired with the v2.0 Linux port. This file covers ONLY the new v2.1 packaging/launch capability.
 
 ## TL;DR — the load-bearing answers
 
-1. **DPAPI Rust↔PowerShell interop: VERIFIED, low risk.** .NET `ProtectedData.Protect/Unprotect` is a thin wrapper over the Win32 `CryptProtectData`/`CryptUnprotectData` functions, and the `windows-dpapi` crate returns the **raw** `CryptProtectData` output blob with **no extra framing**. A blob protected by either side is unprotectable by the other, *provided both use the same scope (`CurrentUser`) and the same `optionalEntropy` (use `None`/`null` on both)*. This is documented, intended Windows behavior — not a hack. Still: do a **30-minute spike** before committing the architecture (write key with PowerShell `[ProtectedData]::Protect(bytes,$null,'CurrentUser')`, read it with Rust `decrypt_data(&blob, Scope::User, None)`, and vice-versa). See Pitfalls.
-2. **HMAC-SHA256 byte-compatibility: GUARANTEED by the algorithm.** HMAC-SHA256 is fully specified (RFC 2104 / FIPS 198-1). RustCrypto `hmac`+`sha2` and .NET `HMACSHA256` produce **byte-identical** output for the same key + same message bytes. The only risk is *input canonicalization* (whitespace, encoding, line endings), not the crypto. Pin the canonical byte form and you're done.
-3. **Tauri current stable: 2.11.2** (2.x line; v2 is the supported major).
-4. **Comment-preserving YAML: use `yamlpatch` + `yamlpath`** (edit-in-place, format-preserving). `serde_yaml` is archived; `yaml-rust2`/`saphyr` do not preserve comments yet.
-
----
+1. **Global install →** `uv tool install` from the `ngtui/` project dir. It already ships a `[project.scripts] ngtui = "ngtui.__main__:main"` entry point (hatchling), so `uv tool install` builds the wheel into an isolated venv and drops a real `ngtui` shim into `~/.local/bin`. The `sys.path.insert(STACK_DIR)` import of the external LifeOS stack happens **at runtime inside that venv** and is unaffected by isolation — it resolves via `NIGHTGUARD_STACK_DIR` / the hardcoded default, exactly as it does today. Pin the interpreter with `--python 3.14` (system python is 3.14.6; the sudo commit call hardcodes `/usr/bin/python3` which is 3.14).
+2. **Floating-terminal launcher →** omarchy is **not** a hardcoded-terminal setup. It uses freedesktop's **`xdg-terminal-exec`** with the default resolved from `~/.config/xdg-terminals.list` (currently `Alacritty.desktop`). The idiomatic invocation — copied from omarchy's own `omarchy-launch-floating-terminal-with-presentation` — is `xdg-terminal-exec --app-id=<id> --title=<t> -e ngtui`. Set `--app-id` to a class that already floats (`org.omarchy.terminal`) or a dedicated `TUI.float`, both of which are **already matched** by omarchy's default floating window rule. **No new Hyprland windowrule is required** if you reuse one of those app-ids.
+3. **Waybar →** a `custom/nightguard` module. `exec` a tiny status script (`return-type: "json"` for icon+tooltip+class), `interval` poll (or `signal`-driven), `on-click` = the launcher command, `on-click-right` = a status/actions menu. This mirrors the existing `custom/update` and `custom/omarchy` modules verbatim.
+4. **Icon →** drop a `nightguard.svg` into `~/.local/share/icons/hicolor/scalable/apps/` (per-user) or `/usr/share/icons/hicolor/scalable/apps/` (system / PKGBUILD), then `gtk-update-icon-cache`. Reference it by **name** (`Icon=nightguard`) in the `.desktop` file.
+5. **Autostart →** prefer Hyprland `exec-once` for a Wayland-session-scoped surface; use a `systemd --user` unit only if you want restart-on-crash / ordering. For "pin the status surface", Waybar is already autostarted by omarchy — the module **is** the autostart.
+6. **AUR →** a standard **wheel-only Python PKGBUILD** (`python-build` + `python-installer`, `--no-isolation`), plus `install -Dm` lines for the `.desktop` + icon, and a documented `optdepends`/README note for the external LifeOS trust stack (it is **not** a pip dependency — it is an out-of-tree runtime requirement).
 
 ## Recommended Stack
 
-### Core Technologies
+### Core Technologies (the NEW capability — packaging/launch)
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| **Tauri** | `2.11.2` (`tauri` crate + `@tauri-apps/cli`) | Desktop shell; Rust backend = sole writer/signer, webview frontend = UI | Current stable v2; tiny binaries, Rust backend holds the signing key off the JS surface, mature Windows bundler/signer. v2 is the only supported major. |
-| **Rust** | latest stable via `rustup`, **MSVC toolchain** (`x86_64-pc-windows-msvc`) | Backend: HMAC, DPAPI, NTP, atomic writes, classifier | Required by Tauri; MSVC host triple is mandatory on Windows (not GNU). |
-| **Vite** | `^7` (whatever `create-tauri-app` scaffolds for the vanilla-TS template) | Frontend bundler/dev server | Tauri's recommended frontend tooling; the `vanilla-ts` template is exactly the "no-React vanilla TS" the project mandates. |
-| **TypeScript** | `^5` | Frontend language | Type safety over the `invoke()` boundary; matches the lean-deps constraint. |
-| **WebView2 Runtime** | Evergreen (system) | Renders the UI on Windows | Pre-installed on Win10 1803+/Win11 (your target). No bundling needed for personal use. |
+| **uv** (`uv tool install`) | `0.11.23` (installed) | Global install of the `ngtui` console script into an isolated, content-addressed venv | Already the project's toolchain (dev venv is `uv`). `uv tool` is pipx's analogue but reuses uv's managed-Python + cache; one tool, no extra dep. Builds the hatchling wheel and exposes `~/.local/bin/ngtui`. |
+| **xdg-terminal-exec** | system (`/usr/bin/xdg-terminal-exec`) | Resolve + launch the user's default terminal running `ngtui` | omarchy's canonical terminal-launch path (used by `SUPER+RETURN`, `omarchy-launch-floating-terminal-*`). Honors `~/.config/xdg-terminals.list` so it follows whatever terminal the user picks (currently **Alacritty 0.17.0**), instead of hardcoding ghostty/alacritty. Supports `--app-id` (Wayland class) + `--title` + `-e`. |
+| **Hyprland** | `0.55.4` (installed) | Window rules for the floating TUI window | Uses the **new** `windowrule = float on, match:class ^(...)$` syntax (NOT legacy `windowrulev2`). omarchy already ships a `floating-window` tag rule matching `org.omarchy.terminal` and a `TUI.float` class — reuse one as the launcher's `--app-id`. |
+| **Waybar** | installed (`/usr/bin/waybar`) | Status module + click-to-launch in the bar | The `custom/<name>` module model (`exec`/`return-type`/`interval`/`signal`/`on-click`/`on-click-right`) is exactly what's needed; the live config already uses it for `custom/update`, `custom/weather`, indicators. |
+| **hicolor-icon-theme** | system | Brand icon delivery | The freedesktop standard theme every launcher (wofi/walker) + Waybar icon lookup falls back to. `scalable/apps/<name>.svg` referenced by name. |
 
-### Supporting Libraries (Rust / `Cargo.toml`)
+### Supporting Libraries / Tools
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| **`windows-dpapi`** | `0.2.0` | DPAPI encrypt/decrypt of the 32-byte `.guardkey`, `Scope::User` | Wrap key at rest. Returns raw `CryptProtectData` blob → interoperable with PowerShell `[ProtectedData]`. **Verify scope/entropy match the guard.** |
-| **`hmac`** | `0.12.1` | HMAC construction | Pair with `sha2 0.10`. Use the proven pairing, not bleeding-edge 0.13 (see "What NOT to use"). |
-| **`sha2`** | `0.10.9` | SHA-256 backing the HMAC | Battle-tested; the version 99% of the ecosystem (and `hmac 0.12`) depends on. |
-| **`subtle`** | `2.x` | Constant-time tag comparison | Use `hmac`'s `verify_slice()` (built on `subtle`) instead of `==` on tags. |
-| **`hex`** | `0.4.3` | Encode HMAC tag as hex for `guard.json` | If storing tags as hex strings (recommended for readability + PowerShell parity). |
-| **`sntpc`** | `0.10.1` | SNTP/NTP true-time query | NTP-true-time for grace window + clock-tamper detection. Use `sync` module + `sntpc-net-std` adapter over `UdpSocket` (set a short timeout; offline → flag in UI). |
-| **`yamlpath`** | `1.25.2` | Format-preserving YAML feature extraction | Read individual fields for the direction classifier without losing layout. |
-| **`yamlpatch`** | `1.25.2` | Comment- and format-preserving YAML patch ops | **The writer.** Apply per-field edits to `config.yaml` while preserving comments/whitespace so the hand-rolled PowerShell parser still reads it. |
-| **`serde` / `serde_json`** | `1.x` | `guard.json` (de)serialization + Tauri command payloads | `guard.json` is machine state — plain JSON, comment preservation irrelevant. Tauri commands require `serde`. |
-| **`tempfile`** *(or hand-rolled)* | `3.x` | Atomic writes (write temp → `rename`) | Required by the "atomic writes / fail-closed" constraint. On Windows use write-temp-then-`ReplaceFile`/rename in same dir. |
-| **`chrono`** *(or `time`)* | `chrono 0.4` | Monday-00:00 week anchor, grace window math, tz handling | Week-reset / ISO-week / Europe-Amsterdam logic. `chrono-tz` if you need named-tz resolution in Rust. |
-| **`thiserror`** | `1.x` | Backend error types surfaced to commands | Clean `Result` returns across the `invoke` boundary. |
+| Tool | Version | Purpose | When to Use |
+|------|---------|---------|-------------|
+| **hatchling** | already the build backend | Build the wheel `uv tool install` / PKGBUILD consume | Already in `pyproject.toml`; nothing to add. `uv` and `python -m build` both drive it. |
+| **python-build** | system pkg `python-build` | PKGBUILD `build()`: `python -m build --wheel --no-isolation` | AUR packaging only. |
+| **python-installer** | system pkg `python-installer` | PKGBUILD `package()`: `python -m installer --destdir="$pkgdir" dist/*.whl` | AUR packaging only. |
+| **desktop-file-utils** | system (`desktop-file-validate`, `update-desktop-database`) — installed | Validate the `.desktop` file; refresh the launcher DB | Build/CI check + post-install hook. |
+| **gtk-update-icon-cache** | system (installed) | Rebuild hicolor cache after dropping the SVG | After icon install (per-user manual run, or PKGBUILD `.install` hook). |
+| **systemd --user** | system | Optional autostart unit with restart semantics | Only if you need crash-restart / dependency ordering beyond Hyprland `exec-once`. |
 
-### Frontend (npm)
+### Development / Inspection facts (verified on this box)
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| **`@tauri-apps/api`** | `^2` | `invoke()` IPC, event listeners | Call Rust commands (`get_state`, `classify_change`, `commit_change`, `use_grace`). |
-| **`@tauri-apps/cli`** | `^2.11` | dev/build/bundle CLI | `tauri dev`, `tauri build`. |
-| *(none for UI)* | — | Hand CSS with palette tokens | Spec mandates hand CSS / Moonlit Indigo tokens. No UI framework — honors lean-deps. |
-
-### Development Tools
-
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| `create-tauri-app` | Scaffold | `npm create tauri-app@latest` → choose **TypeScript / JavaScript → Vanilla → TypeScript**. Produces `src/` (frontend) + `src-tauri/` (Rust). |
-| Microsoft C++ Build Tools | Native linking | Installer → check **"Desktop development with C++"**. Required before any Tauri build. |
-| `rustup` | Rust install | Ensure default host triple is `x86_64-pc-windows-msvc`. |
-
----
-
-## IPC pattern (Tauri v2, verified)
-
-Backend command:
-```rust
-#[tauri::command]
-fn classify_change(proposed: ProposedConfig) -> Result<Classification, String> { ... }
-```
-Register in the builder:
-```rust
-tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![
-        get_state, classify_change, commit_change, use_grace
-    ])
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
-```
-Frontend call:
-```ts
-import { invoke } from "@tauri-apps/api/core"; // v2 path is /core, NOT /tauri (that was v1)
-const cls = await invoke<Classification>("classify_change", { proposed });
-```
-Command args/returns must be `serde::Serialize`/`Deserialize`. Args are camelCase on the JS side by default (`weekly_spent` ↔ `weeklySpent`) — or annotate with `#[tauri::command(rename_all = "snake_case")]`.
-
----
+| Probe | Result on this machine | Notes |
+|-------|------------------------|-------|
+| `omarchy-default-terminal` | resolves `Alacritty.desktop` → `alacritty` | The default terminal is **Alacritty 0.17.0**, not ghostty. ghostty is NOT installed. Launcher must go through `xdg-terminal-exec`, not a hardcoded binary. |
+| `uv tool dir` | `~/.local/share/uv/tools` | Where the isolated tool venv lives. |
+| `python3 --version` | `Python 3.14.6` | `/usr/bin/python3` → 3.14; matches the `sudo /usr/bin/python3 …` commit call in `backend.py`. |
+| `hyprctl version` | `0.55.4` | Uses new `windowrule … match:class` grammar. |
 
 ## Installation
 
 ```bash
-# 0. Prerequisites (one-time): MS C++ Build Tools, rustup (msvc), WebView2 (preinstalled Win11)
+# --- 1. Global install (run from the ngtui/ project dir) ---------------------
+cd ngtui
+uv tool install --python 3.14 .
+#   → builds the hatchling wheel into ~/.local/share/uv/tools/ngtui
+#   → exposes ~/.local/bin/ngtui  (ensure ~/.local/bin is on PATH; `uv tool update-shell`)
+# Re-install after code changes:  uv tool install --reinstall --python 3.14 .
+# Dev-loop alternative (live edits):  uv tool install -e --python 3.14 .
 
-# 1. Scaffold
-npm create tauri-app@latest nightguard-control
-#    → Vanilla → TypeScript
+# --- 2. Brand icon into hicolor (per-user) -----------------------------------
+mkdir -p ~/.local/share/icons/hicolor/scalable/apps
+cp nightguard.svg ~/.local/share/icons/hicolor/scalable/apps/nightguard.svg
+gtk-update-icon-cache ~/.local/share/icons/hicolor 2>/dev/null || true
 
-cd nightguard-control
-npm install
+# --- 3. .desktop launcher (per-user) -----------------------------------------
+# ~/.local/share/applications/nightguard.desktop  (body below)
+desktop-file-validate ~/.local/share/applications/nightguard.desktop
+update-desktop-database ~/.local/share/applications
 
-# 2. Frontend dep
-npm install @tauri-apps/api@^2
-
-# 3. Backend deps (src-tauri/Cargo.toml)
-#    cd src-tauri
-cargo add windows-dpapi@0.2.0
-cargo add hmac@0.12.1
-cargo add sha2@0.10.9
-cargo add subtle@2
-cargo add hex@0.4.3
-cargo add sntpc@0.10.1
-cargo add yamlpath@1.25.2 yamlpatch@1.25.2
-cargo add serde@1 --features derive
-cargo add serde_json@1
-cargo add chrono@0.4
-cargo add tempfile@3
-cargo add thiserror@1
-
-# 4. Run / build
-npm run tauri dev
-npm run tauri build   # produces .exe + (optional) MSI/NSIS installer in src-tauri/target/release/bundle/
+# --- 4. Waybar + Hyprland: edit ~/.config/waybar/config.jsonc and
+#        ~/.config/hypr/... (snippets in the integration section below)
 ```
 
----
+### `.desktop` body (mirrors omarchy's `xdg-terminal-exec` launch path)
 
-## Bundling / signing (Windows)
+```ini
+[Desktop Entry]
+Type=Application
+Name=Nightguard
+Comment=Sanctioned editor for the nightguard curfew
+# Reuse an app-id omarchy already floats (org.omarchy.terminal) — or a dedicated one:
+Exec=xdg-terminal-exec --app-id=org.nightguard.tui --title=Nightguard -e ngtui
+Icon=nightguard
+Terminal=false
+Categories=Utility;System;
+StartupNotify=true
+```
 
-- `tauri build` produces a standalone `.exe` and, by default, **MSI (WiX)** and/or **NSIS** installers (configurable in `tauri.conf.json` → `bundle.targets`).
-- **For a personal LifeOS instance, code-signing is optional** — unsigned runs fine for yourself; SmartScreen will warn on first launch. For a *publishable* repo, sign with an Authenticode cert (`bundle.windows.certificateThumbprint` / `signCommand`); Tauri's updater also supports its own signature scheme if you ever ship updates.
-- Recommendation: ship the plain `.exe` (or NSIS) for v1; defer Authenticode until the repo is actually published. Don't block the milestone on a cert.
+> `Terminal=false` because `xdg-terminal-exec` opens the terminal itself; `Terminal=true` would double-wrap it in the launcher's own terminal.
 
----
+### Waybar `custom/nightguard` module (drop into `config.jsonc`)
+
+```jsonc
+"custom/nightguard": {
+  "exec": "$HOME/.local/share/omarchy-nightguard/waybar-status.sh", // emits {"text","tooltip","class"}
+  "return-type": "json",
+  "interval": 30,
+  "on-click": "xdg-terminal-exec --app-id=org.nightguard.tui --title=Nightguard -e ngtui",
+  "on-click-right": "$HOME/.local/share/omarchy-nightguard/waybar-menu.sh",
+  "tooltip": true
+}
+// then add "custom/nightguard" to modules-left / modules-right array
+```
+
+### Hyprland windowrule (Hyprland 0.55 syntax — only if you DON'T reuse an omarchy-floated app-id)
+
+```ini
+# new-style rule grammar (this box runs 0.55.4):
+windowrule = float on,    match:class ^(org\.nightguard\.tui)$
+windowrule = center on,   match:class ^(org\.nightguard\.tui)$
+windowrule = size 900 600, match:class ^(org\.nightguard\.tui)$
+```
+
+> Shortcut: set the launcher `--app-id=org.omarchy.terminal` (or `TUI.float`) instead — both are **already** in omarchy's default `tag +floating-window` rule (`~/.local/share/omarchy/default/hypr/apps/system.conf`), so the window floats with **zero** added rules. Trade-off: a dedicated `org.nightguard.tui` class lets you give the window its own size/center rule and target it precisely in `hyprctl clients`; the shared id is zero-config but visually identical to other floating terminals.
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| `windows-dpapi 0.2.0` | Raw `windows`/`windows-sys` crate calling `CryptProtectData` yourself | If you want zero third-party deps for the security path, or need flags (`CRYPTPROTECT_UI_FORBIDDEN`) the wrapper doesn't expose. The wrapper is ~thin; rolling your own is ~40 lines and removes a dependency you're trusting with the key. **Reasonable to do for this project given its security focus.** |
-| `windows-dpapi 0.2.0` | `winapi 0.3` `dpapi` module | Older, unmaintained-style binding; `windows`/`windows-sys` is the current Microsoft-blessed path. Prefer `windows-sys` if rolling your own. |
-| `hmac 0.12 + sha2 0.10` | `hmac 0.13 + sha2 0.11` | Once the RustCrypto 0.13/0.11 line is widely adopted (it shipped Mar 2026). For a project that wants stability and maximum ecosystem compatibility *today*, stay on 0.12/0.10. |
-| `hmac 0.12 + sha2 0.10` | `ring` | If you already use `ring` elsewhere. Heavier (vendored BoringSSL/asm), overkill for one HMAC; RustCrypto is pure-Rust and lighter for a single tag. |
-| `yamlpatch + yamlpath` | `serde_yaml` + accept comment loss | Only if you decide `config.yaml` does **not** need comments preserved. The spec explicitly says it's human-readable with comments → don't. |
-| `yamlpatch` | Hand-rolled line-oriented patcher mirroring the PowerShell parser | If `yamlpatch` proves too heavy or its patch model doesn't fit. Since the *guard* already uses a hand-rolled minimal YAML parser, a matching minimal Rust writer is viable and keeps both sides in lockstep — but it's more code to maintain. |
-| `sntpc` | Reuse the existing PowerShell NTP logic via shelling out | The PS hooks already have NTP/clock-tamper logic. The app could call it — but a native Rust SNTP query is cleaner for the UI's live drift display. Guard re-checks timing with *its own* NTP regardless (per spec), so app-side NTP is advisory only. |
-
----
+| `uv tool install` | **pipx** | If the target machine has pipx but not uv. Functionally equivalent for a console-script app (isolated venv + PATH shim, supports local-path/git installs). **Not** recommended here: pipx isn't installed, and uv is already the project's toolchain — adding pipx is a redundant dep. Both isolate the venv identically, so the `sys.path.insert` external-stack import behaves the same under either. |
+| `uv tool install .` (build wheel) | `uv tool install -e .` (editable) | Editable for the author's dev loop so code edits land without reinstall. Use the non-editable wheel build for the "real install" milestone deliverable and the AUR package. |
+| `xdg-terminal-exec -e ngtui` | `alacritty --class org.nightguard.tui -e ngtui` | Only if you want to **force** Alacritty regardless of the user's `xdg-terminals.list` preference. Hardcoding breaks the omarchy contract (user can `omarchy default terminal ghostty`); prefer `xdg-terminal-exec`. omarchy's helper uses `--app-id` (works across alacritty/ghostty/kitty/foot); a raw `--class` flag is terminal-specific. |
+| Reuse `org.omarchy.terminal` app-id (zero rules) | Dedicated `org.nightguard.tui` + explicit windowrule | Dedicated class when you want a specific window size/position or to distinguish it in `hyprctl clients`. |
+| Hyprland `exec-once` autostart | `systemd --user` unit | systemd when you need `Restart=on-failure`, `After=` ordering, or `journalctl --user` logs. For a Waybar status surface neither is needed — Waybar is already autostarted and the module is the surface. |
+| `Icon=nightguard` (theme name) | `Icon=/abs/path/nightguard.svg` (absolute) | Absolute path if you deliberately skip the hicolor theme. Theme-name is preferred: respects theming, found by wofi/walker/Waybar lookup, and is the AUR-clean install location. |
+| Waybar `return-type: "json"` | `return-type: ""` (plain text) | Plain text if the module only ever shows a static glyph with no dynamic class/tooltip. Use JSON to drive live lock/token state + a CSS `class` (`.locked`/`.unlocked`) — matches existing indicator modules. |
 
 ## What NOT to Use
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| `serde_yaml` (as the config writer) | **Archived/unmaintained** (last release 0.9.34+deprecated, Mar 2024) and **destroys comments + formatting** on round-trip — would corrupt the human-readable `config.yaml` and could break the PowerShell minimal parser. | `yamlpatch` + `yamlpath` for `config.yaml`. `serde_json` is fine for `guard.json`. |
-| `yaml-rust2` / `saphyr` for round-trip edits | YAML 1.2 compliant *parsers* but **do not preserve comments** on emit (comment support deferred to future `saphyr`). | `yamlpatch` (purpose-built for comment/format-preserving patches). |
-| Tauri **v1** APIs / `@tauri-apps/api/tauri` import | v1 is legacy; import path and plugin model changed. | Tauri **v2** (`2.11.2`), `invoke` from `@tauri-apps/api/core`. |
-| `CRYPTPROTECT_LOCAL_MACHINE` / `Scope::Machine` for the key | Spec requires **CurrentUser** binding — machine scope lets *any* user on the box decrypt, weakening the "only this user can forge a signature" property. | `Scope::User` (DPAPI CurrentUser) on **both** Rust and PowerShell. |
-| DPAPI `optionalEntropy` mismatch | If Rust passes entropy and PowerShell passes `$null` (or different bytes), `Unprotect` **fails** — silently breaking the guard. | Use `None` / `$null` on **both** sides (or the identical entropy bytes on both). Document it as a hard invariant. |
-| GNU Rust toolchain on Windows | Tauri requires the **MSVC** host triple; GNU builds fail/misbehave. | `x86_64-pc-windows-msvc`. |
-| `==` to compare HMAC tags | Timing side-channel (minor here, but free to avoid). | `Hmac::verify_slice()` (constant-time via `subtle`). |
-
----
+| Hardcoding `ghostty -e ngtui` | **ghostty is not installed**; the default terminal here is Alacritty via `xdg-terminals.list`. Hardcoding any terminal breaks omarchy's swappable-terminal contract. | `xdg-terminal-exec --app-id=… -e ngtui` |
+| Legacy `windowrulev2 = float, class:…` | Hyprland **0.55.4** uses the new unified `windowrule = float on, match:class ^…$` grammar; old `windowrulev2` / bare `class:` matchers are deprecated/removed. | `windowrule = float on, match:class ^(…)$` |
+| Listing the trust stack as a PyPI dependency | The LifeOS `ngcommon`/`guard`/`nightguard_ctl` stack is an **out-of-tree, env-resolved** import (`sys.path.insert(STACK_DIR)`), not a pip package. Listing it would make `uv tool install` fail resolution. | Keep `dependencies = ["textual==8.2.7"]` only; document the stack as a runtime prerequisite / `optdepends` + README env-var setup. |
+| `pip install --user .` / bare `pip` global install | Pollutes user site-packages, no isolation, can clash with system python and the sudo `/usr/bin/python3` path; not reproducible. | `uv tool install` (isolated venv) or the AUR wheel install. |
+| A `systemd --user` unit that `exec`s the TUI at login | A TUI needs a TTY/terminal window; a headless `--user` service has no terminal and would fail or run invisibly. Autostart applies to the **Waybar module / status surface**, not the interactive TUI. | Hyprland `exec-once` for the bar surface; launch the TUI on demand (click / wofi / keybind). |
+| `python setup.py install` in the PKGBUILD | Deprecated; ngtui has no `setup.py` (pure `pyproject.toml` + hatchling). | `python -m build --wheel --no-isolation` + `python -m installer --destdir=…`. |
+| Vendoring/borrowed launcher icons | Project constraint: own-brand only, no borrowed logos. | A custom `nightguard.svg` in hicolor `scalable/apps`. |
 
 ## Stack Patterns by Variant
 
-**If you want to minimize trusted third-party crypto deps (recommended for this security-critical tool):**
-- Replace `windows-dpapi` with a ~40-line direct `windows-sys` call to `CryptProtectData`/`CryptUnprotectData`.
-- Because: you're trusting this dep with the signing key; the wrapper is thin enough that owning the code is cheap and auditable. The interop guarantee is identical (raw blob, same API).
+**If installing for the author only (personal LifeOS instance):**
+- `uv tool install --python 3.14 .` (or `-e .`), per-user `.desktop` + icon in `~/.local/share/...`, Waybar/Hyprland edits in `~/.config/...`.
+- The external stack resolves via the hardcoded `_DEFAULT_STACK_DIR` / `NIGHTGUARD_DIR` defaults already in `backend.py` — **no env vars needed** on the author's box. For zero floating-rule config, reuse `--app-id=org.omarchy.terminal`.
 
-**If the PowerShell minimal YAML parser turns out to be fragile:**
-- Use `yamlpatch` for writes but **add a round-trip test**: after every Rust write, re-read with a Rust port of the PS parser's rules (or shell out to the actual PS parser) and assert it parses to the expected values. Lock the canonical form.
+**If publishing to the AUR (non-author installs):**
+- Wheel-only PKGBUILD; install `.desktop` + `nightguard.svg` system-wide; ship a `.install` scriptlet running `update-desktop-database` + `gtk-update-icon-cache`.
+- The trust stack is **not** packaged (it's the author's private LifeOS). Document it as a required external dependency the installer must point at via `NIGHTGUARD_STACK_DIR` / `NIGHTGUARD_DIR`; without it `ngtui` fails closed with the clear `RuntimeError` already coded in `_resolve_stack_dir()`. Mark as `optdepends` + a prominent README "you must supply a nightguard trust stack" note.
+- Dependency: `depends=(python python-textual)` if `python-textual` is in repos/AUR at the pinned `8.2.7`; otherwise let the wheel pull textual. Verify `python-textual` availability/version at integration time.
 
-**If NTP is frequently unreachable on the target machine:**
-- `sntpc` with a 2–3s timeout; on failure, surface "offline — time unverified" in the UI and rely on the guard's `block_when_offline`. Never let app-side NTP failure *widen* a grace window (guard re-validates with its own NTP per spec).
+**AUR PKGBUILD skeleton (wheel-only, hatchling):**
+```bash
+makedepends=(python-build python-installer python-wheel python-hatchling)
+depends=(python python-textual)   # confirm python-textual==8.2.7 availability; else bundle
+optdepends=('nightguard trust stack (ngcommon/guard/nightguard_ctl): external, set NIGHTGUARD_STACK_DIR')
 
----
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  python -m build --wheel --no-isolation
+}
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -Dm644 packaging/nightguard.desktop "$pkgdir/usr/share/applications/nightguard.desktop"
+  install -Dm644 packaging/nightguard.svg     "$pkgdir/usr/share/icons/hicolor/scalable/apps/nightguard.svg"
+}
+```
 
 ## Version Compatibility
 
 | Package A | Compatible With | Notes |
 |-----------|-----------------|-------|
-| `tauri 2.11.2` | `@tauri-apps/api ^2`, `@tauri-apps/cli ^2.11` | Keep JS API/CLI major-matched to the Rust crate. |
-| `hmac 0.12.1` | `sha2 0.10.9`, `digest 0.10` | The canonical, widely-deployed pairing. Do **not** mix `hmac 0.12` with `sha2 0.11` (incompatible `digest` majors). |
-| `hmac 0.13` | `sha2 0.11`, `digest 0.11` | Newer line (Mar 2026); only adopt if you move the whole crypto set together. |
-| `windows-dpapi 0.2.0` | `winapi 0.3` (its internal dep) | Pure-Windows; `x86_64-pc-windows-msvc` only — fine, project is Windows-only. |
-| RustCrypto `hmac`/`sha2` | .NET `HMACSHA256` | **Byte-identical output** — HMAC-SHA256 is algorithm-defined. Compatibility risk is *input canonicalization*, not the libraries. |
-
----
-
-## Cross-language interop invariants (must hold, else the guard breaks silently)
-
-1. **DPAPI:** scope = CurrentUser on both; entropy = none on both. Blob is raw `CryptProtectData` output (no base64/framing unless *you* add it consistently — PS often base64s for storage; if so, base64 on read in Rust too).
-2. **HMAC input canonicalization:** define ONE canonical byte sequence both sides hash. Pin: encoding (UTF-8, no BOM), line endings (decide LF vs CRLF and normalize), trailing newline, and whether you HMAC the *raw file bytes* or a *normalized/serialized* form. Easiest robust choice: **HMAC the exact on-disk file bytes of `config.yaml`** (both Rust and PS read the same bytes) → zero canonicalization ambiguity. Same for `guard.json`.
-3. **Tag encoding in `guard.json`:** store as lowercase hex (both `hex` crate and PS `[BitConverter]`/`-join` agree on lowercase hex) — pick one case and enforce.
-
----
+| `uv 0.11.23` | hatchling backend, Python 3.14.6 | `uv tool install` drives the PEP 517 build via hatchling; pin `--python 3.14` to match `/usr/bin/python3` (the sudo commit interpreter). |
+| `ngtui` (entry point) | `textual==8.2.7` | Single declared dep; unchanged by packaging. |
+| Hyprland `0.55.4` | new `windowrule … match:class` grammar | Do NOT use `windowrulev2`. `match:class ^(…)$` regex anchoring required. |
+| Waybar (live config) | `custom/<name>` with `exec`/`return-type`/`interval`/`signal`/`on-click`/`on-click-right` | All used by existing modules (`custom/update`, `custom/weather`, indicators) — proven on this box. |
+| `xdg-terminal-exec` | `--app-id` / `--title` / `-e` | Confirmed flags via `--help`; `--app-id` sets Wayland app-id (X11 class). Default terminal from `~/.config/xdg-terminals.list` (= `Alacritty.desktop`). |
+| `/usr/bin/python3` | 3.14.6 | Matches `backend.py` sudo argv; keep the installed shim aligned with the stack — don't let `uv tool` silently pick 3.15-beta. |
 
 ## Sources
 
-- crates.io API (version + last-published + downloads, fetched 2026-06-04) — `tauri 2.11.2`, `windows-dpapi 0.2.0`, `hmac 0.13.0`/`0.12.1`, `sha2 0.11.0`/`0.10.9`, `sntpc 0.10.1`, `yamlpath`/`yamlpatch 1.25.2`, `saphyr 0.0.6`, `serde_yaml 0.9.34+deprecated`. **HIGH**
-- Microsoft Learn — `CryptProtectData` (dpapi.h), parameters incl. `pOptionalEntropy` ("must also be used in the decryption phase"), CurrentUser vs LOCAL_MACHINE scope. **HIGH**
-- Microsoft Learn — `System.Security.Cryptography.ProtectedData` / `ProtectedData.Protect` — confirmed thin wrapper over DPAPI; `optionalEntropy` + `DataProtectionScope.CurrentUser=0`. **HIGH**
-- `windows-dpapi` source (`src/lib.rs`, sheridans/windows-dpapi) — `encrypt_data(data, Scope, Option<entropy>)` returns **raw** `CryptProtectData` blob, no framing; `Scope::User` supported. **HIGH**
-- v2.tauri.app — prerequisites (MS C++ Build Tools, WebView2, MSVC Rust toolchain), v2 invoke pattern. **HIGH**
-- RustCrypto MACs/hashes (GitHub) — `hmac`+`sha2` digest-version pairing; HMAC-SHA256 RFC-defined output. **HIGH** (interop byte-equality is algorithmic, not library-specific)
-- docs.rs `sntpc` — async-first with `sync` module + `sntpc-net-std` adapter. **MEDIUM** (verify exact `sync::get_time` signature at integration time)
-- "Respectful YAML patching in Rust" (verrchu.github.io) + serde-yaml issue #145 — comment-preservation landscape, `yamlpatch`/`yamlpath` as the format-preserving option. **MEDIUM**
+- **Live machine inspection** (HIGH — ground truth): `~/.local/share/omarchy/bin/omarchy-default-terminal`, `omarchy-launch-floating-terminal-with-presentation` (the `xdg-terminal-exec --app-id=org.omarchy.terminal -e bash -c …` pattern); `~/.config/waybar/config.jsonc` (custom module shapes); `~/.local/share/omarchy/default/hypr/apps/system.conf` (`tag +floating-window` matching `org.omarchy.terminal`/`TUI.float`); `~/.config/hypr/` windowrule grammar; `hyprctl version` → 0.55.4; `uv --version` → 0.11.23; `alacritty --version` → 0.17.0; `python3 --version` → 3.14.6; `xdg-terminal-exec --help` (flags).
+- **uv tool vs pipx** — uv docs / pipx comparison: both isolate console-script venvs + PATH shims; uv reuses managed Python + cache. https://docs.astral.sh/uv/getting-started/installation/ , https://pipx.pypa.io/stable/explanation/comparisons/ — **MEDIUM** (corroborated by installed `uv tool install --help`).
+- **AUR Python wheel-only PKGBUILD** — ArchWiki Python package guidelines: `python-build` + `python-installer`, `python -m build --wheel --no-isolation`, `python -m installer --destdir`. https://wiki.archlinux.org/title/Python_package_guidelines — **MEDIUM** (wiki page behind Anubis on fetch; pattern is well-established convention and confirmed by current AUR packages, e.g. python-mistralai/python-garth).
+- **ngtui internals** (HIGH): `ngtui/pyproject.toml` (entry point + hatchling), `ngtui/ngtui/__main__.py`, `ngtui/ngtui/backend.py` (`_resolve_stack_dir` env-override + fail-closed; sudo `/usr/bin/python3` commit argv).
 
 ---
-*Stack research for: Windows self-binding curfew-editor desktop app (Tauri v2 + Rust + DPAPI + HMAC + PowerShell guard interop)*
-*Researched: 2026-06-04*
+*Stack research for: omarchy desktop packaging of a Python Textual TUI thin-client (v2.1)*
+*Researched: 2026-06-24*

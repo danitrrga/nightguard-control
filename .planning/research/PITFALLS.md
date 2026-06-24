@@ -1,192 +1,214 @@
 # Pitfalls Research
 
-**Domain:** Self-binding ("anti-me") Windows desktop tool — Tauri v2 + Rust, DPAPI-stored HMAC, NTP-boxed time enforcement, PowerShell auto-revert guard
-**Researched:** 2026-06-04
-**Confidence:** HIGH for DPAPI interop / line-ending / Tauri specifics (verified against Microsoft docs, Tauri v2 docs, PowerShell issue tracker); MEDIUM for time/DST sequencing (reasoned from existing hook + .NET TZ semantics); HIGH for self-adversary realism (matches the spec's own honest-constraint section).
+**Domain:** Desktop/Waybar integration of a Python Textual TUI-with-inline-sudo on Arch/CachyOS + Hyprland + omarchy (global install, `.desktop` floating-terminal launch, Waybar module, AUR packaging)
+**Researched:** 2026-06-24
+**Confidence:** HIGH (app-specific facts read from `ngtui/ngtui/backend.py`; Hyprland/Waybar/uv behavior verified against current upstream docs)
 
-> Phase names below are *topics* (the roadmap does not exist yet). Map them to whatever phase covers that topic.
+> **Two load-bearing risks frame this entire file:**
+> 1. **The inline-sudo commit needs a real TTY.** `backend.commit()` shells `sudo … nightguard_ctl.py commit` with **stderr intentionally left attached to the TTY** (so the sudo password / fingerprint prompt and any `REFUSED` line reach the user), wrapped by the TUI in `App.suspend()`. Any launch path that does **not** provide a real interactive terminal (`Terminal=false` with no `-e`, a `Terminal=true` entry on a system with no XDG terminal handler, a Waybar `exec` with no terminal, a detached spawn) **silently breaks the core editing flow** — the prompt has nowhere to go and the commit either hangs or fails.
+> 2. **A launcher / Waybar quick-action must never become an escape hatch.** The entire product value is that an impulsive late-night user *cannot quietly loosen the curfew* without the `sudo` friction. Every shortcut we add (Waybar left/right-click, autostart, `.desktop`) must route loosening **through the same `sudo`-gated commit**. A "quick +8" or "quick unlock" button on the bar, or any status-reader accidentally wired with privilege, **defeats the self-binding guarantee**.
+
+---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Rust↔PowerShell DPAPI interop — SecureString framing vs raw DPAPI blob (TOP RISK)
+### Pitfall 1: Launching the TUI without a real TTY (the inline-sudo commit breaks)
 
 **What goes wrong:**
-The two layers can't decrypt each other's `.guardkey`. The most common failure: PowerShell stores the key with `ConvertFrom-SecureString` / reads with `ConvertTo-SecureString -Key`, while Rust uses a raw `CryptProtectData`/`CryptUnprotectData` (windows-dpapi crate) blob. These are **not the same format**. `ConvertFrom-SecureString` produces a SecureString-framed, UTF-16LE-encoded, DPAPI-wrapped hex string — it is *not* a bare DPAPI blob of your 32 raw key bytes. Rust's `CryptUnprotectData` on that data returns the UTF-16LE bytes of a hex string, not your key. Result: HMACs computed by the two layers diverge, and **every config looks tampered** → the guard reverts constantly (or, if Rust is the one that's wrong, the guard silently trusts nothing).
-
-Secondary failure modes, each producing "key not valid for use in specified state" or a verify mismatch:
-- **Scope mismatch:** Rust protects with `CRYPTPROTECT_LOCAL_MACHINE` (or the crate's `Scope::Machine`) while PowerShell unprotects with `DataProtectionScope::CurrentUser` (or vice-versa). DPAPI scope must match exactly.
-- **Entropy mismatch:** one side passes `optionalEntropy`, the other passes `$null`. If entropy is used it must be the **identical byte array** on both sides; a string-vs-bytes or different-encoding entropy silently fails to decrypt.
-- **User-profile context:** if the integrity guard ever runs as a service / SYSTEM / scheduled task instead of as Daniel's interactive user, CurrentUser DPAPI cannot unprotect → guard fails. Claude Code hooks run as the user, so this is fine *for the hook*, but watch any watchdog/scheduled-task path.
+The TUI opens, the user edits, hits commit — and the sudo prompt never appears (or `sudo` errors `no tty present and no askpass program specified`, or the commit hangs forever). The core editing flow is dead even though the TUI itself "ran."
 
 **Why it happens:**
-Everyone reaches for PowerShell's `ConvertTo-SecureString`/`ConvertFrom-SecureString` because they're the "obvious" DPAPI cmdlets, not realizing they add SecureString + UTF-16 framing on top of DPAPI. Rust crates expose the raw Win32 `CryptProtectData` which has none of that framing. The two were never byte-compatible.
+`backend.commit()` deliberately does **not** capture stderr and relies on `App.suspend()` handing a real interactive TTY to `sudo`. A `.desktop` `Exec=` that runs the bare `ngtui` script (no terminal), a `Terminal=true` entry on a system with **no registered XDG terminal handler** (common on omarchy/Hyprland — there is no Debian-style `x-terminal-emulator` alias), a Waybar `on-click` that runs `ngtui` directly, or any `hyprctl dispatch exec ngtui` without a terminal — all start the Python process with stdin/stdout/stderr pointed at a pipe or `/dev/null`, not a PTY. `sudo` then has nowhere to prompt.
 
 **How to avoid:**
-- **Define one canonical blob format and make BOTH sides use the raw DPAPI API.** On the PowerShell side use `[System.Security.Cryptography.ProtectedData]::Protect(<32 raw key bytes>, <entropy or $null>, [DataProtectionScope]::CurrentUser)` and `::Unprotect(...)` — NOT `ConvertTo/From-SecureString`. This calls the same `CryptProtectData`/`CryptUnprotectData` Rust uses.
-- **Pin scope = CurrentUser on both sides, in writing.** The Rust crate must use user scope (`windows-dpapi` `Scope::User`).
-- **Pin entropy explicitly.** Either both `null`/empty, or both a hardcoded constant byte array embedded in both layers. Document it. Don't let one side default to entropy.
-- **Store the file as the raw DPAPI blob bytes** (the output of Protect over the 32 key bytes). Decide endianness/length: it's an opaque blob, just write/read the exact bytes — no base64 unless both sides agree base64 + which alphabet.
-- **The app (Rust) generates and writes `.guardkey`** (spec already says this). Then write a **round-trip interop test as the very first thing built**: app writes key → a pwsh script unprotects it and prints the 32 bytes hex → Rust re-reads and confirms identical. Make this a CI/manual gate before any HMAC code.
+- **Always launch inside a real terminal emulator:** `Exec=<omarchy-terminal> -e ngtui` (e.g. `alacritty -e ngtui`, `ghostty -e ngtui`, or whatever omarchy ships as default). Never `Exec=ngtui`.
+- Set `Terminal=false` in the `.desktop` file **because you supply your own terminal** via `-e`. (`Terminal=true` delegates to an XDG terminal handler that may not exist on Hyprland — fragile.)
+- Waybar `on-click` must spawn the same terminal wrapper, not the bare command: `on-click = "<terminal> -e ngtui"`.
+- Add a **startup self-check**: if `sys.stdin.isatty()` is false, print a clear error ("ngtui must be run in an interactive terminal; sudo commit requires a TTY") and exit non-zero, rather than failing mysteriously at commit time.
+- Confirm the sudoers `Cmnd_Alias` matches the exact argv (`/usr/bin/python3` + absolute `CTL_SCRIPT` + `commit`), and that `sudo` is not configured to suppress the prompt.
 
 **Warning signs:**
-- "Tamper detected" on a config the app just wrote, immediately, with no hand-edit.
-- PowerShell error "Key not valid for use in specified state" or "The parameter is incorrect" (HRESULT 0x80070057) on Unprotect.
-- The decrypted "key" from one side is 64 bytes (UTF-16 of a 32-char hex string) instead of 32 raw bytes — a dead giveaway of SecureString/hex framing.
+`sudo: no tty present and no askpass program specified` in any log; commit "does nothing"; the app hangs on commit; the password prompt flashes and the terminal closes.
 
-**Phase to address:**
-Earliest crypto/interop phase, *before* HMAC and before the guard. Treat the round-trip test as the phase's exit gate. This is the project's single highest-risk integration — if it's wrong, the whole revert mechanism is either inert or self-destructive.
+**Phase to address:** **Phase: `.desktop` floating-terminal launcher** (land a TTY self-check early so every later launch path inherits it).
 
 ---
 
-### Pitfall 2: HMAC canonicalization drift — CRLF/LF, BOM, trailing newline, key/encoding
+### Pitfall 2: A Waybar/launcher quick-action becomes a curfew escape hatch (self-binding broken)
 
 **What goes wrong:**
-Rust writes `config.yaml` with `\n` line endings, no BOM. The user (or an editor, or Git's `autocrlf`) re-saves it as `\r\n` with a UTF-8 BOM. The PowerShell guard reads bytes and recomputes HMAC. The bytes differ → HMAC differs → **false-positive "tamper"** → guard reverts a file the user only *opened*. The inverse is worse: if the guard normalizes line endings before hashing but the signer does **not** (or normalizes differently), a real malicious edit that only changes whitespace-adjacent content can produce a **false negative** (tamper missed). This is a documented, real cross-language signing footgun (PowerShell issue #25246: LF-vs-CRLF breaks signatures; Microsoft KB: signed-script hash mismatch from line endings).
-
-Additional canonicalization landmines:
-- **What you sign:** signing the *parsed/serialized* YAML vs the *raw file bytes*. If Rust signs raw bytes but PowerShell re-serializes through its minimal YAML parser and hashes that, they'll never match. The minimal parser in `nightguard_curfew_guard.ps1` is lossy (drops comments, reorders, trims quotes) — it must NOT be the thing that gets hashed.
-- **Trailing newline:** Rust's writer adding/omitting a final `\n` flips the hash.
-- **Key encoding into HMAC:** if the "key" used for HMAC is the 32 raw bytes on one side but the hex *string* of those bytes on the other, HMAC diverges even with identical message bytes.
-- **Hex/base64 of the digest:** uppercase vs lowercase hex, or hex vs base64, when comparing `config_hmac` strings.
+To make the bar "convenient," a contributor adds a Waybar `on-click-right` that runs `nightguard_ctl … +8` or a quick-loosen directly, or wires the status reader with `sudo`/`pkexec` so it "just works." Now the impulsive user can loosen the curfew (or burn the daily +8) from the bar **without the sudo friction** — the exact thing the product exists to prevent.
 
 **Why it happens:**
-Rust and Windows tooling have opposite line-ending defaults; editors and Git silently rewrite files; "sign the config" is ambiguous between bytes and structure; teams forget the HMAC key is bytes, not a string.
+Desktop-integration convenience pressure collides with the security model. The status reader genuinely needs to read `guard.json` and the config, which *feels* like it might need privilege — and the easy fix (give it `sudo`) is catastrophic.
 
 **How to avoid:**
-- **Define one canonical byte form, documented, and sign exactly those bytes on both sides.** Recommended: HMAC over the **raw file bytes** read with no transformation, after the writer guarantees a fixed normalization: UTF-8 **no BOM**, **LF only**, exactly one trailing `\n` (or none — pick one and write it down).
-- **Rust is the sole writer (spec already mandates this).** Have Rust write the canonical bytes deterministically. The guard must hash the file **as-is, raw bytes, no Get-Content line-splitting** — use `[System.IO.File]::ReadAllBytes($path)`, never `Get-Content` (which strips/normalizes newlines and can apply encoding heuristics).
-- **Never `git add` the live `config.yaml`/`config.sanctioned.yaml`** without `.gitattributes` forcing `-text` (binary, no autocrlf). Or keep them out of Git entirely (they live in `LifeOS/nightguard/`, not the published repo).
-- **HMAC key = the 32 raw bytes**, both sides. Digest comparison = constant-time, lowercase-hex (or raw byte compare), agreed once.
-- **Round-trip test alongside Pitfall 1's:** Rust signs → pwsh verifies → pass; then mutate one byte → pwsh detects → revert. Add a CRLF-injection test: take a valid file, convert LF→CRLF, confirm it's correctly flagged as tampered (proving the guard reads raw bytes and didn't accidentally normalize).
+- **Hard invariant: only `backend.commit()` (the `sudo … nightguard_ctl.py commit` path) may change state.** Waybar and the launcher may only *open the TUI* or *display read-only status*. No bar action mutates the curfew.
+- The Waybar status reader must be **key-less and unprivileged** — it reads `guard.json` / sanctioned config via the same code path `backend.read_state()` / `sanctioned_config()` use (no `ngcommon.read_key()`, never `sudo`). The watchdog remains authoritative; the bar is advisory display only.
+- `on-click` opens the TUI; `on-click-right` shows a **read-only** status/actions popover (a menu that *opens the TUI* for any action, not one that performs the action). No "+8" or "unlock" button on the bar.
+- Treat this as a **review gate**: any PR adding a privileged Waybar exec, an askpass helper, or a state-changing click handler is rejected by design.
 
 **Warning signs:**
-- Tamper fires after merely opening the file in an editor that auto-converts EOL or adds BOM.
-- Tamper fires only on machines/checkouts where Git `core.autocrlf=true`.
-- A whitespace-only or EOL-only change is *not* detected (false negative).
+A Waybar config line containing `sudo`, `pkexec`, `nightguard_ctl`, `commit`, or `+8`; a status script that reads or needs the `.guardkey`; the ability to loosen the curfew without a password prompt.
 
-**Phase to address:**
-Same crypto phase as Pitfall 1 (sign/verify round-trip). The CRLF + BOM + trailing-newline tests are mandatory exit criteria.
+**Phase to address:** **Phase: Waybar module** (and called out as an explicit non-goal/anti-feature across the whole milestone).
 
 ---
 
-### Pitfall 3: Auto-revert footguns — revert loops, racing the app's own write, fail-open lockout
+### Pitfall 3: Hyprland float window-rule doesn't match (TUI opens tiled, not floating)
 
 **What goes wrong:**
-This is where the tool can hurt the user or hurt itself:
-1. **Reverting a legitimate app write (sign-vs-write race).** The app writes `config.yaml` then signs `guard.json`. If the guard fires *between* those two operations (or the writes aren't atomic), it sees a config whose HMAC doesn't match the not-yet-updated `guard.json` → reverts the app's own legitimate change, destroying the edit Daniel just made through the sanctioned path. Inverse race: guard writes `config.sanctioned.yaml` over `config.yaml` while the app is mid-read.
-2. **Revert loop / thrash.** If revert copies `config.sanctioned.yaml` → `config.yaml` but doesn't (can't) update `config_hmac` to match, the *next* hook fire sees mismatch again and reverts again — every prompt, forever, logging a tamper each time. Or two processes (UserPromptSubmit + SessionStart + a watchdog) fire concurrently and stomp each other.
-3. **Both-tampered → hardcoded strict default destroys real config.** Correct fail-closed behavior, but if it triggers spuriously (e.g., because of a Pitfall 1/2 false positive) it silently overwrites Daniel's real curfew with a hardcoded one — data loss disguised as security.
-4. **Brick / lockout.** Fail-closed sets `weekly_spent=3` and grace-used on any `state_hmac` mismatch. If a benign bug makes `guard.json` fail verification, Daniel is locked out of all loosening AND grace with no in-app recovery, and the app itself can't fix it without re-signing — but the app needs a valid key to re-sign. Combined with "curfew enabled by default," he could be hard-blocked from Claude Code with no escape that isn't "edit a file the guard immediately reverts."
+The `.desktop` entry opens the terminal, but it tiles into the layout instead of floating as a centered curfew dialog. Or the rule works for one terminal and silently stops after a terminal upgrade.
 
 **Why it happens:**
-Two writers (app + guard) and two-to-three trigger points (SessionStart, UserPromptSubmit, watchdog) over three coupled files (`config.yaml`, `config.sanctioned.yaml`, `guard.json`) with no transaction. Naive revert treats "HMAC mismatch" as a single atomic truth when it's actually a multi-file consistency problem.
+Hyprland evaluates `float`/`size`/`center` **once at window creation**, matching against **`initialClass` / `initialTitle`** — not the live `class`/`title`. Terminals frequently **change their title** after launch (to the running command/cwd), so a rule keyed on `title:` matches the post-change title and fails. Matching on the terminal's generic class (e.g. `Alacritty`) floats *every* terminal, not just ngtui.
 
 **How to avoid:**
-- **Atomic, ordered writes from the app, single transaction semantics:** write to temp files, `fsync`/flush, then rename into place. **Order: write new `config.sanctioned.yaml` first, then sign `guard.json` (with the new config_hmac) committed atomically, then last replace `config.yaml`.** Then at no instant does a fired guard see a `config.yaml` whose hash isn't already represented in a committed `guard.json` + sanctioned snapshot. (Equivalently: guard's revert target and the signature must be updated before the live file the guard reads.)
-- **Single-writer lock.** Use a lockfile / named mutex so the guard and the app never write concurrently; the guard takes a shared read lock, the app an exclusive write lock. The guard must **never** revert while the app holds the write lock — if it can't acquire the read lock within a short timeout, it should **no-op and let the prompt through** rather than revert (favor not destroying work).
-- **Revert must rewrite consistency, not just copy.** Reverting means: copy sanctioned → live AND ensure `config_hmac` already equals the sanctioned file's hash (it should, by construction). If after revert the hashes still mismatch, that's a *guard bug* — log loudly and **stop reverting** (circuit-breaker after N reverts in M minutes) rather than loop forever.
-- **Trust the app's own writes by construction, not by detection.** Don't try to "recognize" app writes; instead make the app the only thing that updates the signature, so a correctly-signed config is *definitionally* trusted. There is no heuristic — the HMAC IS the trust token.
-- **Provide a recovery path that doesn't require defeating the guard.** A first-run / repair mode in the app that regenerates `guard.json` from the current `config.yaml` (re-sign), gated behind the DPAPI key (which a hand-editor lacks). Document a manual "delete `.guardkey` + sanctioned, relaunch app to re-init" escape so a bug never permanently bricks Daniel.
-- **Back up before overwrite.** Before the both-tampered strict-default write, copy the existing files to a timestamped `.bak` so "data loss" is recoverable.
+- Launch the terminal with an **app-id / class override** unique to ngtui, e.g. `alacritty --class ngtui-float -e ngtui` or `ghostty --class=ngtui-float -e ngtui` (kitty: `--class`). Hyprland sees this as `initialClass`.
+- Write the rule against the stable initial value:
+  `windowrulev2 = float, class:^(ngtui-float)$`
+  `windowrulev2 = center, class:^(ngtui-float)$`
+  `windowrulev2 = size 90 80%, class:^(ngtui-float)$` (or fixed px).
+- **Do not match on `title:`** — terminal titles drift; the rule will miss.
+- Verify with `hyprctl clients` while the window is open to read its real `class`/`initialClass`.
+- Be aware of Hyprland version regressions (open issues exist where `float`/`size` rules stopped applying to some apps after updates) — keep the rule simple and re-test after Hyprland upgrades.
 
 **Warning signs:**
-- `tamper.log` shows a revert immediately after a successful in-app commit.
-- Repeated identical tamper entries every prompt (loop).
-- Daniel reports "I committed in the app but my change is gone."
-- Locked out with `weekly_spent=3` he never spent.
+`hyprctl clients` shows a generic class (`Alacritty`) instead of `ngtui-float`; the window tiles; every terminal you open floats; the rule worked then broke after a terminal/Hyprland update.
 
-**Phase to address:**
-The guard / auto-revert phase — but the **atomic-write + ordering + single-writer lock** belongs to the Rust commit phase and must land *before* the guard is allowed to revert. The circuit-breaker and repair-mode are guard-phase exit criteria. Integration test the sign-vs-write race explicitly (fire guard mid-commit).
+**Phase to address:** **Phase: `.desktop` floating-terminal launcher.**
 
 ---
 
-### Pitfall 4: Time/DST/timezone and the +8 grace window
+### Pitfall 4: Global install can't resolve the external LifeOS trust stack (import fail-closed)
 
 **What goes wrong:**
-- **DST transition + Monday-00:00 reset.** Europe/Amsterdam shifts CET↔CEST in late March / late October. If the week-anchor and reset are computed in local wall-clock naively, the DST-shift week is 23h or 25h long; a reset computed as "last anchor + 7*24h" drifts off Monday 00:00, and the spring-forward Sunday→Monday boundary can skip or double-count an hour. Token refill can land at the wrong instant or be skipped.
-- **Overnight curfew across DST.** The existing hook computes `inCurfew` from local minutes-of-day; on the spring-forward night, 02:00–03:00 doesn't exist, on fall-back it happens twice — an overnight 21:30→06:00 window can be 1h short/long. Minor, but the grace math layered on top inherits it.
-- **NTP unreachable interaction.** Existing hook already blocks when offline (`block_when_offline`). But the +8 grace is "NTP-true-time boxed." If NTP is unreachable when Daniel hits +8, the app can't get true time to set `window_start/window_end`; if it falls back to local clock, a clock-tampered local time could pre-expire or over-extend the window. And the guard re-checks with its *own* NTP — if the guard is offline it blocks (correct) but then the grace Daniel "spent" is wasted with no access.
-- **Clock-tamper detection vs grace.** The existing `Test-ClockTampered` blocks if local clock drifts >max_offset from NTP. During an active grace window the guard is told to `exit 0`. If the grace check runs *before* the tamper check, a user could set the local clock forward, trigger grace, and the tamper guard never fires → grace becomes a clock-tamper laundering path. If tamper runs first, a tiny benign drift kills a legitimately-granted grace.
-- **Stale-grace replay.** `guard.json.grace = {date, window_start, window_end}`. If the guard only checks "is now inside [start,end]" using a tamperable clock, the user can roll the local clock back into a past window and replay it. Or a `date` field checked against local date lets a clock change re-arm "once per day."
+`uv tool install` (or `pipx`) succeeds, `ngtui` is on `PATH`, but on launch it raises the `_resolve_stack_dir()` `RuntimeError` ("NIGHTGUARD_STACK_DIR … does not contain nightguard_ctl.py") or `ImportError: ngcommon`. The app is installed but won't start — for the author if paths moved, and for *any other user* who lacks the LifeOS stack entirely.
 
 **Why it happens:**
-Local wall-clock math is intuitive but wrong across DST; "true time" is only true when NTP is reachable; ordering of tamper-check vs grace-check is an easy oversight; windows stored as absolute timestamps are replayable if validated against an attacker-controlled clock.
+`backend.py` imports the trust stack via `sys.path.insert(STACK_DIR)`, where `STACK_DIR` defaults to the **hardcoded author absolute path** `/home/danitrrga/dev/Projects/LifeOS/scripts/nightguard` (env-overridable via `NIGHTGUARD_STACK_DIR`). `uv tool` / `pipx` install into an **isolated venv** that bundles only `textual` — it deliberately does **not** see system or LifeOS packages. The trust stack is *not* a pip dependency; it's resolved at runtime by path. So a global install carries the *client* but not the *stack*, and a fresh user has neither the stack nor the author's directory layout. (This is correct-by-design fail-closed behavior per CR-02 — but it surfaces as a startup crash if not handled.)
 
 **How to avoid:**
-- **Store and compute time anchors in UTC; convert to Europe/Amsterdam only for display and for the wall-clock curfew boundary.** Compute "next Monday 00:00 Amsterdam" using a real TZ library (Rust `chrono-tz` / `time` with tzdb; PowerShell `[TimeZoneInfo]::FindSystemTimeZoneById('W. Europe Standard Time')`) that knows DST — never `+7*24h`. The week_anchor is a date (Monday) per spec; resolve reset instant via the TZ database each time, don't precompute a UTC instant that DST invalidates.
-- **Validate grace against NTP true-time on BOTH set and check.** Set `window_start/window_end` from NTP; the guard validates `NTP_now ∈ [start,end]`. If NTP is unreachable at grant time, **refuse to grant grace** (don't fall back to local clock) and tell the user. If unreachable at check time, fall to the existing offline-block behavior.
-- **Order: tamper-check BEFORE grace-check, but exempt grace from the tamper block correctly.** Run NTP, compute offset. If clock tampered → block regardless of grace (tampering must not be launderable through grace). Then, only with a trusted clock, honor an active grace window. This means grace requires a *non-tampered* clock to be usable — which is the intended security property.
-- **Make grace non-replayable: validate against NTP true-time, store the window in UTC, and record consumption by an immutable counter, not a re-derivable date.** "Once per true-day" should be enforced by `grace.date == today(NTP)` where today is the NTP-true Amsterdam date, and the window bounds are UTC instants compared to NTP now — local clock rollback can't re-enter a past UTC window because NTP now keeps advancing. Since `guard.json` is HMAC-signed, the user can't hand-edit the window; the only attack is clock manipulation, which the tamper check already closes.
-- **Reuse the existing `ntp_utils.ps1` / `Get-TrueTime` / `Test-ClockTampered`** (spec says extend, don't reinvent) — but confirm the app's Rust SNTP and the PowerShell NTP use a consistent definition of "offset" and "Amsterdam now."
+- **Make the env contract explicit and first-class.** The `.desktop` `Exec` and the Waybar wrapper must set `NIGHTGUARD_STACK_DIR` / `NIGHTGUARD_DIR` (or rely on a documented system default), not assume the dev-shell env. The current run command (`env NIGHTGUARD_STACK_DIR=… NIGHTGUARD_DIR=… python -m ngtui`) must be reproduced by the launcher — `uv tool`/`.desktop`/Waybar do **not** inherit your interactive shell's exports.
+- **Fail loud and actionable at startup**, not at commit: the existing `RuntimeError` is good — surface it in the terminal with the install-doc hint; don't let it crash a detached process silently.
+- For the **published product**: document the trust-stack dependency prominently; the AUR `PKGBUILD` must either guide installing the stack or detect its absence and print a setup message. Do **not** vendor the stack into the package (PORT-02: the TUI must import the *live* signer, never a copy that can drift).
+- Consider a small `ngtui doctor` subcommand that checks: TTY present, `NIGHTGUARD_STACK_DIR` resolves + contains `nightguard_ctl.py`, sudoers rule present, `/usr/bin/python3` exists.
 
 **Warning signs:**
-- Tokens refill at 01:00 or 23:00 instead of 00:00 on a DST week.
-- Grace appears to last 7 or 9 minutes around a DST boundary.
-- Daniel can roll the clock back and re-trigger +8.
-- Grace silently consumed but no access granted (NTP was down).
+`RuntimeError: NIGHTGUARD_STACK_DIR resolves to … does not contain nightguard_ctl.py`; `ModuleNotFoundError: ngcommon`; "works in my dev shell, fails from the launcher"; works for author, crashes for any other user.
 
-**Phase to address:**
-Time/NTP/scheduling phase (week-anchor reset, grace window). The tamper-vs-grace ordering and NTP-required-to-grant rule are exit criteria. Add tests around the two annual DST instants and a clock-rollback replay test.
+**Phase to address:** **Phase: Global install (`uv tool`)** — establish the env contract and `doctor` check here; reinforce in **Phase: AUR packaging**.
 
 ---
 
-### Pitfall 5: Self-adversary realism — honest ceiling vs security theater
+### Pitfall 5: `python -m ngtui` (dev) and the installed `ngtui` script diverge
 
 **What goes wrong:**
-Effort spent on defenses that an admin trivially bypasses (so they only frustrate, not protect), while the actually-effective friction is under-built. The spec is admirably honest ("nothing here is absolutely unbreakable; the user is admin"), but it's easy to drift into theater: obfuscating the key location, encrypting strings, adding tamper-traps that a determined late-night self just deletes — none of which raise the *impulse-threshold* friction, which is the only thing that matters.
-
-The honest ceiling, stated plainly:
-- An admin can **delete or rename the hook scripts** (or the `verify_hook_integrity.ps1` baseline) and the whole guard stops. The spec's mitigation (register the integrity guard in the SHA256 baseline so removal "trips a visible alert") only works if *something Daniel won't disable* checks that baseline — and Daniel can disable that too. It raises friction (he'd have to know to do it), it does not prevent.
-- An admin running as Daniel can **script DPAPI as this user and extract/forge the HMAC key** — DPAPI CurrentUser protects against *other* users and offline disk theft, NOT against the user themselves. So "a hand-editor cannot forge a valid HMAC" is true only for a *naive* hand-editor; it is false for Daniel-with-a-script.
-- An admin can **uninstall the app, kill the process, disable autostart, or edit `guard.json` after extracting the key.**
+Everything works via `python -m ngtui` from the dev venv, but the installed `ngtui` console-script behaves differently — different Python, different `sys.path`, different env, the trust-stack import fails or a different version loads.
 
 **Why it happens:**
-Self-binding tools tempt you to imagine the future-impulse-self as dumber/weaker than present-self, and to build a "vault." But the threat model is explicitly "impulse past a friction threshold," not "motivated attacker."
+`python -m ngtui` runs `ngtui/__main__:main` with the **dev venv's interpreter and the dev shell's exported env** (which includes the `NIGHTGUARD_*` vars from the documented run command). The installed `ngtui = ngtui.__main__:main` console script runs under the **uv-tool isolated interpreter** with a **clean env** (no inherited exports) and a different `sys.path`. The hardcoded-default `STACK_DIR` happens to resolve for the author either way (same absolute path), masking the divergence — until env-dependent behavior (`NIGHTGUARD_DIR`, TZ, terminal) differs.
 
-**How to avoid (raise real friction, skip theater):**
-- **Build exactly what the spec scopes and no DRM-style obfuscation on top.** The HMAC + DPAPI + auto-revert chain is the right amount: it defeats casual hand-editing (the actual observed failure mode: Daniel editing YAML at night), which is the documented problem. Stop there.
-- **Lean on friction that exploits the impulse window's impatience:** the auto-revert "your edit silently vanished" is highly effective because it denies the *reward* of the edit without a fight. Keep reverts fast and silent (per spec) — that's friction that works.
-- **The +8 grace IS the pressure valve that prevents bypass-by-frustration.** A self-binding tool with no escape hatch gets ripped out entirely. The once-daily 8-min grace is the anti-theater move: it gives impulse-self a legitimate, bounded outlet, lowering the incentive to learn how to delete hooks.
-- **Document the ceiling in the product (and to Daniel), don't hide it.** Honesty prevents the false sense of security that leads to over-trusting the tool. The README should say "this raises friction; an admin who scripts DPAPI can bypass it."
-- **Don't add:** code obfuscation, hidden key locations, fake decoy files, anti-debugging, process-protection hacks, registry-hiding. All defeated by the same admin, all pure frustration.
-- **Effective, cheap friction worth considering (optional, YAGNI-gate):** make the recovery/disable path require a step that present-rested-self sets up but impulse-self finds annoying (e.g., disabling requires the app + a deliberate confirmation), and make tamper attempts *visible* (log + a startup notice) so the behavior is at least surfaced to rested-self.
+**How to avoid:**
+- Treat the **installed `ngtui` script as the source of truth**; test *that*, not `python -m ngtui`, in every integration phase.
+- Pin the env in the launcher (Pitfall 4), so the installed script gets the same `NIGHTGUARD_*` the dev shell provided.
+- Keep `__main__:main` the single entry for both modes so logic can't fork.
+- In the manual test matrix, exercise both `python -m ngtui` (dev) **and** the installed `ngtui` (prod) and assert identical startup behavior.
 
 **Warning signs:**
-- Time being spent on "make the key harder to find" instead of "make revert reliable."
-- Claims in code comments / UI that the system is "secure" or "can't be bypassed."
-- Feature requests to "really lock it down" that would require admin/ACL fights the spec explicitly ruled out.
+"Works with `python -m` but not the installed command"; the installed script picks a different config/stack path; `which ngtui` points at `~/.local/bin` but behavior differs from the venv.
 
-**Phase to address:**
-Threat-model / README phase (write the honest ceiling down early so it constrains scope) and the guard phase (keep it to HMAC+revert, no obfuscation). This is a *scope discipline* pitfall as much as a technical one.
+**Phase to address:** **Phase: Global install (`uv tool`).**
 
 ---
 
-### Pitfall 6: Tauri v2 Windows specifics — capabilities, single-instance, autostart, packaging
+### Pitfall 6: Waybar custom module blocks the bar / wrong JSON / stale status
 
 **What goes wrong:**
-- **Deny-by-default capabilities.** Tauri v2 (unlike v1) exposes *no* command/plugin permission unless granted in `src-tauri/capabilities/*.json`. Forgetting to grant the autostart/single-instance/fs permissions → commands silently fail or the plugin no-ops, often only at runtime in a release build, not in `tauri dev`.
-- **Single-instance ordering.** The single-instance plugin **must be registered first** in the Tauri builder (before other plugins) or the second-launch handoff misbehaves. (The snap/flatpak DBus caveat is Linux-only — irrelevant here since Windows-only, but the registration-order rule still applies on Windows.) Without single-instance, launching the app twice gives two writers racing on `guard.json` — directly worsening Pitfall 3.
-- **Autostart needs the plugin + explicit permission set** (`autostart:allow-enable`, `allow-disable`, `allow-is-enabled`) AND it writes a `Run` registry key / startup entry that an admin (Daniel) can disable — consistent with the honest ceiling, but don't assume autostart guarantees the app is running. (The *guard* is what's always-on via hooks; the app is open-on-demand per spec, so autostart may even be unnecessary — confirm it's actually needed before adding the plugin/permission surface.)
-- **Packaging gotchas:** code-signing (unsigned Windows installers trip SmartScreen — friction for distribution, fine for personal use); WebView2 runtime dependency (present on modern Win11, but the installer should use the evergreen bootstrapper); bundle identifier in `tauri.conf.json` must be set (single-instance derives its IPC name from it, dots/dashes→underscores); and `tauri dev` vs bundled-release path resolution differs — file paths to `LifeOS/nightguard/` must not be relative to the dev cwd.
-- **Hook path resolution (flagged in spec's open question).** Whether the guard resolves config via `$PSScriptRoot\..\nightguard\config.yaml` or an absolute path depends on how Claude Code junctions hooks. If junctioned, `$PSScriptRoot` may resolve to `~/.claude/hooks` (the junction target) and `..\nightguard` won't be the LifeOS canonical → guard reads/reverts the wrong file. This is the same drift bug the project is trying to fix.
+The whole Waybar freezes periodically; the module shows nothing or raw text where styled output was expected; `on-click-right` doesn't fire; or the status is stale (shows "locked" after grace activated).
 
 **Why it happens:**
-v2's security model is opt-in and bites in release builds; plugin registration order is under-documented; Windows path/signing behavior differs dev vs prod; junctioned hook paths make `$PSScriptRoot` ambiguous.
+- **Blocking:** an `interval` `exec` script that itself spawns `sudo`, does network I/O (NTP), or runs long **blocks the bar** for its duration — Waybar runs custom `exec` synchronously per tick.
+- **Wrong return-type/JSON:** with `return-type = "json"` the script must emit a **single-line** JSON object (`{"text":…,"tooltip":…,"class":…}`); a multi-line, trailing-comma, or non-JSON payload renders blank or as literal text. Without `return-type`, Waybar expects i3blocks newline-separated `text\ntooltip\nclass`.
+- **Click not firing:** `on-click-right` typos, or reliance on `exec-on-event` semantics (Waybar warns there's "no guarantee exec runs after the on-* command finishes").
+- **Stale:** too-long `interval` with no `signal` to force-refresh after a commit; or unbuffered output not flushed for a self-looping script.
 
 **How to avoid:**
-- **Define capabilities explicitly and test in a `--release` bundle, not just `tauri dev`.** Grant only the permissions actually used (fs scope limited to `LifeOS/nightguard/`, autostart/single-instance only if used).
-- **Register single-instance plugin first.** Set a stable bundle identifier early.
-- **Resolve config path absolutely / via a configured path** (spec already wants a "configurable config path"). For the PowerShell guard, resolve the canonical config by an **absolute LifeOS path or an env var**, not `$PSScriptRoot\..` — and verify the actual junction behavior first (the spec's listed open question). Add a startup self-check that logs the resolved config path so drift is visible.
-- **Reconsider autostart** — if the always-on enforcement is the hooks (it is), the app may not need autostart at all; dropping it removes a permission + a registry footprint.
-- For personal use, skip code-signing initially; note SmartScreen friction if ever published.
+- Make the status `exec` **fast, read-only, key-less, non-blocking**: read `guard.json` + config locally (no `sudo`, no synchronous NTP — reuse the cached `live_verdict` value the TUI already computes). Keep `interval` modest (e.g. 10–30s), not 1s.
+- Emit **strict single-line JSON** with `return-type = "json"`; validate with `… | jq .`. Set a `class` so CSS can theme locked/grace/clear states with the omarchy palette.
+- Use a **`signal`** so the TUI can push an immediate refresh after a commit (`pkill -RTMIN+N waybar`) instead of waiting for the poll — kills staleness right after a state change.
+- Wire `on-click` / `on-click-right` to the **terminal wrapper** (Pitfall 1) and test both buttons explicitly.
+- If the reader ever needs more than a tick, make it a **self-looping** script (omit `interval`, loop + sleep, flush stdout) so it can't stall the bar.
 
 **Warning signs:**
-- Works in `tauri dev`, plugin/command fails or path is wrong in the installed build.
-- Two app windows / two writers after a double-click.
-- Guard reverts using a config from `~/.claude/nightguard` instead of `LifeOS/nightguard`.
+Bar visibly stutters on the module's interval; module blank or shows raw `{"text"...`; `jq` rejects the output; right-click does nothing; status lags real state by the full interval; any `sudo`/NTP call inside the exec.
 
-**Phase to address:**
-App scaffolding / Tauri-setup phase (capabilities, single-instance order, bundle id, path resolution). The hook-path resolution must be verified in the guard phase before wiring (spec's open question).
+**Phase to address:** **Phase: Waybar module.**
+
+---
+
+### Pitfall 7: Brand icon doesn't show (wrong hicolor path / stale cache)
+
+**What goes wrong:**
+The `.desktop` entry appears in wofi/walker and the Waybar module renders, but with a generic/missing icon instead of the own-brand nightguard icon.
+
+**Why it happens:**
+- Icon installed to the wrong place or wrong name — must be `…/icons/hicolor/<size>/apps/<icon-name>.png` (or `…/scalable/apps/<name>.svg`), and the `.desktop` `Icon=` must reference the **bare name** (`Icon=ngtui`), not a path/extension.
+- **GTK icon cache not refreshed** after install: `gtk-update-icon-cache` not run on the hicolor dir, or the `.desktop` not picked up because `update-desktop-database` wasn't run.
+- For Waybar, the bar uses a **font glyph / CSS** or a separate image path — a hicolor PNG won't automatically appear in the bar; that's a different mechanism (Nerd Font glyph or `image` module).
+
+**How to avoid:**
+- Install to the spec path with a matching name; reference `Icon=ngtui` (bare).
+- Run `gtk-update-icon-cache -f -t /usr/share/icons/hicolor` and `update-desktop-database` after install (the AUR `PKGBUILD` should do this in `post_install`/`post_upgrade`).
+- For Waybar, decide the icon mechanism explicitly: a Nerd Font glyph in `format`/`text` (themeable via the palette) is simplest; an image needs the right module + path. Don't assume the hicolor PNG carries over.
+- Provide both a scalable SVG and at least one sized PNG (e.g. 48/256) for launcher fidelity.
+
+**Warning signs:**
+Generic cog/placeholder icon in wofi/walker; icon shows after a relogin but not immediately (cache); icon works for the author's manual copy but not from the package.
+
+**Phase to address:** **Phase: Custom brand icon** (cache-refresh hooks reinforced in **Phase: AUR packaging**).
+
+---
+
+### Pitfall 8: AUR packaging mis-models the python runtime and the external stack
+
+**What goes wrong:**
+The `PKGBUILD` either bundles a private Python/venv that drifts from system Python (so the `sudo` argv `/usr/bin/python3` mismatches the env the TUI runs under), vendors the LifeOS stack (violating PORT-02, can silently drift from the live signer), installs files with wrong ownership/permissions, or assumes every installer has the author's LifeOS layout.
+
+**Why it happens:**
+`uv tool`/`pipx` apps don't map cleanly to Arch packaging conventions (system site-packages vs isolated venv); the trust stack is a runtime *path* dependency, not a pip dep; and the security model has strict ownership rules (root-owned `.guardkey`/sanctioned config 0600) that a naive package install can violate.
+
+**How to avoid:**
+- **Never vendor the trust stack** in the package — it must import the *live* signer (PORT-02). Document the stack as an external prerequisite and detect its absence at startup (Pitfall 4).
+- Be explicit about Python: the `sudo` commit hardcodes `/usr/bin/python3` (the sudoers `Cmnd_Alias` shape, T-10-03). The *signer* must run under system `/usr/bin/python3`; the *TUI* may run under an isolated env, but the two must not be conflated. Package the TUI so it doesn't shadow or require a different python for the commit argv.
+- **Package only the client.** Don't ship or touch the root-owned key/config from the package; those are provisioned by the trust-stack setup, root-owned, outside the package's file manifest. The package installs user-space files (script, `.desktop`, icon, Waybar example) — never anything 0600 root.
+- Run `gtk-update-icon-cache` / `update-desktop-database` in install hooks (Pitfall 7).
+- Document the sudoers rule install as a manual, reviewed step — **do not** auto-write sudoers from a `PKGBUILD` (security + it's the anti-impulse friction).
+
+**Warning signs:**
+`PKGBUILD` copies `nightguard_ctl.py`/`ngcommon.py` into the package; the package writes anything under root ownership or 0600; the commit argv's `/usr/bin/python3` differs from the interpreter the stack expects; install assumes `/home/danitrrga/...`.
+
+**Phase to address:** **Phase: AUR packaging.**
+
+---
+
+### Pitfall 9: Autostart re-introduces the no-TTY problem (and shouldn't auto-open the editor)
+
+**What goes wrong:**
+A login autostart entry launches `ngtui` headless/detached (no terminal) — reviving Pitfall 1 — or auto-opens the full sanctioned editor every login (annoying, and the editor is a privileged-commit surface that shouldn't pop unprompted).
+
+**Why it happens:**
+Autostart `.desktop` / Hyprland `exec-once` run **without a terminal and without the interactive shell env**. Copying the launcher `Exec` naively drops the terminal wrapper or the `NIGHTGUARD_*` env.
+
+**How to avoid:**
+- If autostart is offered, autostart only the **read-only Waybar status surface**, not the editor TUI. The editor opens on demand via the launcher/click (with its terminal + env).
+- If an autostarted TUI is genuinely wanted, it must still use the full `<terminal> -e ngtui` + env wrapper (Pitfall 1 + 4).
+- Prefer Hyprland `exec-once = waybar` (status only) over auto-opening the editor.
+
+**Warning signs:**
+Login spawns a sudo prompt with nowhere to type; the editor pops every login; autostart entry lacks the terminal wrapper or `NIGHTGUARD_*` env.
+
+**Phase to address:** **Phase: Autostart / login pin.**
 
 ---
 
@@ -194,100 +216,91 @@ App scaffolding / Tauri-setup phase (capabilities, single-instance order, bundle
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Use `ConvertTo/From-SecureString` for the key (the "obvious" cmdlets) | Less code, familiar | Incompatible blob format with Rust DPAPI → silent verify failures (Pitfall 1) | **Never** — use raw `[ProtectedData]` |
-| Hash via PowerShell's parsed/re-serialized YAML | Reuse existing minimal parser | Lossy parser → never matches Rust's bytes (Pitfall 2) | **Never** — hash raw file bytes |
-| `Get-Content` to read config for hashing | Idiomatic PowerShell | Normalizes line endings / encoding → false tamper | **Never** — use `ReadAllBytes` |
-| Skip the single-writer lock (rely on hooks being "fast") | Less plumbing | Sign-vs-write race destroys legit edits (Pitfall 3) | Never for the live system; OK in an isolated unit test |
-| Local wall-clock arithmetic for week reset | Simpler than tzdb | DST drift, wrong reset instant (Pitfall 4) | Never — use a TZ library |
-| Add obfuscation/decoys "for safety" | Feels more secure | Pure frustration, zero protection vs admin-self (Pitfall 5) | Never |
-| Relative `$PSScriptRoot\..` config path | Works on dev machine | Breaks under junctioned hooks → wrong file reverted (Pitfall 6) | Never — resolve absolutely / configured |
+| Hardcode author paths in the `.desktop`/Waybar `Exec` (skip env contract) | Launcher "just works" for the author today | Breaks for any other user; masks `python -m` vs installed divergence (Pitfall 5) | Author-only personal instance, *if* the published path is env-driven and documented |
+| Match the Hyprland float rule on the generic terminal class | One-line rule, no `--class` flag | Floats every terminal; brittle across terminal/Hyprland updates | Never — use a unique `--class ngtui-float` |
+| Waybar status reader shells `sudo`/NTP to be "accurate" | Live, authoritative-looking status | Blocks the bar; risks privilege creep → escape hatch (Pitfall 2) | Never — key-less, cached, non-blocking only |
+| Vendor the LifeOS stack into the package to avoid the dependency | Self-contained install | Drifts from the live signer (violates PORT-02); preview lies | Never |
+| Auto-write the sudoers rule from the `PKGBUILD` | One-step setup | Removes the reviewed friction; security footgun | Never — manual, documented, reviewed step |
+| `Terminal=true` instead of explicit `<terminal> -e` | Shorter `.desktop` | No XDG terminal handler on Hyprland → no TTY → Pitfall 1 | Never on this platform |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| DPAPI (Rust ↔ PowerShell) | SecureString cmdlets on one side, raw `CryptProtectData` on the other | Raw `[ProtectedData]::Protect/Unprotect` both sides; same scope (CurrentUser) + same entropy; round-trip test first |
-| File HMAC (Rust signer ↔ PS verifier) | Sign structure vs verify bytes; CRLF/BOM drift | Sign raw bytes; writer fixes UTF-8-no-BOM + LF + fixed trailing newline; verifier uses `ReadAllBytes` |
-| NTP/SNTP (Rust app ↔ PS guard) | Different "offset"/timezone definitions; trusting local clock on fallback | Shared true-time definition; refuse grace if NTP unreachable at grant; guard re-checks with own NTP |
-| Claude Code hooks | `$PSScriptRoot`-relative paths under junctioned hook dir | Absolute/configured canonical path; log resolved path; verify junction behavior |
-| Tauri plugins | Missing capability grant; wrong plugin registration order | Explicit capabilities, tested in release bundle; register single-instance first |
-
-## Performance Traps
-
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| NTP call on every UserPromptSubmit | Noticeable lag before each prompt during curfew hours | Cache true-time offset briefly (seconds), reuse existing `Get-TrueTime` caching if present | Every prompt, immediately — UX, not scale |
-| Re-reading/re-hashing config on every hook fire | Minor per-prompt latency | Files are tiny; fine. Don't over-optimize | N/A at this scale (single user, KB files) |
-
-(Scale is irrelevant here — single user, kilobyte files. The only "performance" concern is per-prompt latency from NTP, not throughput.)
+| `.desktop` ↔ Hyprland | `Exec=ngtui` / `Terminal=true` (no real terminal) | `Exec=<terminal> --class ngtui-float -e ngtui`, `Terminal=false` |
+| Hyprland window rule | `title:` match (terminal title drifts) | `class:^(ngtui-float)$` (matches `initialClass`); verify via `hyprctl clients` |
+| Waybar custom exec | Multi-line/invalid JSON; blocking `sudo`/NTP in exec | Single-line JSON (`return-type=json`, validate with `jq`); read-only, cached, `signal` for instant refresh |
+| `uv tool` / `pipx` | Assuming the isolated venv sees the LifeOS stack or shell env | Resolve stack via `NIGHTGUARD_STACK_DIR` set *in the launcher*; fail loud at startup; `ngtui doctor` |
+| `sudo` from launcher | Detached/no-TTY spawn; capturing stderr | Wrap in `App.suspend()`; leave stderr on the TTY; always run inside a real terminal |
+| Icon theme | Wrong hicolor path/name; cache not refreshed | `…/hicolor/<size>/apps/ngtui.png`, `Icon=ngtui`, run `gtk-update-icon-cache` + `update-desktop-database` |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| DPAPI LocalMachine scope "so the guard can read it" | Any user/process on the box can decrypt the key | CurrentUser scope; the guard runs as Daniel anyway |
-| Non-constant-time HMAC comparison | Theoretically leaks via timing (negligible here, but free to do right) | Constant-time compare both sides |
-| Validating grace window against local (tamperable) clock | Clock-rollback replays grace; clock-forward launders curfew | Validate against NTP true-time; run tamper-check before honoring grace (Pitfall 4) |
-| Treating DPAPI as protection against the user | False security; user-self can script DPAPI | Document the honest ceiling; rely on friction not vault (Pitfall 5) |
-| `guard.json` writable + unsigned state trusted | Hand-edit tokens/grace to cheat | State is HMAC-signed; fail closed on mismatch (spec already does this — keep it) |
+| Waybar/launcher action mutates curfew without `sudo` | **Defeats the self-binding core value** — impulsive loosen with no friction | Only `backend.commit()` mutates; bar/launcher only open the TUI or show read-only status |
+| Status reader granted `sudo`/`pkexec`/key access | Privilege creep; reader could forge/sign | Reader is key-less, unprivileged; never calls `ngcommon.read_key()` |
+| Poisoned `NIGHTGUARD_STACK_DIR` redirects import + sudo argv | Malicious stack imported and **sudo-run** | Already mitigated: `_resolve_stack_dir()` pins an absolute realpath that must contain `nightguard_ctl.py`; keep launcher env trusted, don't widen it |
+| `PKGBUILD` writes the root-owned key/config or sudoers | Breaks the root integrity boundary; removes friction | Package user-space only; key/config provisioned root-owned by the stack setup; sudoers is a manual reviewed step |
+| Capturing the commit's stderr to "clean up" the UI | Hides the password/`REFUSED` prompt → silent failure | Leave stderr attached to the TTY (current behavior) |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| Silent revert with no trace | Daniel thinks app is broken ("my edit vanished, no idea why") | Silent to the *impulse* (no reward) but visible to rested-self via tamper.log + a non-blocking startup notice |
-| No recovery path on fail-closed brick | Locked out of loosening + grace + curfew with no escape (Pitfall 3) | In-app repair/re-init gated by the DPAPI key; documented manual reset |
-| Loosening disabled with no reason shown | Confusion ("why is commit greyed out?") | Spec already shows reason + refill date — keep it |
-| +8 grace consumed but blocked anyway (NTP down) | Wasted daily grace, frustration → motivates ripping out the tool | Refuse to *grant* grace when NTP unreachable; surface why |
+| Mysterious commit failure (no TTY) | User thinks the app is broken | Startup TTY self-check with a clear message; always launch in a terminal |
+| Stale Waybar status after a commit | Bar contradicts reality (shows locked after grace) | `signal`-based refresh pushed by the TUI post-commit |
+| Editor auto-opens every login | Annoyance; privileged surface pops unprompted | Autostart status only; editor on demand |
+| Generic icon in launcher | Looks unbranded/unfinished | Correct hicolor install + cache refresh, bare `Icon=` name |
+| Terminal closes instantly on launch | Looks like nothing happened | Ensure `-e ngtui` keeps the terminal alive for the TUI's lifetime; test the close-on-exit behavior of the chosen terminal |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **DPAPI key:** Round-trips byte-for-byte Rust→PS AND PS→Rust — verify decrypted key is exactly 32 raw bytes, not 64 (UTF-16/hex framing).
-- [ ] **HMAC verify:** Survives a CRLF conversion test (flagged as tamper) AND a BOM-added test AND a trailing-newline test; whitespace-only edit is *detected* (no false negative).
-- [ ] **Commit atomicity:** Firing the guard *during* an in-app commit does NOT revert the legit change (race test).
-- [ ] **Revert loop:** Circuit-breaker stops after N reverts/M minutes; no infinite per-prompt revert.
-- [ ] **Both-tampered:** Strict-default write backs up the originals first (recoverable).
-- [ ] **Fail-closed recovery:** There is an in-app path to re-sign `guard.json` without hand-editing (which would be reverted).
-- [ ] **DST:** Week reset lands on Monday 00:00 Amsterdam on both the March and October DST weeks (test both instants).
-- [ ] **Grace replay:** Rolling the local clock back does NOT re-enter a past grace window or re-arm "once/day."
-- [ ] **NTP down:** Grace grant is *refused* (not local-clock fallback); curfew blocks per existing `block_when_offline`.
-- [ ] **Tamper vs grace ordering:** Clock-tamper blocks even during an active grace window (grace can't launder a forwarded clock).
-- [ ] **Tauri release build:** Capabilities work in the bundled `--release` build, not just `tauri dev`.
-- [ ] **Single instance:** Double-launch yields one window/one writer.
-- [ ] **Hook path:** Guard resolves the LifeOS *canonical* config, not `~/.claude/nightguard` — logged and verified under actual junction behavior.
+- [ ] **`.desktop` launch:** opens, but **does the sudo commit actually prompt and succeed?** Verify a real loosen-with-token commit end-to-end from the launcher, not just that the TUI rendered.
+- [ ] **Float rule:** window floats — verify via `hyprctl clients` that it matched `class:ngtui-float` and not by accident; confirm other terminals still tile.
+- [ ] **Global install:** `ngtui` on PATH — but test the **installed script** (not `python -m`) with a **clean env** to confirm the stack resolves.
+- [ ] **Waybar module:** shows status — validate the JSON with `jq`, confirm `on-click`/`on-click-right` both fire, and confirm the exec does **no** `sudo`/NTP and never blocks the bar.
+- [ ] **Self-binding:** confirm **no** bar/launcher path can loosen the curfew without the sudo prompt (the load-bearing check).
+- [ ] **Icon:** appears immediately after install (cache refreshed), not only after relogin.
+- [ ] **AUR package:** installs **no** root-owned/0600 files and does **not** vendor `nightguard_ctl.py`/`ngcommon.py`.
+- [ ] **Fresh-user story:** on a machine without the LifeOS stack, the app fails **loudly and actionably** at startup, not cryptically at commit.
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| DPAPI interop broken (Pitfall 1) | HIGH if found late | Fix to raw `[ProtectedData]` both sides; regenerate key; re-sign config+state. Caught by round-trip test → LOW if found early |
-| Canonicalization false-positive revert (Pitfall 2) | MEDIUM | Switch guard to `ReadAllBytes`; fix writer normalization; re-sign. Restore lost edit from `.bak`/sanctioned |
-| Legit edit reverted by race (Pitfall 3) | MEDIUM | Add lock + reorder writes; restore edit from tamper.log context / `.bak` if backed up |
-| Fail-closed brick | MEDIUM | In-app repair re-init (DPAPI-gated); or manual: delete `.guardkey` + sanctioned, relaunch app to regenerate |
-| Both-tampered strict-default overwrote real config | HIGH if no backup, LOW if `.bak` exists | Restore from timestamped `.bak` (must be implemented — see checklist) |
-| DST/reset drift | LOW | Recompute anchor via tzdb; tokens self-correct next reset |
-| Grace replay exploited | LOW (it's self-harm) | Tighten to NTP-true-time validation; it's the user cheating themselves anyway |
+| No-TTY commit failure | LOW | Switch `.desktop`/Waybar `Exec` to `<terminal> -e ngtui`; add startup `isatty()` check |
+| Float rule not matching | LOW | Add `--class ngtui-float`; rewrite rule as `class:^(ngtui-float)$`; verify with `hyprctl clients` |
+| Stack not resolving on install | LOW–MEDIUM | Set `NIGHTGUARD_*` in launcher; document prereq; add `ngtui doctor`; the existing `RuntimeError` already fails closed |
+| Waybar blocking/invalid JSON | LOW | Make reader read-only+cached, emit single-line JSON, add `signal` refresh |
+| Self-binding escape hatch shipped | HIGH | Revert the action immediately; treat as a security regression; audit all bar/launcher exec lines for `sudo`/`commit`/`+8` |
+| Icon not showing | LOW | Fix hicolor path/name; run `gtk-update-icon-cache -f` + `update-desktop-database` |
+| Package vendored the stack | MEDIUM | Remove vendored copies; switch to runtime import of the live stack; re-test preview-vs-signer parity |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| 1. DPAPI interop (TOP) | Crypto/key phase (first) | Byte-for-byte Rust↔PS key round-trip test passes; decrypted key = 32 raw bytes |
-| 2. HMAC canonicalization | Crypto/sign-verify phase (first) | CRLF/BOM/trailing-newline tamper tests pass; whitespace edit detected |
-| 3. Auto-revert footguns | Rust commit phase (atomic writes/lock) + guard phase (circuit-breaker, repair) | Race test (guard during commit) doesn't revert; no revert loop; repair path works |
-| 4. Time/DST/grace | Time/NTP/scheduling phase | March + October DST reset tests; clock-rollback replay test; tamper-before-grace ordering; NTP-down refuses grant |
-| 5. Self-adversary realism | Threat-model/README (early) + guard phase scope discipline | README states honest ceiling; no obfuscation added; +8 grace present as pressure valve |
-| 6. Tauri v2 specifics | App scaffolding phase + guard wiring | Capabilities work in release bundle; single instance; canonical config path resolved + logged |
+| 1. No-TTY inline-sudo break | `.desktop` floating-terminal launcher | End-to-end commit (with token spend) succeeds from the launcher; `isatty()` self-check present |
+| 2. Quick-action escape hatch | Waybar module (+ milestone-wide non-goal) | No bar/launcher path loosens curfew without sudo; grep configs for `sudo`/`commit`/`+8` |
+| 3. Float rule mismatch | `.desktop` floating-terminal launcher | `hyprctl clients` shows `ngtui-float`; other terminals tile |
+| 4. Stack not resolving (global install) | Global install (`uv tool`) | Installed script with clean env resolves stack; `ngtui doctor` passes; fresh-user fails loudly |
+| 5. `python -m` vs installed divergence | Global install (`uv tool`) | Test matrix runs both; identical startup behavior |
+| 6. Waybar blocking/JSON/stale | Waybar module | `jq`-valid single-line JSON; no `sudo`/NTP in exec; `signal` refresh after commit |
+| 7. Icon not showing | Custom brand icon | Icon appears immediately post-install; cache hooks run |
+| 8. AUR runtime/stack/ownership | AUR packaging | No vendored stack; no root/0600 files in manifest; `/usr/bin/python3` argv intact |
+| 9. Autostart revives no-TTY / auto-editor | Autostart / login pin | Autostart launches status only, or full terminal+env wrapper; no unprompted editor |
 
 ## Sources
 
-- Microsoft Learn — `ProtectedData.Unprotect` / `CryptProtectData` / `CryptUnprotectData` (scope, optionalEntropy, "Key not valid for use in specified state" under impersonation): https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.protecteddata.unprotect , https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata — HIGH
-- `windows-dpapi` crate (Rust raw DPAPI, `Scope::User`/`Scope::Machine`): https://crates.io/crates/windows-dpapi , https://github.com/sheridans/windows-dpapi — HIGH
-- PowerShell community on DPAPI / ProtectedData vs SecureString framing: https://devblogs.microsoft.com/powershell-community/encrypting-secrets-locally/ , https://github.com/dlwyatt/ProtectedData/wiki — MEDIUM
-- PowerShell issue #25246 "LF instead of CRLF can break signatures" + MS KB "signed PowerShell script fails hash mismatch": https://github.com/PowerShell/PowerShell/issues/25246 , https://learn.microsoft.com/en-us/troubleshoot/windows-client/system-management-components/signed-powershell-script-fails-hash-mismatch — HIGH (confirms line-ending/encoding canonicalization breaks cross-tool hashing)
-- Tauri v2 security/capabilities, single-instance, autostart docs: https://v2.tauri.app/security/capabilities/ , https://v2.tauri.app/security/permissions/ , https://v2.tauri.app/plugin/single-instance/ , https://v2.tauri.app/plugin/autostart/ — HIGH
-- Project spec + existing hook (`docs/design-spec.md`, `.planning/PROJECT.md`, `LifeOS/hooks/nightguard_curfew_guard.ps1`) — the honest-ceiling constraint, NTP/clock-tamper reuse, and hook-path open question are drawn directly from these — HIGH
+- `ngtui/ngtui/backend.py` (read 2026-06-24) — `commit()` leaves stderr on the TTY, relies on `App.suspend()`; `_resolve_stack_dir()` pins realpath; sudo argv `[/usr/bin/python3, CTL_SCRIPT, commit, --from, tmp]`; PORT-02/03, CR-02, T-10-03. **HIGH**
+- `.planning/PROJECT.md` — Core Value (self-binding), v2.1 Active scope (uv tool / .desktop floating terminal / Waybar left+right click / hicolor icon / autostart / AUR), `sudo` = anti-impulse friction. **HIGH**
+- `.planning/milestones/v2.0-MILESTONE-AUDIT.md` — committed `guard.curfew_verdict` (B1), descoped native-kill, browser-policy softness (prior gotchas). **HIGH**
+- Hyprland Wiki — Window Rules: static rules evaluated once at creation, match `initialClass`/`initialTitle`; cannot float on post-creation title change. `https://wiki.hypr.land/Configuring/Basics/Window-Rules/`. **HIGH**
+- Hyprland issues #5744 (initialTitle matching), #8901 / #12808 (float/size rule regressions for some apps). **MEDIUM** (version-specific; confirms fragility)
+- Waybar Wiki — Module: Custom: `return-type=json` single-line `{text,tooltip,class,…}`; `interval`/`signal`/`exec-on-event`; `on-click-right`; self-looping vs interval; flush stdout. `https://github.com/Alexays/Waybar/wiki/Module:-Custom`. **HIGH**
+- astral.sh uv docs + Arch forum — `uv tool` installs an isolated venv with the console script on PATH; isolated env does not see external packages. `https://docs.astral.sh/uv/`, `https://bbs.archlinux.org/viewtopic.php?id=306879`. **MEDIUM**
 
 ---
-*Pitfalls research for: self-binding Windows enforcement tool (Tauri v2 + Rust + DPAPI/HMAC + PowerShell auto-revert)*
-*Researched: 2026-06-04*
+*Pitfalls research for: desktop/Waybar integration of a Python Textual TUI-with-inline-sudo on Hyprland/omarchy*
+*Researched: 2026-06-24*
