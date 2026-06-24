@@ -430,21 +430,26 @@ class _ThemeWatch:
 | A4 | The TUI process can `import ngcommon, guard, nightguard_ctl` without side effects (no key read, no audit write) merely by importing | Pattern 1/3 | Importing runs module top-level code. Verified: all three only define functions + module-level path constants at import; `read_key()`/`append_audit()` fire only when called. `classify_change`/`quota_decide`/`curfew_verdict`/`load_state` are all key-less and side-effect-free. Low risk. |
 | A5 | `everforest` colors map sensibly to Textual roles (accent→primary, color1→error, etc.) | Pattern 4 | Cosmetic only; wrong mapping = ugly, not broken. |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three resolved during phase planning (2026-06-24). Decisions are baked into the Phase 10 plans (10-01/10-02/10-03).
 
 1. **Where does the TUI repo/package live?**
    - What we know: the backend is in the **separate LifeOS repo** (`scripts/nightguard/`); this product repo (`nightguard-control`) is the publishable Windows-era codebase.
    - What's unclear: does the TUI ship in `nightguard-control` (publishable product) or in LifeOS (instance)? The TUI imports LifeOS paths by absolute path today.
-   - Recommendation: build the TUI as a product in `nightguard-control` (it's the "Linux App" deliverable), but make the LifeOS path configurable via `NIGHTGUARD_STACK_DIR`/`NIGHTGUARD_DIR` env so the published product isn't hardcoded to the author's machine. The author's instance sets those env vars. **Planner to confirm with user.**
+   - Recommendation: build the TUI as a product in `nightguard-control` (it's the "Linux App" deliverable), but make the LifeOS path configurable via `NIGHTGUARD_STACK_DIR`/`NIGHTGUARD_DIR` env so the published product isn't hardcoded to the author's machine. The author's instance sets those env vars.
+   - **RESOLVED:** the `ngtui/` package lives in the **nightguard-control product repo** (the "Linux App" deliverable). The LifeOS stack paths are env-overridable via `NIGHTGUARD_STACK_DIR` / `NIGHTGUARD_DIR` (defaults point at the author's instance; the published product is not hardcoded). Implemented in 10-01 Task 2 `backend.py` import bootstrap.
 
 2. **Inline-sudo + capture interaction (A2/A3) — Wave-0 spike recommended.**
    - What we know: `suspend()` releases the TTY; sudo uses PAM fingerprint+password here.
    - What's unclear: exact stdout/stderr capture combo that both shows the prompt AND lets the result line be parsed.
    - Recommendation: a tiny Wave-0 spike — a 30-line Textual app that suspends, runs `sudo … verify` (allowed by sudoers, harmless), confirms the prompt appears inline and the exit code is readable. Settle the capture strategy before building the edit flow.
+   - **RESOLVED:** settled by the **Wave-0 spike in 10-01 Task 3** (`spike/inline_sudo_spike.py` → `SPIKE-NOTES.md`). The capture strategy is `stdout=PIPE` with **stderr left attached to the TTY** so the password/fingerprint prompt (and the verbatim `REFUSED` line) appear inline; the result widget is returncode-driven (see 10-03 Task 2 deviation note).
 
 3. **Theme-watch mechanism: poll vs watchfiles vs omarchy hook.**
    - What we know: all three work; poll is zero-dep, watchfiles is instant, the hook is cleanest-but-couples.
    - Recommendation: stdlib mtime poll on the existing 1s tick (lean-deps default). Planner picks; not load-bearing.
+   - **RESOLVED:** **stdlib mtime poll on the existing 1s tick** (`ThemeWatch` in 10-02 Task 1; checked in `_tick` in 10-02 Task 3). `watchfiles` is NOT installed — honors the lean-deps constraint.
 
 ## Environment Availability
 
