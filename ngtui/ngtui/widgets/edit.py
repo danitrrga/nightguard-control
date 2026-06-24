@@ -252,6 +252,9 @@ class EditScreen(Screen):
         # order, so the line-edit transforms always start from the signed bytes.
         self._staged: list[tuple[str, str, str]] = []  # (op, dotted_key, value)
         self._focus = 0
+        # In-flight inline edit context (op, dotted_key, kind); set by
+        # action_edit_field before the _InlineInput callback fires (WR-04).
+        self._pending: tuple[str, str, str] | None = None
 
     # --- compose ---
 
@@ -402,7 +405,7 @@ class EditScreen(Screen):
             return
 
     def _on_inline_value(self, value: str | None) -> None:
-        if value is None or value == "":
+        if value is None or value == "" or self._pending is None:
             return
         op, dotted, kind = self._pending
         if kind == _TIME and not _valid_hhmm(value):
