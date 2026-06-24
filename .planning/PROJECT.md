@@ -37,15 +37,23 @@ reverts. Everything else is secondary to that guarantee holding.
 > The signing key (v1.0: Windows DPAPI; both Rust app + PowerShell guard verify the same
 > HMAC) is **superseded** in v2.0 by a root-owned file key + commit-helper — see Active.
 
-### Active (v2.0 · Linux Port)
+### Validated (v2.0 · Linux Port — shipped 2026-06-24)
 
-- [ ] **Linux-only:** the product targets Linux (CachyOS + Hyprland); the Windows DPAPI/PowerShell paths are retired from the product surface.
-- [ ] **Config blocking model** redefined for Linux: `browser_extension` (StayFree, policy-managed) + `native_apps` (Hyprland window-class blacklist); the dead Windows `uwp`/`package_id` entry is removed.
-- [ ] **Root integrity wall:** `.guardkey` + sanctioned config are root-owned (root:root 0600 key); the watchdog runs as a systemd **system** service (true-time + HMAC-revert + managed-policy check + native-app kill).
-- [ ] **Sign via sudo (no daemon):** allowed edits are signed by elevating to the existing control-CLI via `sudo`/`pkexec` (the bespoke socket commit-helper was curated out). The root key makes the control-CLI the sole signer; `sudo` is the only bypass, and the prompt is deliberate anti-impulse friction.
-- [ ] **Native-app blocking folded into the watchdog tick:** during a curfew lock the root watchdog kills blacklisted Hyprland window classes (≤60s leakage accepted; un-stoppable from user space — no separate service).
-- [ ] **Usage tracking via ActivityWatch** (aw-watcher-window + afk → :5600) with a sync script feeding screen-time into LifeOS, replacing StayFree analytics. *(Parked — orthogonal analytics; optional this milestone.)*
-- [ ] **Linux app = omarchy TUI** (not Tauri): a terminal-native, command-driven, minimal app themed via *aether*, built as a **thin client over the one Python trust stack** (it calls the control-CLI to sign; never holds the key) — so Linux runs a single HMAC implementation.
+- ✓ **Linux-only:** the product targets Linux (CachyOS + Hyprland); the Windows DPAPI/PowerShell paths are retired. — v2.0
+- ✓ **Config blocking model** redefined for Linux: `browser_extension` + `native_apps`; dead Windows `uwp`/`package_id` removed. — v2.0 (LXCF-01/02)
+- ✓ **Root integrity wall:** `.guardkey` + sanctioned config root-owned (root:root 0600); watchdog as a systemd **system** service (true-time + HMAC-revert + managed-policy check). — v2.0 (ROOT-01/02)
+- ✓ **Sign via sudo (no daemon):** allowed edits signed by elevating to the control-CLI via `sudo`; root key makes it the sole signer; the prompt is the anti-impulse friction. — v2.0 (ROOT-03/04)
+- ✓ **Curfew enforced on Linux:** `guard.py` wired as the Claude Code `UserPromptSubmit` hook; a `deny` verdict hard-blocks the session. — v2.0 (CURF-01)
+- ✓ **Linux app = omarchy TUI** (not Tauri): terminal-native, single-key, live-themed, a **thin client over the one Python trust stack** (calls the control-CLI to sign; never holds the key) — single HMAC implementation; anti-impulse cost-before-auth editing. — v2.0 (PORT-01/02/03)
+
+### Descoped / Parked (v2.0)
+
+- ✗ **Native-app blocking (NBLK-01/02/03)** — *descoped*. Built then reverted; the curfew hook was deemed sufficient enforcement. The `guard.curfew_verdict()` refactor survives and backs the TUI display.
+- ⏸ **Usage tracking via StayFree (TRAK-01/02)** — *parked*. StayFree records 0 sessions on Hyprland/Wayland (X11-only detection); live tracking is non-functional. Offline blocklist/config import is a future-phase candidate. (ActivityWatch was the earlier plan; also parked.)
+
+### Active (v3.0 — next milestone, to be scoped)
+
+- [ ] Define via `/gsd:new-milestone`. Candidates: offline StayFree blocklist import; Nyquist backfill for phases 6/7/7.1; browser-policy root-lock; ROOT-02 watchdog clock-tamper wording.
 
 ### Out of Scope
 
@@ -72,13 +80,13 @@ reverts. Everything else is secondary to that guarantee holding.
   instance configuration, not part of the published product surface.
 - Full approved design: `docs/design-spec.md` (copied from the brainstorming spec).
 
-## Constraints (v2.0)
+## Constraints (v2.0 — as shipped)
 
-- **Tech stack**: Tauri v2, Rust backend/engine (ports as-is), vanilla TS + Vite frontend; Python watchdog; systemd units — keep deps lean.
-- **Platform**: Linux-only (CachyOS + Hyprland/omarchy). The integrity wall is root-backed; native-app blocking needs the Hyprland session, so the blocker runs `--user` while the watchdog + key run as root.
-- **Security**: HMAC-SHA256 over config + state; **key at rest is a root-owned file** (root:root 0600); signing happens only inside a root commit-helper reached over a Unix socket; atomic writes; fail-closed on tamper.
-- **Interop**: the Rust engine and the Python watchdog verify the *same* HMAC key (root-owned file); the StayFree browser extension stays force-installed via a root-owned Chromium managed policy.
-- **Design**: Moonlit Indigo palette (`--bg #0c0e14 --surface #161a24 --border #242a38 --text #e8eaf0 --dim #8b91a3 --accent #7aa2ff`), Roboto, YouTube-Studio aesthetic, own brand (no borrowed logos). *(Carried over from v1.0 unchanged.)*
+- **Tech stack**: **one Python trust stack** (`ngcommon`/`guard`/`nightguard_ctl` + systemd watchdog) is the runtime signer/enforcer; the Linux app is a **Python Textual TUI** (`ngtui/`, the only new third-party dep is `textual==8.2.7`). The Rust engine + Tauri UI are retired from the Linux runtime (kept only as historical v1.0 product hygiene). — keep deps lean.
+- **Platform**: Linux-only (CachyOS + Hyprland/omarchy). The integrity wall is root-backed; the watchdog + key run as root (systemd **system** service).
+- **Security**: HMAC-SHA256 over config + state; **key at rest is a root-owned file** (root:root 0600); signing happens only in the root control-CLI reached via **`sudo`** (no socket/daemon — the socket commit-helper was curated out); atomic writes; fail-closed on tamper. The TUI holds no key and computes no HMAC.
+- **Interop**: a **single** HMAC implementation (the Python stack) — no second crypto stack to keep in byte-parity. The StayFree browser extension stays force-installed via a Chromium managed policy.
+- **Design**: omarchy-native, single-key, minimal; colors track the live desktop theme (`colors.toml`). *(The v1.0 Moonlit Indigo Tauri palette is retired — superseded by the omarchy TUI per the v2.0 UI contract.)*
 
 ## Key Decisions
 
@@ -90,13 +98,14 @@ reverts. Everything else is secondary to that guarantee holding.
 | +8 = once-daily 8-min timed bypass (not a schedule shift) | Matches user's intent: brief access to plan, then re-lock | — Pending |
 | DPAPI-stored HMAC key shared by Rust + PowerShell | Both layers verify same signature; hand-edits can't forge it | ✅ v1.0 — superseded by root file key in v2.0 |
 | Publishable generic repo + personal LifeOS instance | App is a product; personal config/wiring stays in LifeOS | ✅ v1.0 |
-| **[v2.0] Linux-only; retire Windows DPAPI/PowerShell paths** | Author moved to CachyOS; Windows surface is dead for the personal instance | — v2.0 |
-| **[v2.0] Root-backed integrity wall** (key + sanctioned config + watchdog all root) | `sudo` becomes the past-the-impulse threshold; user can't read the key to forge a signature | — v2.0 |
-| **[v2.0] Sign via `sudo`/control-CLI** (curated 2026-06-22; replaced the planned Unix-socket commit-helper) | Reuses the existing signer with zero new daemon/protocol; the sudo prompt IS the anti-impulse friction (aligned with the friction-not-lock goal) and is idiomatic in a terminal app | — v2.0 |
-| **[v2.0] One trust stack on Linux (Python); app is a thin TUI client** (curated; was Tauri + a 2nd Rust crypto stack) | Avoids maintaining two byte-identical HMAC stacks; the omarchy TUI calls the control-CLI to sign rather than re-implementing crypto | — v2.0 |
-| **[v2.0] Native blocking folded into the root watchdog tick** (curated; was a separate `--user` socket2 service) | One fewer service, un-stoppable from user space, ≤60s leakage accepted; socket2 only if 60s proves inadequate | — v2.0 |
-| **[v2.0] Keep StayFree as the browser layer** (force-installed Chromium extension) | No native Linux StayFree client, but the extension runs on Linux; don't rebuild URL-blocklist machinery | — v2.0 |
-| **[v2.0] ActivityWatch for usage tracking** | Linux-native, open-source, scriptable; replaces StayFree desktop analytics | — v2.0 |
+| **[v2.0] Linux-only; retire Windows DPAPI/PowerShell paths** | Author moved to CachyOS; Windows surface is dead for the personal instance | ✅ v2.0 |
+| **[v2.0] Root-backed integrity wall** (key + sanctioned config + watchdog all root) | `sudo` becomes the past-the-impulse threshold; user can't read the key to forge a signature | ✅ v2.0 (ROOT-01/02) |
+| **[v2.0] Sign via `sudo`/control-CLI** (curated 2026-06-22; replaced the planned Unix-socket commit-helper) | Reuses the existing signer with zero new daemon/protocol; the sudo prompt IS the anti-impulse friction and is idiomatic in a terminal app | ✅ v2.0 (ROOT-03/04, PORT-02) |
+| **[v2.0] One trust stack on Linux (Python); app is a thin TUI client** (curated; was Tauri + a 2nd Rust crypto stack) | Avoids maintaining two byte-identical HMAC stacks; the omarchy TUI calls the control-CLI to sign rather than re-implementing crypto | ✅ v2.0 (PORT-01/02/03) |
+| **[v2.0] Native blocking folded into the root watchdog tick** (curated; was a separate `--user` socket2 service) | One fewer service, un-stoppable from user space, ≤60s leakage accepted | ✗ v2.0 — DESCOPED (built then reverted; curfew hook deemed sufficient; NBLK-01/02/03) |
+| **[v2.0] Keep StayFree as the browser layer** (force-installed Chromium extension) | No native Linux StayFree client, but the extension runs on Linux; don't rebuild URL-blocklist machinery | ⚠️ v2.0 — browser-extension layer kept, but StayFree *tracking* is dead on Wayland (TRAK parked) |
+| **[v2.0] ActivityWatch for usage tracking** (later re-scoped to StayFree desktop) | Linux-native usage analytics | ⏸ v2.0 — PARKED (StayFree spike failed on Wayland; offline config-import a future-phase candidate) |
+| **[v2.0] curfew_verdict() committed standalone to LifeOS** (2026-06-24, a523c43) | Phase-10 TUI's `live_verdict` depends on it; decoupled it from the reverted native-kill so a git restore can't break the TUI | ✅ v2.0 |
 
 ## Evolution
 
@@ -115,6 +124,15 @@ This document evolves at phase transitions and milestone boundaries.
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
+## Current State (after v2.0)
+
+**Shipped v2.0 · Linux Port (2026-06-24).** The product is a Linux self-binding curfew tool on one Python trust stack: a root-owned HMAC key + sanctioned config, a systemd **system** watchdog that reverts hand-edits, the control-CLI as the sole signer (reached via `sudo` = the anti-impulse threshold), `guard.py` wired as the Claude Code curfew hook, and a new **omarchy Textual TUI** (`ngtui/`) as the sole sanctioned editor — a thin client that holds no key and previews/signs through the CLI's own classifier. 56 tests, ASVS-L1 secured, Nyquist-compliant.
+
+**Known deferrals:** native-app kill descoped (curfew hook sufficient); StayFree usage tracking parked (dead on Wayland — offline config-import is a future-phase candidate); Nyquist backfill for phases 6/7/7.1; browser-policy root-lock. See `milestones/v2.0-MILESTONE-AUDIT.md`.
+
+**To run the TUI:** `cd ngtui && env NIGHTGUARD_STACK_DIR=/home/danitrrga/dev/Projects/LifeOS/scripts/nightguard NIGHTGUARD_DIR=/home/danitrrga/dev/Projects/LifeOS/nightguard .venv/bin/python -m ngtui`
+
 ---
-*Last updated: 2026-06-23 — Phase 7.1 (Curfew Hook) complete: `nightguard_adapter.py` wired as the Claude Code `UserPromptSubmit` hook via the LifeOS generator; a `deny` verdict now actually blocks sessions on Linux (CURF-01 closed, 3/3 verified). Curfew enforcement (curfew→Claude-Code block) is now LIVE alongside config-revert + browser block. Remaining v2.0: Phase 8 (native-app blocker).*
+*Last updated: 2026-06-24 after v2.0 · Linux Port milestone (shipped). The Windows DPAPI/PowerShell/Tauri stack is retired; v2.0 runs on a single Python trust stack + an omarchy TUI.*
+*Prior: 2026-06-23 — Phase 7.1 (Curfew Hook) complete; curfew now blocks Claude Code sessions (CURF-01).*
 *Prior: 2026-06-22 — opened milestone v2.0 · Linux Port (ingested from `docs/linux-port-brief.md`).*
