@@ -459,14 +459,23 @@ class EditScreen(Screen):
         self._refresh_preview()
 
     def action_back(self) -> None:
-        """``Escape`` returns to StatusScreen, warning if staged edits are pending."""
+        """``Escape`` returns to StatusScreen, gating on a discard confirm if needed.
+
+        With staged edits pending, push the explicit discard-confirm modal rather
+        than silently clearing the stage (WR-01): losing staged work — possibly a
+        loosen the user meant to review — must require an unmistakable confirmation.
+        """
         if self._staged:
-            self.query_one("#edit-status", Static).update(
-                "staged edits pending — press u to discard, then Escape to leave"
-            )
-            self._staged.clear()  # next Escape leaves cleanly
+            self.app.push_screen(_ConfirmDiscard(), self._on_back_discard)
             return
         self.app.pop_screen()
+
+    def _on_back_discard(self, discard: bool | None) -> None:
+        """Discard-confirm result for the Escape path: only leave on explicit yes."""
+        if discard:
+            self._staged.clear()
+            self.app.pop_screen()
+        # else (n / Escape): stay on EditScreen with staged edits intact.
 
 
 # --- small modal helpers ------------------------------------------------------
