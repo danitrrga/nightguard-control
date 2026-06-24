@@ -91,10 +91,14 @@ def load_omarchy_theme(path: str | None = None) -> Theme:
     try:
         with open(colors_path, "rb") as fh:
             return _theme_from_colors(tomllib.load(fh))
-    except (FileNotFoundError, IsADirectoryError):
+    except (FileNotFoundError, IsADirectoryError, tomllib.TOMLDecodeError, KeyError):
+        # Missing OR malformed (partial write during an atomic dir-swap, Pitfall 6)
+        # OR missing a required colour key — fall back to alacritty.toml.
         pass
 
-    # Fall back to alacritty.toml next to the (missing) colors.toml.
+    # Fall back to alacritty.toml next to the (missing) colors.toml. A malformed
+    # alacritty.toml raises TOMLDecodeError here; let it propagate so the app-level
+    # handler keeps Textual's default theme rather than crashing (T-10-07).
     alacritty_path = (
         OMARCHY_ALACRITTY
         if path is None

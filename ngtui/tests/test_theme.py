@@ -81,6 +81,39 @@ def test_falls_back_to_alacritty_when_colors_absent(tmp_path):
     assert theme.accent == "#7fbbb3"
 
 
+def test_malformed_colors_falls_back_to_alacritty(tmp_path):
+    """colors.toml present but malformed (partial write mid-swap) → alacritty fallback.
+
+    Guards CR-01: tomllib raises TOMLDecodeError (a ValueError) on a partial write
+    during omarchy's atomic dir-swap; the loader must fall back rather than escape.
+    """
+    _write(str(tmp_path / "colors.toml"), "accent = \"#7fbbb3\"\nbackground = ")  # truncated
+    _write(str(tmp_path / "alacritty.toml"), ALACRITTY_TOML)
+
+    theme = load_omarchy_theme(str(tmp_path / "colors.toml"))
+
+    assert theme.name == "omarchy"
+    assert theme.background == "#2d353b"  # came from alacritty fallback
+    assert theme.accent == "#7fbbb3"
+
+
+def test_malformed_alacritty_fallback_raises_for_app_handler(tmp_path):
+    """Both files malformed → TOMLDecodeError propagates so the app keeps its default.
+
+    Guards CR-01: the app-level handler catches ValueError (TOMLDecodeError's base)
+    and keeps Textual's default theme instead of crashing on_mount.
+    """
+    import tomllib
+
+    import pytest
+
+    _write(str(tmp_path / "colors.toml"), "background = ")  # truncated
+    _write(str(tmp_path / "alacritty.toml"), "[colors.primary\n")  # malformed
+
+    with pytest.raises(tomllib.TOMLDecodeError):
+        load_omarchy_theme(str(tmp_path / "colors.toml"))
+
+
 def test_theme_watch_detects_mtime_change(tmp_path):
     """ThemeWatch.changed() is False on a stable file, True after a rewrite."""
     p = _write(str(tmp_path / "colors.toml"), COLORS_TOML)

@@ -60,8 +60,9 @@ class NightguardApp(App):
         try:
             self.register_theme(load_omarchy_theme())
             self.theme = "omarchy"
-        except (FileNotFoundError, OSError, KeyError):
-            # No omarchy theme on this box (or malformed) — default theme stands.
+        except (FileNotFoundError, OSError, KeyError, ValueError):
+            # No omarchy theme on this box, or it is malformed mid-swap
+            # (tomllib.TOMLDecodeError is a ValueError) — default theme stands.
             pass
 
     # --- 1s tick: countdown + theme watch ---
