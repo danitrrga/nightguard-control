@@ -105,11 +105,15 @@ def test_set_scalar_replaces_only_value_and_reparses():
 
 
 def test_set_scalar_preserves_trailing_comment():
-    text = '  extension_id: abc123   # the StayFree id\n'
-    full = "blocking:\n  browser_extension:\n" + text
+    full = (
+        "blocking:\n"
+        "  browser_extension:\n"
+        "    extension_id: abc123   # the StayFree id\n"
+    )
     out = set_scalar(full, "blocking.browser_extension.extension_id", "zzz999")
     assert "# the StayFree id" in out
     assert "zzz999" in out
+    assert "abc123" not in out
 
 
 def test_set_scalar_missing_field_raises():
