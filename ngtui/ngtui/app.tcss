@@ -1,0 +1,108 @@
+/* app.tcss — Textual CSS for the StatusScreen.
+ *
+ * Colour is expressed ONLY through $-variable role names fed by the live omarchy
+ * theme (theme.py -> register_theme). No fixed hex appears here: the brand is the
+ * desktop theme (D-04, omarchy-native). Textual auto-derives shade variants like
+ * $surface-lighten-1 from the base roles.
+ *
+ * Accent reserve (UI-SPEC accent reserved list): $primary/$accent is used ONLY on
+ * the hero border, the countdown tint, and the grace word — NOT ordinary text,
+ * panel fills, the footer, or the locked/open status (those use $error/$success).
+ */
+
+Screen {
+    background: $background;
+    color: $text;
+}
+
+/* --- not-initialized full-screen state --- */
+#not-initialized {
+    width: 100%;
+    height: auto;
+    content-align: center middle;
+    text-style: bold;
+    color: $text;
+    padding: 2 1;
+}
+
+/* --- hero (status band) --- */
+#hero {
+    height: auto;
+    border: round $primary;          /* accent reserved: hero border */
+    padding: 0 1;
+    margin: 1 1 0 1;
+    content-align: center top;
+}
+
+#status-word {
+    text-style: bold;
+    content-align: center middle;
+}
+
+/* Status-word colour roles (glyph + word + colour — never colour alone). */
+#status-word.error   { color: $error; }
+#status-word.success { color: $success; }
+#status-word.accent  { color: $accent; }   /* grace word — accent reserved */
+#status-word.warning { color: $warning; }
+
+#countdown {
+    text-style: bold;
+    color: $primary;                 /* accent reserved: countdown tint */
+    content-align: center middle;
+}
+
+#hero-caption {
+    content-align: center middle;
+}
+
+/* --- tokens / grace key-value rows --- */
+.kv-row {
+    height: 1;
+    margin: 1 1 0 1;
+}
+
+.kv-label {
+    width: 10;                        /* fixed label column (UI-SPEC label-col) */
+    text-style: bold;
+    color: $text;
+}
+
+.kv-value {
+    width: 1fr;
+    color: $text;
+}
+
+/* --- bordered panels (integrity, ledger) --- */
+.panel {
+    border: round $surface-lighten-1;
+    padding: 0 1;
+    margin: 1 1 0 1;
+    height: auto;
+}
+
+.panel-title {
+    text-style: bold;
+    color: $text;
+}
+
+#ledger {
+    height: 1fr;                      /* takes remaining space, scrollable */
+}
+
+#ledger.collapsed {
+    height: 6;                        /* last-5 collapsed view */
+}
+
+/* --- dim / secondary text (hmacs, hints, captions) --- */
+.dim {
+    color: $text-muted;
+}
+
+.advisory {
+    margin: 1 1 0 1;
+    content-align: center middle;
+}
+
+.hint {
+    content-align: center middle;
+}
