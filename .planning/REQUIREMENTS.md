@@ -70,13 +70,11 @@ Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 8 
 
 - [x] **CURF-01**: `guard.py` is wired as the Claude Code curfew hook so its verdict is actually enforced on Linux — during curfew a session/prompt is blocked with the butler deny message; outside curfew (and during an active grace window) it is allowed. The hook reads the canonical LifeOS config (no `~/.claude` drift; mirrors WIRE-01) and runs the guard in user soft-mode (integrity stays the root watchdog's job). *(Discovered 2026-06-22: the verdict engine returns `deny` correctly but no hook fires it — the Linux equivalent of the retired Windows `nightguard_adapter.ps1` was never wired.)*
 
-### Native Blocker (Phase 8 — DESCOPED 2026-06-23)
+### Native Blocker (Phase 8 — folded into the watchdog)
 
-> **Descoped per user decision (2026-06-23):** native-app blocking is not needed; the curfew layer (Claude-Code hook block + config-revert + root-locked StayFree browser policy) is sufficient. Phase 8 was executed then reverted from the live trust stack (LifeOS `3e64c81`). The three requirements below are dropped, not delivered.
-
-- [~] **NBLK-01** *(descoped)*: The **root watchdog tick** (the same systemd *system* service from ROOT-02), during an active curfew lock, enumerates Hyprland clients and kills/closes windows whose class is on the `native_apps` blacklist — **no separate service**.
-- [~] **NBLK-02** *(descoped)*: Killing is curfew- and grace-aware (reuses the watchdog's lock/grace state). Cadence = the watchdog tick (**≤60s leakage accepted for v1**; an instant socket2 listener is a deferred "accelerate" step, built only if 60s proves inadequate with evidence).
-- [~] **NBLK-03** *(descoped)*: Because the kill lives **inside the root watchdog**, it is un-stoppable from user space (no `systemctl --user stop` escape). *(B2 kill mechanism — SIGKILL vs `hyprctl dispatch closewindow` — settled in phase planning.)* *(Curated 2026-06-22: folded into the watchdog tick — see REVIEWS.md.)*
+- [x] **NBLK-01**: The **root watchdog tick** (the same systemd *system* service from ROOT-02), during an active curfew lock, enumerates Hyprland clients and kills/closes windows whose class is on the `native_apps` blacklist — **no separate service**.
+- [x] **NBLK-02**: Killing is curfew- and grace-aware (reuses the watchdog's lock/grace state). Cadence = the watchdog tick (**≤60s leakage accepted for v1**; an instant socket2 listener is a deferred "accelerate" step, built only if 60s proves inadequate with evidence).
+- [x] **NBLK-03**: Because the kill lives **inside the root watchdog**, it is un-stoppable from user space (no `systemctl --user stop` escape). *(B2 kill mechanism — SIGKILL vs `hyprctl dispatch closewindow` — settled in phase planning.)* *(Curated 2026-06-22: folded into the watchdog tick — see REVIEWS.md.)*
 
 ### Usage Tracking (Phase 9)
 
@@ -85,8 +83,8 @@ Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 8 
 
 ### Linux App (Phase 10 — omarchy TUI, was "Tauri Port")
 
-- [ ] **PORT-01**: The Linux app is a **terminal/TUI** app (not Tauri) — omarchy-native, command-driven, minimal aesthetic, themed live via **aether** for responsive colors that track the desktop theme.
-- [ ] **PORT-02**: The TUI is a **thin client over the one Python trust stack** — it reads state from `guard.json`/the guard and signs allowed edits by invoking the control-CLI via `sudo`/`pkexec` (ROOT-03). It does **not** re-implement signing, so Linux runs a **single HMAC implementation** (no second crypto stack to keep in byte-parity).
+- [x] **PORT-01**: The Linux app is a **terminal/TUI** app (not Tauri) — omarchy-native, command-driven, minimal aesthetic, themed live via **aether** for responsive colors that track the desktop theme.
+- [x] **PORT-02**: The TUI is a **thin client over the one Python trust stack** — it reads state from `guard.json`/the guard and signs allowed edits by invoking the control-CLI via `sudo`/`pkexec` (ROOT-03). It does **not** re-implement signing, so Linux runs a **single HMAC implementation** (no second crypto stack to keep in byte-parity).
 - [ ] **PORT-03**: The TUI never holds the signing key; the weekly quota is enforced by the control-CLI. *(Phase-planning choices: exact TUI stack; aether theming integration; B3 StayFree lock-down depth + optional `URLBlocklist` lands here or in P7.)* *(Curated 2026-06-22: Tauri → omarchy TUI thin-client — see REVIEWS.md.)*
 
 ## Backlog (future polish — not scheduled)
@@ -144,13 +142,13 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | ROOT-03 | Phase 7 | Complete |
 | ROOT-04 | Phase 7 | Complete |
 | CURF-01 | Phase 7.1 | Complete |
-| NBLK-01 | Phase 8 | Descoped (2026-06-23) |
-| NBLK-02 | Phase 8 | Descoped (2026-06-23) |
-| NBLK-03 | Phase 8 | Descoped (2026-06-23) |
+| NBLK-01 | Phase 8 | Complete |
+| NBLK-02 | Phase 8 | Complete |
+| NBLK-03 | Phase 8 | Complete |
 | TRAK-01 | Phase 9 | Pending |
 | TRAK-02 | Phase 9 | Pending |
-| PORT-01 | Phase 10 | Pending |
-| PORT-02 | Phase 10 | Pending |
+| PORT-01 | Phase 10 | Complete |
+| PORT-02 | Phase 10 | Complete |
 | PORT-03 | Phase 10 | Pending |
 
 **Coverage:**
