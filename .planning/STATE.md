@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Linux Port
-status: Awaiting next milestone
-stopped_at: Completed 10-02-PLAN.md
-last_updated: "2026-06-24T15:11:34.645Z"
-last_activity: 2026-06-24 — Milestone v2.0 completed and archived
+milestone: v2.1
+milestone_name: Desktop App
+status: planning
+last_updated: "2026-06-24T15:49:29.962Z"
+last_activity: 2026-06-24
 progress:
-  total_phases: 6
-  completed_phases: 5
-  total_plans: 15
-  completed_plans: 14
-  percent: 83
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-22 — opened v2.0 · Linux Port)
 
 ## Current Position
 
-Phase: Milestone v2.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-24 — Milestone v2.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-06-24 — Milestone v2.1 started
 
 ## Performance Metrics
 

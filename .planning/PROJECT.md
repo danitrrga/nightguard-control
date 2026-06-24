@@ -1,15 +1,27 @@
 # Nightguard Control
 
-**Current milestone: v2.0 · Linux Port** (active) — supersedes the shipped v1.0 (Windows).
+**Current milestone: v2.1 · Desktop App** (active) — v2.0 Linux Port shipped 2026-06-24.
+
+## Current Milestone: v2.1 Desktop App
+
+**Goal:** `ngtui` becomes a first-class omarchy desktop app — globally installed and launchable from the app manager + Waybar, not just `python -m ngtui` from a dev shell.
+
+**Target features:**
+- Global install via `uv tool install` exposing a real `ngtui` command (works outside the dev venv)
+- `.desktop` launcher that opens `ngtui` in a **floating terminal window** (Hyprland window rule + omarchy terminal `-e ngtui`), appearing in wofi/walker
+- **Waybar module** — a nightguard icon in the bar (optionally showing live lock/token status); **left-click opens** the TUI, **right-click** shows a status/actions menu
+- Custom own-brand icon installed into the hicolor theme (no borrowed logos)
+- Autostart / login pin option
+- Publish-ready packaging — AUR `PKGBUILD` + documented README install path (handles the trust-stack dependency)
 
 ## What This Is
 
-A Linux desktop app (Tauri v2) that is the **single sanctioned editor** for a
+A Linux **terminal (TUI) app** — omarchy-native, themed live via the desktop palette — that is the **single sanctioned editor** for a
 "nightguard" curfew configuration — a self-binding ("anti-me") discipline tool. It
 rate-limits how often you can *weaken* your own curfew, grants a small once-daily timed
 bypass, and pairs with a root-owned guard that **auto-reverts any out-of-band hand edits**
 to the config. The repo is the clean, publishable product; the author runs a personal
-instance wired into his LifeOS (see Context).
+instance wired into his LifeOS (see Context). *(v2.0 retired the Tauri/Rust/Windows stack; the app is now a Python Textual thin client over the one trust stack.)*
 
 > **v1.0 → v2.0:** v1.0 shipped Windows-only (DPAPI key, PowerShell guard, Scheduled
 > Task) and is preserved as a completed/tagged milestone. v2.0 ports the system to Linux
@@ -51,9 +63,16 @@ reverts. Everything else is secondary to that guarantee holding.
 - ✗ **Native-app blocking (NBLK-01/02/03)** — *descoped*. Built then reverted; the curfew hook was deemed sufficient enforcement. The `guard.curfew_verdict()` refactor survives and backs the TUI display.
 - ⏸ **Usage tracking via StayFree (TRAK-01/02)** — *parked*. StayFree records 0 sessions on Hyprland/Wayland (X11-only detection); live tracking is non-functional. Offline blocklist/config import is a future-phase candidate. (ActivityWatch was the earlier plan; also parked.)
 
-### Active (v3.0 — next milestone, to be scoped)
+### Active (v2.1 · Desktop App)
 
-- [ ] Define via `/gsd:new-milestone`. Candidates: offline StayFree blocklist import; Nyquist backfill for phases 6/7/7.1; browser-policy root-lock; ROOT-02 watchdog clock-tamper wording.
+- [ ] **Global install:** `uv tool install` exposes a real `ngtui` command that runs outside the dev venv (resolves the LifeOS trust stack via its defaults).
+- [ ] **App-launcher entry:** a `.desktop` file opens `ngtui` in a **floating terminal window** (Hyprland window rule + omarchy terminal `-e ngtui`); the app appears in wofi/walker.
+- [ ] **Waybar module:** a nightguard icon in the bar (optionally live lock/token status); **left-click** opens the TUI; **right-click** shows a status/actions menu.
+- [ ] **Custom brand icon:** an own-brand icon installed into the hicolor theme (no borrowed logos) so the launcher/Waybar shows it.
+- [ ] **Autostart / login pin:** optional login autostart or a pinned entry for the status surface.
+- [ ] **Publish-ready packaging:** an AUR `PKGBUILD` + a documented README install path that handles the Python trust-stack dependency for non-author installs.
+
+*Deferred from v2.0 (not in v2.1 unless pulled in): offline StayFree blocklist import; Nyquist backfill for phases 6/7/7.1; browser-policy root-lock; ROOT-02 watchdog wording.*
 
 ### Out of Scope
 
