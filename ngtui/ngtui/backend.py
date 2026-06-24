@@ -57,6 +57,11 @@ import ngcommon as ng  # noqa: E402  (import after sys.path bootstrap)
 import guard  # noqa: E402
 import nightguard_ctl as ctl  # noqa: E402
 
+# Re-export the signer's weekly-token constant so display modules never duplicate
+# the literal (WR-03): the token count shown in the confirm gate / meter is sourced
+# from the same value the signer charges and cannot drift from it.
+WEEKLY_TOKENS: int = ctl.WEEKLY_TOKENS
+
 _DEFAULT_TZ = "Europe/Amsterdam"
 
 

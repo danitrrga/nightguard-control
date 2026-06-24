@@ -37,8 +37,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import Footer, Header, Input, Label, Static
 
 from ngtui import backend, lineedit
-
-WEEKLY_TOKENS = 3
+from ngtui.backend import WEEKLY_TOKENS  # signer's constant (WR-03), never a local literal
 
 
 # --- pure copy helpers (headless-testable, load-bearing anti-impulse text) ----

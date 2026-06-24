@@ -24,8 +24,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
 from ngtui import backend
-
-WEEKLY_TOKENS = 3
+from ngtui.backend import WEEKLY_TOKENS  # signer's constant (WR-03), never a local literal
 
 # Verdict string -> (glyph, word, colour_role, caption). Glyph + word + colour are
 # always present together (UI-SPEC Accessibility). Colour role is a $-variable name.
