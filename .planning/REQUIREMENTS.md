@@ -80,8 +80,8 @@ Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 8 
 
 ### Usage Tracking (Phase 9)
 
-- [ ] **TRAK-01**: ActivityWatch is installed with `aw-watcher-window` + afk feeding `localhost:5600`.
-- [ ] **TRAK-02**: A sync script exports screen-time data into LifeOS, replacing StayFree desktop analytics.
+- [ ] **TRAK-01**: `stayfree-desktop` (AUR) is installed as the intended screen-time/analytics source on Linux; ActivityWatch is retired (parked idea, never deployed). **Spike caveat (D-09, 2026-06-24): StayFree records 0 sessions under Hyprland/Wayland** — its X11-only window detection sees neither native Wayland nor XWayland apps on this box, so live screen-time capture is effectively non-functional on Wayland. The durable value is config, not live usage (see TRAK-02).
+- [ ] **TRAK-02**: StayFree's local store is clean, offline-readable SQLite (`~/.config/StayFree/config.db`, `usage.db` — knex schema), not an opaque leveldb. Acceptable v1 for *usage* analytics = "view in StayFree's own UI" — but that is moot here because tracking is dead on Wayland (`usage.db.sessions` is empty). What **is** fully recoverable offline is the **blocklist/config**: `preferences/categories` (app/domain→category memberships), `app-groups` (brand→domains/apps), and exported `genericWebsiteLimits` (schedules + target IDs) all resolve without the cloud — usable to seed Nightguard's own enforcement. A live-usage scraper is moot (no data) and out of scope.
 
 ### Linux App (Phase 10 — omarchy TUI, was "Tauri Port")
 
