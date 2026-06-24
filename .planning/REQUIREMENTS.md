@@ -46,15 +46,15 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DESK-01 | — | Pending |
-| DESK-02 | — | Pending |
-| DESK-03 | — | Pending |
-| DESK-04 | — | Pending |
-| DESK-05 | — | Pending |
-| DESK-06 | — | Pending |
-| BAR-01 | — | Pending |
-| BAR-02 | — | Pending |
-| BAR-03 | — | Pending |
-| BAR-04 | — | Pending |
+| DESK-01 | Phase 11 | Pending |
+| DESK-02 | Phase 11 | Pending |
+| DESK-03 | Phase 12 | Pending |
+| DESK-04 | Phase 12 | Pending |
+| DESK-05 | Phase 13 | Pending |
+| DESK-06 | Phase 13 | Pending |
+| BAR-01 | Phase 12 | Pending |
+| BAR-02 | Phase 12 | Pending |
+| BAR-03 | Phase 12 | Pending |
+| BAR-04 | Phase 12 | Pending |
 
 *(Phase column filled by the roadmapper.)*

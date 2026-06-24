@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
 status: planning
-last_updated: "2026-06-24T15:49:29.962Z"
+last_updated: "2026-06-24T16:10:00.000Z"
 last_activity: 2026-06-24
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,17 +17,18 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-22 — opened v2.0 · Linux Port)
+See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts. *(v2.0: the wall is now root-backed; `sudo` is the past-the-impulse threshold.)*
-**Current focus:** Phase 10 — linux-app-omarchy-tui-was-tauri-port
+**Current focus:** Phase 11 — global-install-and-status-subcommand (v2.1 roadmap drafted, 3 phases)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started (roadmap drafted — 3 phases, 10/10 requirements mapped)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-24 — Milestone v2.1 started
+Status: Roadmap ready; awaiting `/gsd:plan-phase 11`
+Last activity: 2026-06-24 — v2.1 roadmap created (Phases 11–13)
+
 
 ## Performance Metrics
 
