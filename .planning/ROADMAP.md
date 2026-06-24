@@ -221,7 +221,7 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
   2. It shows lock status / countdown / token meter / grace and lets the user make edits, reading state from the Python guard/`guard.json` (never app-local optimism).
   3. Allowed edits are signed by invoking the control-CLI via `sudo`/`pkexec`; the app holds no key and re-implements no crypto.
 **Plans**: 3 plans
-  - [ ] 10-01-PLAN.md — Scaffold the ngtui Textual package + backend trust-stack seam (read/preview/commit) + Wave-0 inline-sudo spike (PORT-02, PORT-03)
+  - [x] 10-01-PLAN.md — Scaffold the ngtui Textual package + backend trust-stack seam (read/preview/commit) + Wave-0 inline-sudo spike (PORT-02, PORT-03)
   - [ ] 10-02-PLAN.md — Read-only StatusScreen (lock/countdown/token meter/grace/hmacs/ledger) + live omarchy theming (PORT-01, PORT-02)
   - [ ] 10-03-PLAN.md — EditScreen: single-key per-field line edits + anti-impulse tighten/loosen+cost preview + inline-sudo commit (PORT-01, PORT-02, PORT-03)
 **UI hint**: yes (TUI design + aether theme)
@@ -243,4 +243,4 @@ v2.0 critical path: 6 → 7 → 8 → 10 (8 folds into the P7 watchdog; 10 is th
 | 7. Root Integrity Wall | 2/2 | Complete   | 2026-06-22 |
 | 8. Native Blocker | 2/2 | Complete   | 2026-06-23 |
 | 9. ActivityWatch | 0/— | Parked (optional) | |
-| 10. Linux App (omarchy TUI) | 0/3 | Planned (TUI, not Tauri) | |
+| 10. Linux App (omarchy TUI) | 1/3 | In Progress|  |
