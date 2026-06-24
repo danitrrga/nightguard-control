@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7.1: Curfew Hook (Linux)** *(gap-closure)* - Wire guard.py as the Claude Code curfew hook so a `deny` verdict actually blocks sessions; the engine works but the Linux hook was never wired (planned 2026-06-23) (completed 2026-06-23)
 - [x] **Phase 8: Native Blocker** *(folded into the watchdog)* - Root watchdog tick kills blacklisted Hyprland window classes during curfew (≤60s; no separate service) (completed 2026-06-23)
 - [ ] **Phase 9: StayFree Desktop** *(supersedes ActivityWatch — re-scoped 2026-06-23)* - Install `stayfree-desktop` (AUR) as the primary app+website blocker + analytics; root watchdog gains a keep-alive supervisor so it cannot be quit; Phase 8 root kill retained as a root-owned backstop floor. Gated on a Hyprland/Wayland-blocking spike.
-- [ ] **Phase 10: Linux App (omarchy TUI)** - Terminal/TUI (not Tauri), aether-themed, thin client over the Python control-CLI
+- [x] **Phase 10: Linux App (omarchy TUI)** - Terminal/TUI (not Tauri), aether-themed, thin client over the Python control-CLI (completed 2026-06-24)
 
 ## Phase Details
 
@@ -223,7 +223,7 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
 **Plans**: 3 plans
   - [x] 10-01-PLAN.md — Scaffold the ngtui Textual package + backend trust-stack seam (read/preview/commit) + Wave-0 inline-sudo spike (PORT-02, PORT-03)
   - [x] 10-02-PLAN.md — Read-only StatusScreen (lock/countdown/token meter/grace/hmacs/ledger) + live omarchy theming (PORT-01, PORT-02)
-  - [ ] 10-03-PLAN.md — EditScreen: single-key per-field line edits + anti-impulse tighten/loosen+cost preview + inline-sudo commit (PORT-01, PORT-02, PORT-03)
+  - [x] 10-03-PLAN.md — EditScreen: single-key per-field line edits + anti-impulse tighten/loosen+cost preview + inline-sudo commit (PORT-01, PORT-02, PORT-03)
 **UI hint**: yes (TUI design + aether theme)
 
 ## Progress
@@ -243,4 +243,4 @@ v2.0 critical path: 6 → 7 → 8 → 10 (8 folds into the P7 watchdog; 10 is th
 | 7. Root Integrity Wall | 2/2 | Complete   | 2026-06-22 |
 | 8. Native Blocker | 2/2 | Complete   | 2026-06-23 |
 | 9. ActivityWatch | 0/— | Parked (optional) | |
-| 10. Linux App (omarchy TUI) | 2/3 | In Progress|  |
+| 10. Linux App (omarchy TUI) | 3/3 | Complete   | 2026-06-24 |

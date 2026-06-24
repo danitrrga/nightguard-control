@@ -85,7 +85,7 @@ Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 8 
 
 - [x] **PORT-01**: The Linux app is a **terminal/TUI** app (not Tauri) — omarchy-native, command-driven, minimal aesthetic, themed live via **aether** for responsive colors that track the desktop theme.
 - [x] **PORT-02**: The TUI is a **thin client over the one Python trust stack** — it reads state from `guard.json`/the guard and signs allowed edits by invoking the control-CLI via `sudo`/`pkexec` (ROOT-03). It does **not** re-implement signing, so Linux runs a **single HMAC implementation** (no second crypto stack to keep in byte-parity).
-- [ ] **PORT-03**: The TUI never holds the signing key; the weekly quota is enforced by the control-CLI. *(Phase-planning choices: exact TUI stack; aether theming integration; B3 StayFree lock-down depth + optional `URLBlocklist` lands here or in P7.)* *(Curated 2026-06-22: Tauri → omarchy TUI thin-client — see REVIEWS.md.)*
+- [x] **PORT-03**: The TUI never holds the signing key; the weekly quota is enforced by the control-CLI. *(Phase-planning choices: exact TUI stack; aether theming integration; B3 StayFree lock-down depth + optional `URLBlocklist` lands here or in P7.)* *(Curated 2026-06-22: Tauri → omarchy TUI thin-client — see REVIEWS.md.)*
 
 ## Backlog (future polish — not scheduled)
 
@@ -149,7 +149,7 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | TRAK-02 | Phase 9 | Pending |
 | PORT-01 | Phase 10 | Complete |
 | PORT-02 | Phase 10 | Complete |
-| PORT-03 | Phase 10 | Pending |
+| PORT-03 | Phase 10 | Complete |
 
 **Coverage:**
 - v1.0 requirements: 23 total — all mapped, shipped.
