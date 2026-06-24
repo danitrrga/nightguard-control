@@ -88,8 +88,13 @@ class NightguardApp(App):
         Replaces the StatusScreen with a freshly-composed one so every value (verdict,
         token meter, grace, hmacs, ledger) is re-read from the guard/state — never an
         optimistic local update.
+
+        The binding is app-level, so `r` is reachable from the EditScreen too. Always
+        pop the current screen before pushing a fresh StatusScreen (WR-02) so a refresh
+        never stacks a StatusScreen on top of an EditScreen — otherwise Escape from the
+        new status would fall back to a stale edit surface instead of leaving cleanly.
         """
-        if isinstance(self.screen, StatusScreen):
+        if self.screen_stack:
             self.pop_screen()
         self.push_screen(StatusScreen())
 
