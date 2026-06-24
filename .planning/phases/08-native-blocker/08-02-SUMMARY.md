@@ -48,6 +48,8 @@ completed: 2026-06-23
 
 # Phase 8 Plan 02: Native-App Kill in the Root Watchdog Tick Summary
 
+> **⚠ DESCOPED / REVERTED 2026-06-24 — this work is NOT in the live stack.** The native-app kill described below was implemented as documented, then reverted from the live LifeOS stack (`3e64c81`, 2026-06-23). The current `nightguard_watchdog.py` has no kill logic. NBLK-01/02/03 are descoped (see `v2.0-MILESTONE-AUDIT.md` and REQUIREMENTS.md) — the curfew hook (CURF-01) was deemed sufficient enforcement. NOTE: plan 08-01's `guard.curfew_verdict()` refactor (referenced below as the kill gate) DID survive and is committed to LifeOS (`a523c43`); it now backs the Phase-10 TUI status display rather than a kill. The summary below is retained as a historical record of the reverted implementation.
+
 **Folded a verdict-gated, root->user Hyprland native-app kill into `nightguard_watchdog.py`'s `tick()` — each ≤60s tick during an active curfew lock enumerates the user's Hyprland clients via a `runuser` bridge, SIGKILLs blacklisted (steam/discord) windows by deduped pid, logs each kill, and fires one Spanish-butler toast — gated on the same key-less `guard.curfew_verdict` decide() uses, suppressed outside curfew / during grace / on any verdict error, and un-stoppable from user space because it lives in the root system service.**
 
 ## Performance

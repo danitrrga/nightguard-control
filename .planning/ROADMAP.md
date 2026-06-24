@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Config Cleanup** - Retire the dead Windows `uwp`/`package_id` entry; redefine targets as `browser_extension` + `native_apps` (completed 2026-06-22)
 - [x] **Phase 7: Root Integrity Wall** *(highest value)* - Root-own key + sanctioned config; watchdog → systemd system service; sign via `sudo`→control-CLI (socket helper deleted) (completed 2026-06-22)
 - [x] **Phase 7.1: Curfew Hook (Linux)** *(gap-closure)* - Wire guard.py as the Claude Code curfew hook so a `deny` verdict actually blocks sessions; the engine works but the Linux hook was never wired (planned 2026-06-23) (completed 2026-06-23)
-- [x] **Phase 8: Native Blocker** *(folded into the watchdog)* - Root watchdog tick kills blacklisted Hyprland window classes during curfew (≤60s; no separate service) (completed 2026-06-23)
+- [~] **Phase 8: Native Blocker** *(DESCOPED 2026-06-24 — native-kill reverted)* - The watchdog kill was built then reverted from the live stack (LifeOS `3e64c81`); NBLK-01/02/03 are descoped (curfew hook deemed sufficient). The plan-08-01 `curfew_verdict()` refactor survives and now serves the Phase-10 TUI. (built+reverted 2026-06-23; descoped 2026-06-24)
 - [ ] **Phase 9: StayFree Desktop** *(supersedes ActivityWatch — re-scoped 2026-06-23)* - Install `stayfree-desktop` (AUR) as the primary app+website blocker + analytics; root watchdog gains a keep-alive supervisor so it cannot be quit; Phase 8 root kill retained as a root-owned backstop floor. Gated on a Hyprland/Wayland-blocking spike.
 - [x] **Phase 10: Linux App (omarchy TUI)** - Terminal/TUI (not Tauri), aether-themed, thin client over the Python control-CLI (completed 2026-06-24)
 
@@ -179,8 +179,10 @@ crypto stack → **omarchy TUI thin-client** over the single Python stack.
   - [x] 07.1-02-PLAN.md — Port `nightguard_adapter.py` (verdict→exit-2 + allowlist + butler messages, fail-closed) + add `/plan` to `config.yaml` via the signed control-CLI (CURF-01 core)
   - [x] 07.1-03-PLAN.md — Full-D-04 generator wiring: idempotent global `UserPromptSubmit` hook into `~/.claude/settings.json` + end-to-end enforcement verification (CURF-01)
 
-### Phase 8: Native Blocker *(folded into the root watchdog)*
-**Goal**: During an active curfew lock, blacklisted native apps (Steam, Discord, games) are killed/closed by the **root watchdog tick itself** — no separate service. Curated to live inside P7's watchdog so it is un-stoppable from user space.
+### Phase 8: Native Blocker *(DESCOPED 2026-06-24 — native-kill reverted from the live stack)*
+> **Descope note (2026-06-24):** the native-app kill (plan 08-02) was implemented then reverted (LifeOS `3e64c81`); the live root watchdog has no kill logic. NBLK-01/02/03 are descoped — the Claude Code curfew hook (CURF-01) was deemed sufficient enforcement. Plan 08-01's `curfew_verdict()` refactor survives (committed to LifeOS `a523c43`) and now backs the Phase-10 TUI status display. See `v2.0-MILESTONE-AUDIT.md`.
+
+**Goal** *(original, not achieved)*: During an active curfew lock, blacklisted native apps (Steam, Discord, games) are killed/closed by the **root watchdog tick itself** — no separate service. Curated to live inside P7's watchdog so it is un-stoppable from user space.
 **Depends on**: Phase 6 (`native_apps` blacklist) + Phase 7 (the root watchdog this extends)
 **Requirements**: NBLK-01, NBLK-02, NBLK-03
 **Curation note (2026-06-22)**: B2-context — built as a tick extension, not a socket2 listener. ≤60s leakage accepted for v1; an instant socket2 listener is a deferred "accelerate" step only if 60s proves inadequate. Kill mechanism (SIGKILL vs `hyprctl dispatch closewindow`) settled in planning.

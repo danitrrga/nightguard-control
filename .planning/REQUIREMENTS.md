@@ -72,9 +72,11 @@ Phases 6–10 continue the v1.0 phase numbering. Critical path: **6 → 7 → 8 
 
 ### Native Blocker (Phase 8 — folded into the watchdog)
 
-- [x] **NBLK-01**: The **root watchdog tick** (the same systemd *system* service from ROOT-02), during an active curfew lock, enumerates Hyprland clients and kills/closes windows whose class is on the `native_apps` blacklist — **no separate service**.
-- [x] **NBLK-02**: Killing is curfew- and grace-aware (reuses the watchdog's lock/grace state). Cadence = the watchdog tick (**≤60s leakage accepted for v1**; an instant socket2 listener is a deferred "accelerate" step, built only if 60s proves inadequate with evidence).
-- [x] **NBLK-03**: Because the kill lives **inside the root watchdog**, it is un-stoppable from user space (no `systemctl --user stop` escape). *(B2 kill mechanism — SIGKILL vs `hyprctl dispatch closewindow` — settled in phase planning.)* *(Curated 2026-06-22: folded into the watchdog tick — see REVIEWS.md.)*
+> **DESCOPED 2026-06-24 (NBLK-01/02/03):** the native-app kill was implemented then reverted from the live stack (LifeOS `3e64c81`); the current root watchdog has no kill logic. The curfew hook (CURF-01) was deemed sufficient enforcement. The `guard.curfew_verdict()` refactor from plan 08-01 survives (committed to LifeOS as `a523c43`) and now serves the Phase-10 TUI display, but nothing consumes it as a kill gate. See `v2.0-MILESTONE-AUDIT.md`.
+
+- [ ] **NBLK-01** *(DESCOPED — not implemented)*: The **root watchdog tick** (the same systemd *system* service from ROOT-02), during an active curfew lock, enumerates Hyprland clients and kills/closes windows whose class is on the `native_apps` blacklist — **no separate service**.
+- [ ] **NBLK-02** *(DESCOPED — kill reverted; curfew_verdict gate survives but no kill consumes it)*: Killing is curfew- and grace-aware (reuses the watchdog's lock/grace state). Cadence = the watchdog tick (**≤60s leakage accepted for v1**; an instant socket2 listener is a deferred "accelerate" step, built only if 60s proves inadequate with evidence).
+- [ ] **NBLK-03** *(DESCOPED — no kill exists to be unstoppable)*: Because the kill lives **inside the root watchdog**, it is un-stoppable from user space (no `systemctl --user stop` escape). *(B2 kill mechanism — SIGKILL vs `hyprctl dispatch closewindow` — settled in phase planning.)* *(Curated 2026-06-22: folded into the watchdog tick — see REVIEWS.md.)*
 
 ### Usage Tracking (Phase 9)
 
@@ -142,11 +144,11 @@ Phase mapping finalized by the roadmapper (matches the research-converged layere
 | ROOT-03 | Phase 7 | Complete |
 | ROOT-04 | Phase 7 | Complete |
 | CURF-01 | Phase 7.1 | Complete |
-| NBLK-01 | Phase 8 | Complete |
-| NBLK-02 | Phase 8 | Complete |
-| NBLK-03 | Phase 8 | Complete |
-| TRAK-01 | Phase 9 | Pending |
-| TRAK-02 | Phase 9 | Pending |
+| NBLK-01 | Phase 8 | Descoped (native-kill reverted; LifeOS 3e64c81) |
+| NBLK-02 | Phase 8 | Descoped (kill reverted; curfew_verdict survives for TUI) |
+| NBLK-03 | Phase 8 | Descoped (no kill exists) |
+| TRAK-01 | Phase 9 | Parked (StayFree tracking dead on Wayland — spike failed) |
+| TRAK-02 | Phase 9 | Parked (offline config recovery viable; future-phase candidate) |
 | PORT-01 | Phase 10 | Complete |
 | PORT-02 | Phase 10 | Complete |
 | PORT-03 | Phase 10 | Complete |
