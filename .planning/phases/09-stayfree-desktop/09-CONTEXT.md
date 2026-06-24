@@ -21,6 +21,20 @@ having the **root watchdog keep it alive** (respawn if the user kills it).
 > native-kill. D-02/D-05/D-06 below are revised accordingly. On spike-FAIL there is **no
 > native app-kill** — accepted, consistent with the 18:59 descope.
 
+> **RE-OPENED / RESOLVED 2026-06-24 (D-09 spike result = FAIL).** The gating spike ran on this
+> box (Hyprland/Wayland) and returned **FAIL**: `stayfree-desktop` records **0 sessions**
+> (`usage.db` empty, Dashboard `0s`) — it cannot track and therefore cannot block native *or*
+> XWayland apps. See `09-NOTES-spike-verdict.md` (`## Verdict: FAIL` + `## Fallback resolution`).
+> Resolution per D-09: **StayFree = analytics-only** (and degraded — no live data on Wayland);
+> the **keep-alive supervisor (09-02) is NOT built** and `nightguard_watchdog.py` is unchanged;
+> there is **no native-app hard guarantee** in this phase (hard floor = the curfew layer). The
+> in-scope items below (install + keep-alive) are therefore superseded by the FAIL branch (09-03).
+> **Correction to "Out of scope" / `<investigation>` below:** syncing StayFree's blocklist was
+> marked *proven infeasible*, but that was about the browser-extension cloud list. The **desktop
+> app's** `config.db` exposes the full blocklist **offline** (categories + brands + schedules) —
+> so a list-import into Nightguard's own enforcement IS feasible. That is a **NEW future phase**,
+> deferred for scoping, not re-opened here. Existing decisions below are preserved as history.
+
 **In scope:**
 - Install + configure `stayfree-desktop` as the primary blocker.
 - A **keep-alive supervisor** folded into the existing root `nightguard_watchdog.py` `tick()`
