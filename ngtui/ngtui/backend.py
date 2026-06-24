@@ -9,6 +9,7 @@ and is never called here (PORT-03).
 from __future__ import annotations
 
 import os
+import pathlib
 import subprocess
 import sys
 import tempfile
@@ -16,10 +17,36 @@ import tempfile
 # --- trust-stack import bootstrap (env-overridable for portability) ----------
 # The published product must not hardcode the author's machine as the only path;
 # the author's LifeOS instance sets NIGHTGUARD_STACK_DIR / NIGHTGUARD_DIR.
-STACK_DIR = os.environ.get(
-    "NIGHTGUARD_STACK_DIR",
-    "/home/danitrrga/dev/Projects/LifeOS/scripts/nightguard",
-)
+#
+# Security (CR-02): STACK_DIR feeds BOTH sys.path (which ngcommon/guard/
+# nightguard_ctl get imported) AND argv[2] of the sudo commit call. A poisoned
+# NIGHTGUARD_STACK_DIR (malicious .bashrc / parent-process injection) could
+# redirect the import chain and the script handed to sudo. We therefore resolve
+# the env value to an absolute real path and PIN it: the directory must actually
+# contain nightguard_ctl.py, otherwise we fail closed with a clear error rather
+# than silently importing — and sudo-running — a substituted stack. The legit
+# LifeOS override still works because it points at a dir that holds the script.
+_DEFAULT_STACK_DIR = "/home/danitrrga/dev/Projects/LifeOS/scripts/nightguard"
+
+
+def _resolve_stack_dir() -> str:
+    raw = os.environ.get("NIGHTGUARD_STACK_DIR", _DEFAULT_STACK_DIR)
+    resolved = pathlib.Path(raw).resolve()
+    ctl_path = resolved / "nightguard_ctl.py"
+    if not ctl_path.is_file():
+        raise RuntimeError(
+            f"NIGHTGUARD_STACK_DIR resolves to {str(resolved)!r}, which does not "
+            "contain nightguard_ctl.py. Refusing to import or sudo-run a stack from "
+            "an unverified path. Set NIGHTGUARD_STACK_DIR to the real nightguard "
+            "scripts directory (or unset it to use the default)."
+        )
+    return str(resolved)
+
+
+STACK_DIR = _resolve_stack_dir()
+# Absolute, validated path to the signer CLI — used as argv[2] in the sudo call
+# so the path handed to sudo can never diverge from the pinned STACK_DIR.
+CTL_SCRIPT = str(pathlib.Path(STACK_DIR) / "nightguard_ctl.py")
 os.environ.setdefault(
     "NIGHTGUARD_DIR", "/home/danitrrga/dev/Projects/LifeOS/nightguard"
 )
@@ -118,7 +145,8 @@ def commit(proposed_text: str) -> dict:
             [
                 "sudo",
                 "/usr/bin/python3",
-                os.path.join(STACK_DIR, "nightguard_ctl.py"),
+                CTL_SCRIPT,  # validated absolute path (CR-02), identical to the
+                #              pinned STACK_DIR/nightguard_ctl.py sudoers shape.
                 "commit",
                 "--from",
                 tmp,
