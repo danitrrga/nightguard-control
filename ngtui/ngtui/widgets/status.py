@@ -277,9 +277,24 @@ class StatusScreen(Screen):
         return f"curfew until {end}" if end else ""
 
     def _grace_text(self, state: dict) -> str:
+        """GRACE row text. Only claims "active" while the window is still open (WR-05).
+
+        The signer writes ``state["grace"]`` when grace is activated and leaves it in
+        place (with ``window_end``) until the next daily reset, so a truthy dict does
+        NOT imply an open window. Cross-reference ``window_end`` against now(UTC); once
+        it is in the past the window is used, not active.
+        """
         grace = state.get("grace")
         if not grace:
             return "grace unavailable today"
+        end = grace.get("window_end")
+        if end is not None:
+            try:
+                target = datetime.fromtimestamp(float(end), tz=timezone.utc)
+                if target <= datetime.now(tz=timezone.utc):
+                    return "grace used today"
+            except (ValueError, TypeError, OSError):
+                pass
         return "◐ grace active"
 
     def _integrity_text(self, state: dict) -> str:

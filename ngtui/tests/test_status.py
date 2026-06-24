@@ -7,7 +7,14 @@ that point at the live stack are set in conftest.py before collection.
 """
 from __future__ import annotations
 
-from ngtui.widgets.status import ledger_rows, token_meter, verdict_display
+import time
+
+from ngtui.widgets.status import (
+    StatusScreen,
+    ledger_rows,
+    token_meter,
+    verdict_display,
+)
 
 
 def test_verdict_display_maps_every_state():
@@ -64,3 +71,27 @@ def test_ledger_rows_empty_and_populated():
     assert "curfew.allow_commands" in rows[0]
     # 1782211095 == 2026-06-23 16:38 UTC — the date prefix is present.
     assert rows[0].startswith("2026-06-23")
+
+
+# --- WR-05: _grace_text reflects whether the grace window is still open --------
+
+
+def test_grace_text_unavailable_when_no_grace_dict():
+    """Empty/absent state["grace"] → grace was never activated today."""
+    assert StatusScreen()._grace_text({}) == "grace unavailable today"
+
+
+def test_grace_text_active_only_while_window_open():
+    """window_end in the future → active; in the past → used, not active (WR-05)."""
+    screen = StatusScreen()
+    future = {"grace": {"window_end": time.time() + 3600}}
+    past = {"grace": {"window_end": time.time() - 3600}}
+    assert screen._grace_text(future) == "◐ grace active"
+    assert screen._grace_text(past) == "grace used today"
+
+
+def test_grace_text_falls_back_to_active_on_unparseable_end():
+    """A grace dict without a usable window_end keeps the prior (advisory) behaviour."""
+    screen = StatusScreen()
+    assert screen._grace_text({"grace": {"foo": 1}}) == "◐ grace active"
+    assert screen._grace_text({"grace": {"window_end": "nonsense"}}) == "◐ grace active"
