@@ -1,7 +1,8 @@
 ---
 phase: 10
 slug: linux-app-omarchy-tui-was-tauri-port
-status: draft
+status: approved
+reviewed_at: 2026-06-24
 shadcn_initialized: false
 preset: none
 created: 2026-06-24
