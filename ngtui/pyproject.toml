@@ -14,3 +14,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ngtui"]
+
+[tool.pytest.ini_options]
+# Resolve the in-tree ``ngtui`` package without an editable install so the
+# headless unit tests (theme/status pure helpers) run from the repo root.
+pythonpath = ["."]
+testpaths = ["tests"]
