@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Linux Port
-status: ready_to_plan
-stopped_at: Phase 09 complete (2/3) — ready to discuss Phase 10
-last_updated: 2026-06-24T07:23:24.234Z
+status: planning
+stopped_at: Phase 10 context gathered
+last_updated: "2026-06-24T07:49:19.382Z"
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 12
-  completed_plans: 31
+  completed_plans: 11
   percent: 67
 ---
 
@@ -173,7 +173,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-23T17:40:43.233Z
-Stopped at: Phase 9 re-scoped (ActivityWatch -> StayFree Desktop); context gathered
-Resume file: .planning/phases/09-stayfree-desktop/09-CONTEXT.md
+Last session: 2026-06-24T07:49:19.362Z
+Stopped at: Phase 10 context gathered
+Resume file: .planning/phases/10-linux-app-omarchy-tui-was-tauri-port/10-CONTEXT.md
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
