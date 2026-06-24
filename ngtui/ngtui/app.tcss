@@ -106,3 +106,66 @@ Screen {
 .hint {
     content-align: center middle;
 }
+
+/* --- EditScreen: editable field list + anti-impulse preview --- */
+#edit-fields {
+    height: 1fr;
+    border: round $surface-lighten-1;
+    padding: 0 1;
+    margin: 1 1 0 1;
+}
+
+.edit-row {
+    height: 1;
+}
+
+.edit-label {
+    width: 42;                        /* fixed key column for aligned values */
+    color: $text;
+}
+
+/* Focused field: reverse video + accent label (accent reserved-list, focus). */
+.edit-label.focused {
+    text-style: reverse bold;
+    color: $accent;
+}
+
+.edit-value {
+    width: 1fr;
+    color: $text;
+}
+
+/* The per-field anti-impulse preview line (glyph + word + colour). */
+#edit-preview {
+    margin: 1 1 0 1;
+    text-style: bold;
+}
+#edit-preview.accent     { color: $accent; }
+#edit-preview.warning    { color: $warning; }
+#edit-preview.error      { color: $error; }
+#edit-preview.text-muted { color: $text-muted; }
+
+#edit-status {
+    margin: 1 1 0 1;
+}
+#edit-status.success    { color: $success; }
+#edit-status.error      { color: $error; }
+#edit-status.warning    { color: $warning; }
+#edit-status.text-muted { color: $text-muted; }
+
+/* --- modal boxes (confirm gate, inline input, discard) --- */
+#confirm-box, #inline-box {
+    width: auto;
+    height: auto;
+    border: round $primary;          /* accent reserved: the deliberate-friction gate */
+    padding: 1 2;
+    margin: 2 4;
+    background: $surface;
+}
+
+#confirm-line {
+    text-style: bold;
+}
+#confirm-line.accent  { color: $accent; }
+#confirm-line.warning { color: $warning; }
+#confirm-line.error   { color: $error; }

@@ -16,6 +16,7 @@ from __future__ import annotations
 from textual.app import App
 
 from ngtui.theme import ThemeWatch, load_omarchy_theme
+from ngtui.widgets.edit import EditScreen
 from ngtui.widgets.status import StatusScreen
 
 
@@ -97,5 +98,10 @@ class NightguardApp(App):
             self.screen.toggle_ledger()
 
     def action_edit(self) -> None:
-        """Stub — the EditScreen (anti-impulse preview + commit) is wired in 10-03."""
-        self.bell()
+        """Open the EditScreen — the anti-impulse preview + inline-sudo commit (10-03).
+
+        The `e` binding pushes the editable surface (D-09); each staged edit shows its
+        tighten/loosen direction + token cost BEFORE any sudo prompt (D-06/D-07), and
+        commit runs inside `App.suspend()` so sudo's prompt is inline (D-08).
+        """
+        self.push_screen(EditScreen())
