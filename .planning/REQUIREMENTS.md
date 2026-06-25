@@ -12,7 +12,7 @@
 
 ### Desktop App — install, launcher, packaging (DESK)
 
-- [ ] **DESK-01**: `uv tool install` exposes a global `ngtui` command that runs outside the dev venv and resolves the LifeOS trust stack from a clean login shell (no dev-shell env). *(keystone)*
+- [x] **DESK-01**: `uv tool install` exposes a global `ngtui` command that runs outside the dev venv and resolves the LifeOS trust stack from a clean login shell (no dev-shell env). *(keystone)*
 - [x] **DESK-02**: A new **key-less** `ngtui status --json` subcommand emits Waybar-shaped JSON (`text`/`tooltip`/`class`) from `backend.live_verdict`/`tokens_left` — never reads the key, never needs root.
 - [ ] **DESK-03**: A `.desktop` launcher opens `ngtui` in a **floating terminal window** (`xdg-terminal-exec … -e ngtui`, `Terminal=false`) and appears in wofi/walker; floating is enforced by a Hyprland windowrule on a stable app-id/class, and the inline-`sudo` commit still works because it runs in a real terminal.
 - [ ] **DESK-04**: A custom own-brand icon (no borrowed logos) is installed into the hicolor theme and shown by the launcher and Waybar.
@@ -46,7 +46,7 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DESK-01 | Phase 11 | Pending |
+| DESK-01 | Phase 11 | Complete |
 | DESK-02 | Phase 11 | Complete |
 | DESK-03 | Phase 12 | Pending |
 | DESK-04 | Phase 12 | Pending |

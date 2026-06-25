@@ -62,7 +62,7 @@ Run `/gsd:new-milestone` to scope the next milestone. Carried-forward candidates
   5. Flag resolved: `guard.json` + the sanctioned config are confirmed **user-readable** from the isolated-venv process (not 0600 root-only), and `_DEFAULT_STACK_DIR` resolves from a clean login shell — else the whole Waybar/status path is blocked.
 **Plans**: 3 plans
 - [x] 11-01-PLAN.md — pure key-less status builder (`status.py`) + cache-only verdict seam + Wave-0 headless tests
-- [ ] 11-02-PLAN.md — `__main__.py` argv router: `status --json` emitter (fail-closed, exit 0) + TTY guard
+- [x] 11-02-PLAN.md — `__main__.py` argv router: `status --json` emitter (fail-closed, exit 0) + TTY guard
 - [ ] 11-03-PLAN.md — manual checkpoints: `uv tool install` clean-env resolution (SC-1/SC-5) + live token commit (SC-4)
 
 ### Phase 12: Launcher + Waybar Presence
@@ -105,6 +105,6 @@ Run `/gsd:new-milestone` to scope the next milestone. Carried-forward candidates
 | 8. Native Blocker | v2.0 | 2/2 | Descoped (reverted) | 2026-06-24 |
 | 9. StayFree Desktop | v2.0 | 2/3 | Parked (spike failed) | — |
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
-| 11. Global Install + Status Subcommand | v2.1 | 1/3 | In Progress|  |
+| 11. Global Install + Status Subcommand | v2.1 | 2/3 | In Progress|  |
 | 12. Launcher + Waybar Presence | v2.1 | 0/? | Not started | — |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |
