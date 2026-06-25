@@ -63,11 +63,15 @@ reverts. Everything else is secondary to that guarantee holding.
 - ✗ **Native-app blocking (NBLK-01/02/03)** — *descoped*. Built then reverted; the curfew hook was deemed sufficient enforcement. The `guard.curfew_verdict()` refactor survives and backs the TUI display.
 - ⏸ **Usage tracking via StayFree (TRAK-01/02)** — *parked*. StayFree records 0 sessions on Hyprland/Wayland (X11-only detection); live tracking is non-functional. Offline blocklist/config import is a future-phase candidate. (ActivityWatch was the earlier plan; also parked.)
 
+### Validated (v2.1 · Desktop App)
+
+- ✓ **Global install (DESK-01):** `uv tool install --python 3.14 .` exposes a real `ngtui` on the bare login PATH (`~/.local/bin/ngtui`) that resolves the LifeOS trust stack under a scrubbed `env -i` via backend hardcoded defaults; the inline-`sudo` PTY commit survives the global-install interpreter (live token-spending commit human-verified). — Phase 11
+- ✓ **Key-less `ngtui status --json` (DESK-02):** the installed shim emits a single jq-valid Waybar object key-lessly (no HMAC/key read on the status path), fails closed to `{"text":"○ —","class":"unavailable"}` exit 0 on a bad stack — the Waybar-module substrate. — Phase 11
+
 ### Active (v2.1 · Desktop App)
 
-- [ ] **Global install:** `uv tool install` exposes a real `ngtui` command that runs outside the dev venv (resolves the LifeOS trust stack via its defaults).
 - [ ] **App-launcher entry:** a `.desktop` file opens `ngtui` in a **floating terminal window** (Hyprland window rule + omarchy terminal `-e ngtui`); the app appears in wofi/walker.
-- [ ] **Waybar module:** a nightguard icon in the bar (optionally live lock/token status); **left-click** opens the TUI; **right-click** shows a status/actions menu.
+- [ ] **Waybar module:** a nightguard icon in the bar (consumes the shipped `ngtui status --json`); **left-click** opens the TUI; **right-click** shows a status/actions menu.
 - [ ] **Custom brand icon:** an own-brand icon installed into the hicolor theme (no borrowed logos) so the launcher/Waybar shows it.
 - [ ] **Autostart / login pin:** optional login autostart or a pinned entry for the status surface.
 - [ ] **Publish-ready packaging:** an AUR `PKGBUILD` + a documented README install path that handles the Python trust-stack dependency for non-author installs.
@@ -125,6 +129,7 @@ reverts. Everything else is secondary to that guarantee holding.
 | **[v2.0] Keep StayFree as the browser layer** (force-installed Chromium extension) | No native Linux StayFree client, but the extension runs on Linux; don't rebuild URL-blocklist machinery | ⚠️ v2.0 — browser-extension layer kept, but StayFree *tracking* is dead on Wayland (TRAK parked) |
 | **[v2.0] ActivityWatch for usage tracking** (later re-scoped to StayFree desktop) | Linux-native usage analytics | ⏸ v2.0 — PARKED (StayFree spike failed on Wayland; offline config-import a future-phase candidate) |
 | **[v2.0] curfew_verdict() committed standalone to LifeOS** (2026-06-24, a523c43) | Phase-10 TUI's `live_verdict` depends on it; decoupled it from the reverted native-kill so a git restore can't break the TUI | ✅ v2.0 |
+| **[v2.1] `ngtui status --json` is key-less + non-blocking** (uses `cache_only_verdict`, not `live_verdict`) | A Waybar poll must never read the root key, never block ~4s on a cold timecache, and never crash the bar — fail closed to `unavailable`, always exit 0 | ✅ v2.1 (DESK-02, Phase 11) |
 
 ## Evolution
 
@@ -151,7 +156,10 @@ This document evolves at phase transitions and milestone boundaries.
 
 **To run the TUI:** `cd ngtui && env NIGHTGUARD_STACK_DIR=/home/danitrrga/dev/Projects/LifeOS/scripts/nightguard NIGHTGUARD_DIR=/home/danitrrga/dev/Projects/LifeOS/nightguard .venv/bin/python -m ngtui`
 
+**v2.1 progress:** Phase 11 (Global Install + Status Subcommand) complete — `ngtui` is now a globally-installed `uv tool` command resolving the trust stack from a bare login shell, with a key-less `ngtui status --json` Waybar substrate. Next: Phase 12 (Launcher + Waybar Presence).
+
 ---
-*Last updated: 2026-06-24 after v2.0 · Linux Port milestone (shipped). The Windows DPAPI/PowerShell/Tauri stack is retired; v2.0 runs on a single Python trust stack + an omarchy TUI.*
+*Last updated: 2026-06-25 after Phase 11 (Global Install + Status Subcommand). v2.1 · Desktop App in progress (1/3 phases).*
+*Prior: 2026-06-24 after v2.0 · Linux Port milestone (shipped). The Windows DPAPI/PowerShell/Tauri stack is retired; v2.0 runs on a single Python trust stack + an omarchy TUI.*
 *Prior: 2026-06-23 — Phase 7.1 (Curfew Hook) complete; curfew now blocks Claude Code sessions (CURF-01).*
 *Prior: 2026-06-22 — opened milestone v2.0 · Linux Port (ingested from `docs/linux-port-brief.md`).*
