@@ -11,8 +11,14 @@ vars that point at the live stack are set in conftest.py before collection.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+import subprocess
+import sys
 import time
+
+import pytest
 
 from ngtui import backend
 from ngtui import status
@@ -129,3 +135,141 @@ def test_status_never_reads_key(ng_data_dir, read_key_explodes):
     backend.tokens_left()
     # If we got here, zero read_key calls fired (the fixture would have raised).
     assert isinstance(state, dict)
+
+
+# --- Plan 02: the __main__ router (fail-closed / exit-0 / TTY / no-textual) ----
+#
+# These exercise the argv front-controller in ``ngtui.__main__`` (``_status`` and
+# ``_run_tui``). The load-bearing contract: ``status`` ALWAYS emits one JSON line
+# and exits 0 — a poisoned stack import, an arbitrary backend error, anything —
+# degrades to the fixed ``unavailable`` object (SC-3); and the head-less path
+# never pulls ``textual`` into the process (the import cost lives on the TUI
+# branch only, behind a TTY guard).
+
+
+def _capture_status(argv):
+    """Run ``__main__._status(argv)`` capturing stdout; return (rc, stdout)."""
+    from ngtui import __main__ as cli
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = cli._status(argv)
+    return rc, buf.getvalue()
+
+
+@pytest.fixture
+def _restore_backend_module():
+    """Restore a healthy ``ngtui.backend`` after a test evicts it from sys.modules.
+
+    ``test_status_fail_closed_on_bad_stack`` deletes ``ngtui.backend`` so the
+    in-try import re-runs against a poisoned ``NIGHTGUARD_STACK_DIR``. Without this
+    finalizer the evicted/half-imported module would leak into later tests.
+    """
+    saved = sys.modules.get("ngtui.backend")
+    try:
+        yield
+    finally:
+        if saved is not None:
+            sys.modules["ngtui.backend"] = saved
+        else:  # pragma: no cover - backend is always imported by this module
+            sys.modules.pop("ngtui.backend", None)
+        import ngtui.backend  # noqa: F401  (re-import a clean module for later tests)
+
+
+def test_status_fail_closed_on_bad_stack(tmp_path, monkeypatch, _restore_backend_module):
+    """A poisoned NIGHTGUARD_STACK_DIR makes the in-try import raise -> unavailable.
+
+    The import of ``ngtui.backend`` lives INSIDE ``_status``'s try (Pitfall 2), so
+    a ``RuntimeError`` raised at *import* (the stack dir lacks nightguard_ctl.py)
+    degrades to the fixed object and STILL exits 0 — never a traceback.
+    """
+    # tmp_path has no nightguard_ctl.py -> _resolve_stack_dir raises at import.
+    monkeypatch.setenv("NIGHTGUARD_STACK_DIR", str(tmp_path))
+    # Evict so the in-try `import ngtui.backend` re-executes the bootstrap.
+    monkeypatch.delitem(sys.modules, "ngtui.backend", raising=False)
+
+    rc, out = _capture_status(["--json"])
+
+    assert rc == 0
+    assert out.count("\n") == 1
+    obj = json.loads(out)
+    assert obj == {"text": "○ —", "class": "unavailable"}
+
+
+def test_status_exit_zero_on_arbitrary_error(ng_data_dir, monkeypatch):
+    """ANY backend error on the read path -> unavailable, exit 0 (broad-except)."""
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("simulated read failure")
+
+    monkeypatch.setattr(backend, "read_state", _boom)
+
+    rc, out = _capture_status(["--json"])
+
+    assert rc == 0
+    assert json.loads(out) == {"text": "○ —", "class": "unavailable"}
+
+
+def test_status_jq_valid_single_line(ng_data_dir_outside):
+    """On a healthy stack, status emits exactly one jq-valid {text,class,...} line."""
+    rc, out = _capture_status(["--json"])
+
+    assert rc == 0
+    assert out.count("\n") == 1  # single line, one trailing newline
+    obj = json.loads(out)  # jq-valid by construction
+    assert {"text", "class"} <= set(obj.keys())
+    # A healthy read never degrades to the except-branch object.
+    assert obj["class"] != "unavailable"
+
+
+def test_tui_requires_tty(monkeypatch):
+    """Bare ``ngtui`` with no TTY fails loudly BEFORE importing textual (Pitfall 4)."""
+    from ngtui import __main__ as cli
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    # Poison the lazy app import: if the guard fired first, this never runs.
+    monkeypatch.setitem(
+        sys.modules,
+        "ngtui.app",
+        _ExplodingModule("ngtui.app imported before the TTY guard fired"),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        cli._run_tui()
+
+    assert exc.value.code != 0  # loud, non-zero — never a silent escape-code spew
+
+
+def test_status_does_not_import_textual():
+    """The status path must not pull ``textual`` into sys.modules (head-less).
+
+    Run in a fresh subprocess so import pollution from earlier tests (which may
+    have imported textual) cannot mask a regression.
+    """
+    prog = (
+        "import sys, io, contextlib\n"
+        "from ngtui import __main__ as cli\n"
+        "buf = io.StringIO()\n"
+        "with contextlib.redirect_stdout(buf):\n"
+        "    rc = cli._status(['--json'])\n"
+        "assert rc == 0, rc\n"
+        "assert 'textual' not in sys.modules, 'textual was imported on the status path'\n"
+        "print('OK')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", prog],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    assert "OK" in result.stdout
+
+
+class _ExplodingModule:
+    """A stand-in module object whose any attribute access raises (import guard)."""
+
+    def __init__(self, message: str) -> None:
+        self._message = message
+
+    def __getattr__(self, _name):  # pragma: no cover - only hit on a guard regression
+        raise AssertionError(self._message)
