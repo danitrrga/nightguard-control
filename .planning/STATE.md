@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
 status: executing
-stopped_at: Completed 11-01-PLAN.md (status core, TDD green; 62 headless tests pass)
+stopped_at: Completed 11-03-PLAN.md (install/PTY boundary human-verified GREEN; SC-1/SC-3/SC-4/SC-5 PASS)
 last_updated: "2026-06-25T17:37:06.702Z"
 last_activity: 2026-06-25
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 0
+  completed_plans: 3
+  percent: 33
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 
 ## Current Position
 
-Phase: 11 (global-install-status-subcommand) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
+Phase: 11 (global-install-status-subcommand) — COMPLETE (3/3)
+Plan: 3 of 3 (done)
+Status: Phase complete — ready for Phase 12 (Launcher + Waybar Presence)
 Last activity: 2026-06-25
 
 ## Performance Metrics
@@ -80,6 +80,7 @@ Last activity: 2026-06-25
 | Phase 10 P10-03 | ~35min | 3 tasks | 6 files |
 | Phase 11 P01 | 43 | 2 tasks | 4 files |
 | Phase 11 P02 | 2 | 2 tasks | 2 files |
+| Phase 11 P03 | ~1min | 2 tasks (human-verify) | 0 files |
 
 ## Accumulated Context
 
@@ -128,6 +129,7 @@ Recent decisions affecting current work:
 - [Phase 10]: 10-02: read-surface logic is pure-function-first (verdict_display/token_meter/ledger_rows) so it unit-tests headless
 - [Phase 10, 10-03]: EditScreen ships (PORT-01/02/03). lineedit.py = format-preserving per-field LINE editors (set_scalar/toggle_bool/list_add/list_remove) over config TEXT — indentation-tracked dotted-path resolution disambiguates same-named leaf keys (blocking.native_apps.enabled vs browser_extension.enabled); preserves indent + quote style + trailing comments; round-trips via the live ngcommon.yaml_load; NO YAML emitter (a re-emit would change the bytes the signer HMACs → the guard reverts the user's own commit, T-10-09). Proposed config = replay staged ops on backend.sanctioned_text() so every transform starts from the signed bytes. EditScreen edits the D-09 set via single-key nav (j/k/Enter/Space/c/u/Escape); each staged edit renders tighten/loosen direction + token cost from the signer's OWN backend.preview_change (classify_change/quota_decide) BEFORE auth (D-06/D-07, never recomputed). ConfirmScreen: y is the ONLY commit trigger; 0-token loosen disables commit with "available again Monday"; commit runs inside App.suspend() so sudo is inline (D-08); post-commit re-reads sanctioned state (no optimism); result_line is returncode-keyed (stderr stays on the TTY — intentional UI-SPEC deviation from verbatim-REFUSED). Pure copy helpers preview_line/confirm_copy/result_line unit-tested headless (exact UI-SPEC strings + $-var roles). Task-3 human-verify APPROVED LIVE. PHASE 10 COMPLETE (3/3).
 - [Phase 11]: [Phase 11, 11-01]: ngtui status core is a pure stdlib status.py — _VERDICT_CLASS maps the 5 guard verdicts to same-name Waybar classes with dict.get(verdict,'locked') fail-closed (unknown -> locked, never unavailable/outside_curfew); UNAVAILABLE={text:'○ —',class:'unavailable'} is reserved for Plan 02's import/read except branch (empty data is 'locked', Pitfall 3); backend.cache_only_verdict neutralizes guard._sntp/_http_time (instant-raise, restored in finally) so a cold timecache falls to offline_blocked in <0.2s, never a ~4s block; key-less and zero new deps.
+- [Phase 11]: [Phase 11, 11-03]: install/PTY boundary HUMAN-VERIFIED GREEN on the live box (no code change). SC-1: `uv tool install --python 3.14 .` puts a real `ngtui` on the bare login PATH (`~/.local/bin/ngtui`) that resolves the LifeOS stack under a scrubbed `env -i` (backend.py hardcoded defaults). DESK-02/SC-3: installed-shim `ngtui status --json` emits a single jq-valid Waybar object with a real verdict class, fails closed to `{"text":"○ —","class":"unavailable"}` exit 0 on a poisoned NIGHTGUARD_STACK_DIR. SC-5 GREEN: guard.json + sanctioned config `root:root 0644` (readable), `.guardkey` `root:root 0600` (denied) — isolated venv never reads the key. SC-4: a REAL loosen-with-token commit succeeded end-to-end from the installed shim, inline-`sudo` prompt appeared in-terminal (App.suspend() released a genuine PTY despite the global-install interpreter), token decremented, guard did NOT revert the sanctioned commit. DESK-01/DESK-02 satisfied; Phase 11 COMPLETE (3/3).
 - [Phase ?]: [Phase 11, 11-02]: ngtui/__main__ is a bare-argv front-controller — `ngtui status [--json]` routes to head-less _status (import ngtui.backend INSIDE the try so a poisoned NIGHTGUARD_STACK_DIR RuntimeError-at-import degrades to UNAVAILABLE; verdict via cache_only_verdict not live_verdict; one json.dumps line; ALWAYS exit 0). Bare ngtui -> _run_tui behind a sys.stdin.isatty() SystemExit(2) guard on the TUI branch ONLY, with ngtui.app/textual imported lazily so status never pays textual's cost. 67 headless tests green.
 
 ### Pending Todos
@@ -164,7 +166,7 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-25T17:36:50.389Z
-Stopped at: Completed 11-01-PLAN.md (status core, TDD green; 62 headless tests pass)
+Stopped at: Completed 11-03-PLAN.md (install/PTY boundary human-verified GREEN; Phase 11 complete 3/3)
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
 

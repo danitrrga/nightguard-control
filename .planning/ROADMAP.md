@@ -40,7 +40,7 @@
 
 Package the existing `ngtui` Textual TUI as a first-class omarchy desktop app — a global `ngtui` command + key-less status subcommand, a floating-terminal launcher with a brand icon, a Waybar `custom/nightguard` module, optional autostart, and an AUR-ready PKGBUILD. Packaging/integration only — no new editing features. Every surface honors the two load-bearing invariants: the inline-`sudo` commit needs a real PTY, and the bar/launcher is *a window, never a lever*.
 
-- [ ] Phase 11: Global Install + Status Subcommand (3 plans) — `uv tool install` exposes a global `ngtui`; key-less `ngtui status --json` emits Waybar JSON — DESK-01, DESK-02
+- [x] Phase 11: Global Install + Status Subcommand (3 plans) — `uv tool install` exposes a global `ngtui`; key-less `ngtui status --json` emits Waybar JSON — DESK-01, DESK-02
 - [ ] Phase 12: Launcher + Waybar Presence — floating-terminal `.desktop` + brand icon + Hyprland windowrule; `custom/nightguard` bar module (left-click open, right-click read-only menu, signal refresh) — DESK-03, DESK-04, BAR-01..04
 - [ ] Phase 13: Autostart + AUR Packaging — optional login autostart (module, not window) + publish-ready PKGBUILD/README that declares (never vendors) the trust stack — DESK-05, DESK-06
 
@@ -63,7 +63,7 @@ Run `/gsd:new-milestone` to scope the next milestone. Carried-forward candidates
 **Plans**: 3 plans
 - [x] 11-01-PLAN.md — pure key-less status builder (`status.py`) + cache-only verdict seam + Wave-0 headless tests
 - [x] 11-02-PLAN.md — `__main__.py` argv router: `status --json` emitter (fail-closed, exit 0) + TTY guard
-- [ ] 11-03-PLAN.md — manual checkpoints: `uv tool install` clean-env resolution (SC-1/SC-5) + live token commit (SC-4)
+- [x] 11-03-PLAN.md — manual checkpoints: `uv tool install` clean-env resolution (SC-1/SC-5) + live token commit (SC-4) — human-verified GREEN
 
 ### Phase 12: Launcher + Waybar Presence
 **Goal**: Nightguard appears as a first-class omarchy surface — a brand-iconed `.desktop` entry that opens the TUI in a floating terminal, and a `custom/nightguard` Waybar module showing live curfew status with left-click-open / right-click-read-only-menu and instant post-commit refresh.
@@ -105,6 +105,6 @@ Run `/gsd:new-milestone` to scope the next milestone. Carried-forward candidates
 | 8. Native Blocker | v2.0 | 2/2 | Descoped (reverted) | 2026-06-24 |
 | 9. StayFree Desktop | v2.0 | 2/3 | Parked (spike failed) | — |
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
-| 11. Global Install + Status Subcommand | v2.1 | 2/3 | In Progress|  |
+| 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete | 2026-06-25 |
 | 12. Launcher + Waybar Presence | v2.1 | 0/? | Not started | — |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |
