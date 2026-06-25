@@ -2,13 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
-status: planning
-last_updated: "2026-06-24T16:10:00.000Z"
-last_activity: 2026-06-24
+status: executing
+stopped_at: Session resumed at v2.1 milestone boundary; proceeding to plan Phase 11 (Global Install + Status Subcommand)
+last_updated: "2026-06-25T16:47:37.069Z"
+last_activity: 2026-06-25 -- Phase 11 planning complete
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
@@ -26,9 +27,8 @@ See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 
 Phase: Not started (roadmap drafted — 3 phases, 10/10 requirements mapped)
 Plan: —
-Status: Roadmap ready; awaiting `/gsd:plan-phase 11`
-Last activity: 2026-06-24 — v2.1 roadmap created (Phases 11–13)
-
+Status: Ready to execute
+Last activity: 2026-06-25 -- Phase 11 planning complete
 
 ## Performance Metrics
 
@@ -159,8 +159,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-24T11:08:35.046Z
-Stopped at: Completed 10-02-PLAN.md
+Last session: 2026-06-25
+Stopped at: Session resumed at v2.1 milestone boundary; proceeding to plan Phase 11 (Global Install + Status Subcommand)
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
 
