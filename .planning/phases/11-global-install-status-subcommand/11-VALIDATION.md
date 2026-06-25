@@ -40,13 +40,13 @@ created: 2026-06-25
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 11-xx | — | 0 | DESK-02 | T-V4 | status path makes ZERO `read_key()` calls (key-less) | unit | `pytest tests/test_status.py::test_status_never_reads_key -x` (monkeypatch `read_key`→raise; assert no raise) | ❌ W0 | ⬜ pending |
-| 11-xx | — | 0 | DESK-02 | — | `status --json` emits single-line, `jq`-valid `{text,tooltip,class}` | unit | `pytest tests/test_status.py::test_status_json_shape -x` | ❌ W0 | ⬜ pending |
-| 11-xx | — | 0 | DESK-02/SC-3 | — | import/stack failure → `{"text":"○ —","class":"unavailable"}` exit 0 | unit | `pytest tests/test_status.py::test_status_fail_closed_on_bad_stack -x` (`NIGHTGUARD_STACK_DIR=/nonexistent`) | ❌ W0 | ⬜ pending |
-| 11-xx | — | 0 | SC-3 | — | empty data dir → `locked` class, NOT `unavailable` | unit | `pytest tests/test_status.py::test_empty_data_is_locked_not_unavailable -x` | ❌ W0 | ⬜ pending |
-| 11-xx | — | 0 | DESK-02 | — | verdict→class map covers all 5 verdict strings | unit | `pytest tests/test_status.py::test_verdict_class_map -x` | ❌ W0 | ⬜ pending |
-| 11-xx | — | 0 | DESK-02 | T-DoS | `status` performs no synchronous network query (fast on cold cache) | unit | `pytest tests/test_status.py::test_status_no_blocking_ntp -x` (assert no `_sntp`/`_http_time` call) | ❌ W0 | ⬜ pending |
-| 11-xx | — | 0 | SC-4 | — | bare `ngtui` with no TTY fails loudly (exit≠0) | unit | `pytest tests/test_status.py::test_tui_requires_tty -x` (monkeypatch `sys.stdin.isatty`→False; assert `SystemExit`) | ❌ W0 | ⬜ pending |
+| 11-xx | — | 0 | DESK-02 | T-V4 | status path makes ZERO `read_key()` calls (key-less) | unit | `pytest tests/test_status_cli.py::test_status_never_reads_key -x` (monkeypatch `read_key`→raise; assert no raise) | ❌ W0 | ⬜ pending |
+| 11-xx | — | 0 | DESK-02 | — | `status --json` emits single-line, `jq`-valid `{text,tooltip,class}` | unit | `pytest tests/test_status_cli.py::test_status_json_shape -x` | ❌ W0 | ⬜ pending |
+| 11-xx | — | 0 | DESK-02/SC-3 | — | import/stack failure → `{"text":"○ —","class":"unavailable"}` exit 0 | unit | `pytest tests/test_status_cli.py::test_status_fail_closed_on_bad_stack -x` (`NIGHTGUARD_STACK_DIR=/nonexistent`) | ❌ W0 | ⬜ pending |
+| 11-xx | — | 0 | SC-3 | — | empty data dir → `locked` class, NOT `unavailable` | unit | `pytest tests/test_status_cli.py::test_empty_data_is_locked_not_unavailable -x` | ❌ W0 | ⬜ pending |
+| 11-xx | — | 0 | DESK-02 | — | verdict→class map covers all 5 verdict strings | unit | `pytest tests/test_status_cli.py::test_verdict_class_map -x` | ❌ W0 | ⬜ pending |
+| 11-xx | — | 0 | DESK-02 | T-DoS | `status` performs no synchronous network query (fast on cold cache) | unit | `pytest tests/test_status_cli.py::test_status_no_blocking_ntp -x` (assert no `_sntp`/`_http_time` call) | ❌ W0 | ⬜ pending |
+| 11-xx | — | 0 | SC-4 | — | bare `ngtui` with no TTY fails loudly (exit≠0) | unit | `pytest tests/test_status_cli.py::test_tui_requires_tty -x` (monkeypatch `sys.stdin.isatty`→False; assert `SystemExit`) | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 *Task IDs are placeholders — the planner assigns final `{phase}-{plan}-{task}` IDs.*
@@ -55,7 +55,7 @@ created: 2026-06-25
 
 ## Wave 0 Requirements
 
-- [ ] `ngtui/tests/test_status.py` — covers DESK-02, SC-2, SC-3, SC-4 (the new subcommand + TTY guard). The status handler core (verdict/tokens → JSON shape, and the fail-closed wrapper) must be a **pure, importable function** unit-testable without a TTY or subprocess (mirrors Phase 10's `verdict_display`/`token_meter` pure-helper pattern).
+- [ ] `ngtui/tests/test_status_cli.py` — covers DESK-02, SC-2, SC-3, SC-4 (the new subcommand + TTY guard). Distinct from the existing Phase-10 `tests/test_status.py` (naming-collision avoidance per PATTERNS.md). The status handler core (verdict/tokens → JSON shape, and the fail-closed wrapper) must be a **pure, importable function** in a NEW `ngtui/ngtui/status.py` (not the existing `widgets/status.py`), unit-testable without a TTY or subprocess (mirrors Phase 10's `verdict_display`/`token_meter` pure-helper pattern).
 - [ ] `ngtui/tests/conftest.py` — fixtures for a temp `NIGHTGUARD_DIR` with crafted `guard.json`/`config.sanctioned.yaml` (locked / grace / outside / empty), plus a `read_key`-explodes monkeypatch fixture.
 - [ ] Framework install: already present (`.venv` has pytest; `ngtui/tests/` exists with prior Phase 10 headless tests).
 
@@ -74,7 +74,7 @@ created: 2026-06-25
 
 - [ ] All tasks have `<automated>` verify or Wave 0 dependencies
 - [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references (`tests/test_status.py`, `tests/conftest.py`)
+- [ ] Wave 0 covers all MISSING references (`tests/test_status_cli.py`, `tests/conftest.py`)
 - [ ] No watch-mode flags
 - [ ] Feedback latency < 5s
 - [ ] `nyquist_compliant: true` set in frontmatter
