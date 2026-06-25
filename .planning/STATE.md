@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
 status: executing
-stopped_at: Session resumed at v2.1 milestone boundary; proceeding to plan Phase 11 (Global Install + Status Subcommand)
-last_updated: "2026-06-25T16:47:37.069Z"
-last_activity: 2026-06-25 -- Phase 11 planning complete
+stopped_at: Completed 11-01-PLAN.md (status core, TDD green; 62 headless tests pass)
+last_updated: "2026-06-25T17:32:31.195Z"
+last_activity: 2026-06-25
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts. *(v2.0: the wall is now root-backed; `sudo` is the past-the-impulse threshold.)*
-**Current focus:** Phase 11 — global-install-and-status-subcommand (v2.1 roadmap drafted, 3 phases)
+**Current focus:** Phase 11 — global-install-status-subcommand
 
 ## Current Position
 
-Phase: Not started (roadmap drafted — 3 phases, 10/10 requirements mapped)
-Plan: —
+Phase: 11 (global-install-status-subcommand) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-06-25 -- Phase 11 planning complete
+Last activity: 2026-06-25
 
 ## Performance Metrics
 
@@ -78,6 +78,7 @@ Last activity: 2026-06-25 -- Phase 11 planning complete
 | Phase 08 P02 | 14 | 2 tasks | 1 files |
 | Phase 10 P10-02 | ~20min | 3 tasks | 9 files |
 | Phase 10 P10-03 | ~35min | 3 tasks | 6 files |
+| Phase 11 P01 | 43 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -125,6 +126,7 @@ Recent decisions affecting current work:
 - [Phase 10]: 10-02: omarchy-native theming — colours from live colors.toml, no fixed brand hex; running TUI repaints on an mtime poll (D-04/D-05)
 - [Phase 10]: 10-02: read-surface logic is pure-function-first (verdict_display/token_meter/ledger_rows) so it unit-tests headless
 - [Phase 10, 10-03]: EditScreen ships (PORT-01/02/03). lineedit.py = format-preserving per-field LINE editors (set_scalar/toggle_bool/list_add/list_remove) over config TEXT — indentation-tracked dotted-path resolution disambiguates same-named leaf keys (blocking.native_apps.enabled vs browser_extension.enabled); preserves indent + quote style + trailing comments; round-trips via the live ngcommon.yaml_load; NO YAML emitter (a re-emit would change the bytes the signer HMACs → the guard reverts the user's own commit, T-10-09). Proposed config = replay staged ops on backend.sanctioned_text() so every transform starts from the signed bytes. EditScreen edits the D-09 set via single-key nav (j/k/Enter/Space/c/u/Escape); each staged edit renders tighten/loosen direction + token cost from the signer's OWN backend.preview_change (classify_change/quota_decide) BEFORE auth (D-06/D-07, never recomputed). ConfirmScreen: y is the ONLY commit trigger; 0-token loosen disables commit with "available again Monday"; commit runs inside App.suspend() so sudo is inline (D-08); post-commit re-reads sanctioned state (no optimism); result_line is returncode-keyed (stderr stays on the TTY — intentional UI-SPEC deviation from verbatim-REFUSED). Pure copy helpers preview_line/confirm_copy/result_line unit-tested headless (exact UI-SPEC strings + $-var roles). Task-3 human-verify APPROVED LIVE. PHASE 10 COMPLETE (3/3).
+- [Phase 11]: [Phase 11, 11-01]: ngtui status core is a pure stdlib status.py — _VERDICT_CLASS maps the 5 guard verdicts to same-name Waybar classes with dict.get(verdict,'locked') fail-closed (unknown -> locked, never unavailable/outside_curfew); UNAVAILABLE={text:'○ —',class:'unavailable'} is reserved for Plan 02's import/read except branch (empty data is 'locked', Pitfall 3); backend.cache_only_verdict neutralizes guard._sntp/_http_time (instant-raise, restored in finally) so a cold timecache falls to offline_blocked in <0.2s, never a ~4s block; key-less and zero new deps.
 
 ### Pending Todos
 
@@ -159,8 +161,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-25
-Stopped at: Session resumed at v2.1 milestone boundary; proceeding to plan Phase 11 (Global Install + Status Subcommand)
+Last session: 2026-06-25T17:32:31.189Z
+Stopped at: Completed 11-01-PLAN.md (status core, TDD green; 62 headless tests pass)
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
 
