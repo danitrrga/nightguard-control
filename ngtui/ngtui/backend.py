@@ -106,6 +106,42 @@ def live_verdict(cfg: dict, state: dict) -> str:
     return guard.curfew_verdict(cfg, state)
 
 
+def cache_only_verdict(cfg: dict, state: dict) -> str:
+    """Resolve the lock verdict WITHOUT ever issuing a synchronous network query.
+
+    The status read path (DESK-02 / Pitfall 1, T-11-04) must never hang the
+    Waybar poll on a cold ``.timecache``: the guard's ``true_unix()`` falls
+    through a cold cache to ``_sntp`` (2s) then ``_http_time`` (2s) — a ~4s block.
+    We neutralize that by swapping both for instant-raising stubs for the
+    duration of THIS call, so a cold cache falls straight through to
+    ``(None, "offline")`` and ``curfew_verdict`` yields the fail-closed
+    ``"offline_blocked"`` instead of blocking. A WARM cache still resolves
+    normally (the stubs are only reached on the cold fall-through), so a
+    freshly-validated machine shows its real locked/open/grace verdict.
+
+    The neutralization lives entirely here — the root LifeOS ``guard.py`` trust
+    stack is never edited. The stubs are restored in a ``finally`` so a later
+    ``decide()`` (which legitimately wants live time) is unaffected.
+
+    Returns one of the five ``live_verdict`` strings. Key-less, sudo-less,
+    non-blocking by construction.
+    """
+    saved_sntp = guard._sntp
+    saved_http = guard._http_time
+
+    def _no_network(*_a, **_k):
+        # Instant fail so true_unix()'s for-loop falls through to "offline".
+        raise OSError("cache_only_verdict: synchronous network query suppressed")
+
+    guard._sntp = _no_network
+    guard._http_time = _no_network
+    try:
+        return guard.curfew_verdict(cfg, state)
+    finally:
+        guard._sntp = saved_sntp
+        guard._http_time = saved_http
+
+
 def preview_change(proposed_text: str) -> dict:
     """Direction labels + quota decision for a proposed edit.
 
