@@ -105,6 +105,6 @@ Run `/gsd:new-milestone` to scope the next milestone. Carried-forward candidates
 | 8. Native Blocker | v2.0 | 2/2 | Descoped (reverted) | 2026-06-24 |
 | 9. StayFree Desktop | v2.0 | 2/3 | Parked (spike failed) | — |
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
-| 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete | 2026-06-25 |
+| 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete    | 2026-06-25 |
 | 12. Launcher + Waybar Presence | v2.1 | 0/? | Not started | — |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |
