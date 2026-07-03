@@ -42,16 +42,19 @@ install path (DESK-06 → Phase 13); any new curfew-editing capability; granting
 <decisions>
 ## Implementation Decisions
 
-### Brand icon (DESK-04) — ⚠️ UNCONFIRMED (user was away; confirm before planning)
-- **D-01 (default, unconfirmed):** Concept = **shield with a crescent-moon cut-out** —
-  most legible as a monochrome glyph at 16px and most directly on-brand ("guards the
-  night"). Alternatives the user may prefer: *crescent + padlock/keyhole* (leans into the
-  "self-binding / locked curfew" framing) or an *abstract geometric mark* (cleaner, less
-  literal, blends with omarchy's flat aesthetic). **Own-brand only — no borrowed logos.**
-- **D-02 (default, unconfirmed):** Claude **authors a real hand-coded SVG source now** and
+### Brand icon (DESK-04) — ✅ CONFIRMED by user 2026-07-03
+- **D-01 (CONFIRMED):** Concept = **a crescent moon on a rounded-square app tile.**
+  - **Background:** a rounded-corner square app-icon tile (the standard app-icon shape).
+  - **Foreground (moon, on top):** a **crescent** formed by a full circle with a **smaller
+    circular cut removed from its bottom part** (big circle minus an offset smaller circle
+    → crescent). The moon sits on top of the rounded tile.
+  - Must still read at 16px monochrome first; the rounded tile + crescent silhouette is the
+    at-a-glance mark. **Own-brand only — no borrowed logos.** Exact geometry (tile radius,
+    circle radii, cut offset, Moonlit-Indigo fills) is iterable — nail concrete coordinates
+    in the icon-authoring task; user can tweak after.
+- **D-02 (CONFIRMED):** Claude **authors a real hand-coded SVG source now** (per D-01) and
   rasterizes the hicolor PNG sizes (16→512) this phase — a real final icon, iterable later,
-  no external tool/asset dependency and no blocking on user-supplied art. If the user would
-  rather supply the art, this phase reduces to wiring the install path.
+  no external tool/asset dependency.
 - **D-03:** Icon installs into the user hicolor theme
   (`~/.local/share/icons/hicolor/<size>/apps/org.omarchy.ngtui.png` + a scalable SVG),
   `.desktop` `Icon=org.omarchy.ngtui`; install refreshes caches
