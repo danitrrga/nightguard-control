@@ -75,7 +75,14 @@ Run `/gsd:new-milestone` to scope the next milestone. Carried-forward candidates
   3. The `custom/nightguard` Waybar module shows live lock-glyph + tokens colored by state, sourced key-lessly from `ngtui status --json`, non-blocking (no `sudo`/NTP in the exec) and fail-closed to `unavailable` on error.
   4. Left-click opens/focuses the floating TUI; right-click shows a **read-only** status/actions menu (verdict, tokens left, grace remaining, "open status"/"open editor") with **no curfew-loosening action** — and a real loosen-with-token commit still succeeds end-to-end after launching from the bar (PTY path intact).
   5. The bar refreshes **instantly** after a commit via a signal push (a free `SIGRTMIN+N` slot confirmed in the live Waybar config and wired into `backend.commit()`), not just on the poll interval.
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+- [ ] 12-01-PLAN.md — [BLOCKING] (re)install `ngtui` on PATH + green baseline (prereq)
+- [ ] 12-02-PLAN.md — BAR-04: success-only `SIGRTMIN+11` bar refresh in `backend.commit()` (TDD)
+- [ ] 12-03-PLAN.md — DESK-04: hand-authored crescent-on-tile brand SVG
+- [ ] 12-04-PLAN.md — DESK-03/BAR-01/02/03: `.desktop` + windowrule + module + style + `ngtui-menu` artifacts
+- [ ] 12-05-PLAN.md — D-07: idempotent backup-first installer + fixture idempotency test
+- [ ] 12-06-PLAN.md — live install + phase-gate human-verify (float/icon/bar/menu/commit-refresh)
 **UI hint**: yes
 
 ### Phase 13: Autostart + AUR Packaging
@@ -106,5 +113,5 @@ Run `/gsd:new-milestone` to scope the next milestone. Carried-forward candidates
 | 9. StayFree Desktop | v2.0 | 2/3 | Parked (spike failed) | — |
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
 | 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete    | 2026-06-25 |
-| 12. Launcher + Waybar Presence | v2.1 | 0/? | Not started | — |
+| 12. Launcher + Waybar Presence | v2.1 | 0/6 | Planned | — |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |
