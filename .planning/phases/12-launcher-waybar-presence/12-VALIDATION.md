@@ -1,10 +1,11 @@
 ---
 phase: 12
 slug: launcher-waybar-presence
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-03
+approved: 2026-07-03
 ---
 
 # Phase 12 — Validation Strategy
@@ -80,11 +81,15 @@ created: 2026-07-03
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references (`test_backend_signal.py`, `test_installer_idempotent.py`, static greps)
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 10s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (`test_backend_signal.py`, `test_installer_idempotent.py`, static greps)
+- [x] No watch-mode flags
+- [x] Feedback latency < 10s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+> `wave_0_complete` stays `false` until execution: the Wave 0 test files
+> (`test_backend_signal.py`, `test_installer_idempotent.py`) are authored RED-first
+> during Plans 02/05, not at plan time. The executor flips it after Wave 0 runs.
+
+**Approval:** approved 2026-07-03 (plan-checker: 0 blockers; strategy satisfied by plans)

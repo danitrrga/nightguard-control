@@ -499,21 +499,23 @@ Security enforcement is enabled (no `security_enforcement:false` in config). Thi
 | `ngtui` resolves to a rogue binary on PATH | Tampering/EoP | `ngtui` from the pinned `uv tool` install; `backend.py` already pins `NIGHTGUARD_STACK_DIR` and refuses an unverified stack (CR-02, existing) |
 | Window-title spoofing to dodge the float rule | Spoofing | Match on the stable `app_id` (`class`), never `title` (SC-1 invariant) |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Waybar reload without a full restart**
+> All three are low-risk execution-time checks with documented fallbacks; each chosen recommendation is carried into a plan (Plans 04/05/06). None blocks goal achievement.
+
+1. **Waybar reload without a full restart** — **RESOLVED** (→ Plan 06 Task 1 ships the full-restart fallback).
    - What we know: `pkill -SIGUSR2 waybar` reloads Waybar's config; the live config sets `reload_style_on_change:true` (style hot-reloads). Waybar is running (pid confirmed).
    - What's unclear: whether SIGUSR2 cleanly picks up a *newly added module* (vs only re-reading existing ones) on this Waybar build, or whether a full `omarchy-restart-waybar`/respawn is needed.
-   - Recommendation: schedule an execution-time check — after merge, `pkill -SIGUSR2 waybar` and confirm the module renders; if not, fall to a full restart (uwsm autostart respawns waybar). Low risk.
+   - Recommendation (adopted): schedule an execution-time check — after merge, `pkill -SIGUSR2 waybar` and confirm the module renders; if not, fall to a full restart (uwsm autostart respawns waybar). Low risk.
 
-2. **`tag +floating-window` vs explicit float rule (Pattern 2)**
+2. **`tag +floating-window` vs explicit float rule (Pattern 2)** — **RESOLVED** (→ Plan 04 ships the explicit 3-line rule).
    - What we know: omarchy floats all `org.omarchy.*` TUIs via the `floating-window` tag (875×600), but `org.omarchy.ngtui` isn't in that list.
    - What's unclear: whether a personal-config `tag +floating-window` rule (defined after the sourced default rules) reliably inherits the earlier `float/center/size` tag-rules under Hyprland's evaluation order.
-   - Recommendation: ship the **explicit 3-line** rule (order-independent, self-contained). Optionally test the tag one-liner as a nicety; treat as execution-time.
+   - Recommendation (adopted): ship the **explicit 3-line** rule (order-independent, self-contained). Optionally test the tag one-liner as a nicety; treat as execution-time.
 
-3. **Chosen `modules-*` position for `custom/nightguard`**
+3. **Chosen `modules-*` position for `custom/nightguard`** — **RESOLVED** (→ Plan 05 inserts into `modules-center` after `clock`).
    - What we know: any of left/center/right works; center groups the info modules (clock, update, weather).
-   - Recommendation: author preference — default to inserting into `modules-center` after `clock`. Not blocking; make it a one-line installer constant.
+   - Recommendation (adopted): author preference — default to inserting into `modules-center` after `clock`. Not blocking; a one-line installer constant.
 
 ## Assumptions Log
 
