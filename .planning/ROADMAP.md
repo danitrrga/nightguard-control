@@ -51,50 +51,69 @@ Run `/gsd:new-milestone` to scope the next milestone. Carried-forward candidates
 ## Phase Details
 
 ### Phase 11: Global Install + Status Subcommand
+
 **Goal**: `ngtui` becomes a globally-installed command that resolves the LifeOS trust stack from a bare login shell, and exposes a new key-less `ngtui status --json` subcommand that emits Waybar-shaped JSON — the keystone substrate every later phase stands on.
 **Depends on**: Phase 10 (the shipped `ngtui` TUI + `backend.py` read seam)
 **Requirements**: DESK-01, DESK-02
 **Success Criteria** (what must be TRUE):
+
   1. `uv tool install --python 3.14 .` puts a real `ngtui` on `PATH`; the installed shim (not `python -m ngtui`) launches the TUI from a clean login shell with NO `NIGHTGUARD_*` dev-shell env, resolving the LifeOS stack via `backend.py` defaults.
   2. `ngtui status --json` prints a single-line, `jq`-valid Waybar object (`text`/`tooltip`/`class`) sourced key-lessly from `backend.live_verdict`/`tokens_left` — it never reads the `.guardkey`, never computes an HMAC, never calls `sudo`, and never prompts.
   3. The status reader fails closed: any stack/read error emits `{"text":"○ —","class":"unavailable"}` and exits 0 (never blocks or crashes the eventual bar).
   4. A real loosen-with-token commit still succeeds end-to-end from the installed `ngtui` (the inline-`sudo` PTY path survives the global-install interpreter/env change); a `sys.stdin.isatty()` startup check fails loudly when run without a TTY.
   5. Flag resolved: `guard.json` + the sanctioned config are confirmed **user-readable** from the isolated-venv process (not 0600 root-only), and `_DEFAULT_STACK_DIR` resolves from a clean login shell — else the whole Waybar/status path is blocked.
+
 **Plans**: 3 plans
+
 - [x] 11-01-PLAN.md — pure key-less status builder (`status.py`) + cache-only verdict seam + Wave-0 headless tests
 - [x] 11-02-PLAN.md — `__main__.py` argv router: `status --json` emitter (fail-closed, exit 0) + TTY guard
 - [x] 11-03-PLAN.md — manual checkpoints: `uv tool install` clean-env resolution (SC-1/SC-5) + live token commit (SC-4) — human-verified GREEN
 
 ### Phase 12: Launcher + Waybar Presence
+
 **Goal**: Nightguard appears as a first-class omarchy surface — a brand-iconed `.desktop` entry that opens the TUI in a floating terminal, and a `custom/nightguard` Waybar module showing live curfew status with left-click-open / right-click-read-only-menu and instant post-commit refresh.
 **Depends on**: Phase 11 (global `ngtui` + `ngtui status --json`)
 **Requirements**: DESK-03, DESK-04, BAR-01, BAR-02, BAR-03, BAR-04
 **Success Criteria** (what must be TRUE):
+
   1. A `nightguard.desktop` (`Exec=xdg-terminal-exec --app-id=org.omarchy.ngtui -e ngtui`, `Terminal=false`) appears in wofi/walker and, when launched, opens `ngtui` as a **floating, centered** window (Hyprland windowrule matching the stable `org.omarchy.ngtui` app-id/`initialClass`, not title); other terminals still tile.
   2. The custom own-brand icon (no borrowed logos), installed into the hicolor theme, shows on the launcher entry (and the bar mechanism is decided/working) — appearing immediately after install, not only after relogin.
   3. The `custom/nightguard` Waybar module shows live lock-glyph + tokens colored by state, sourced key-lessly from `ngtui status --json`, non-blocking (no `sudo`/NTP in the exec) and fail-closed to `unavailable` on error.
   4. Left-click opens/focuses the floating TUI; right-click shows a **read-only** status/actions menu (verdict, tokens left, grace remaining, "open status"/"open editor") with **no curfew-loosening action** — and a real loosen-with-token commit still succeeds end-to-end after launching from the bar (PTY path intact).
   5. The bar refreshes **instantly** after a commit via a signal push (a free `SIGRTMIN+N` slot confirmed in the live Waybar config and wired into `backend.commit()`), not just on the poll interval.
+
 **Plans**: 6 plans
 Plans:
+**Wave 1**
+
 - [ ] 12-01-PLAN.md — [BLOCKING] (re)install `ngtui` on PATH + green baseline (prereq)
 - [ ] 12-02-PLAN.md — BAR-04: success-only `SIGRTMIN+11` bar refresh in `backend.commit()` (TDD)
 - [ ] 12-03-PLAN.md — DESK-04: hand-authored crescent-on-tile brand SVG
 - [ ] 12-04-PLAN.md — DESK-03/BAR-01/02/03: `.desktop` + windowrule + module + style + `ngtui-menu` artifacts
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 12-05-PLAN.md — D-07: idempotent backup-first installer + fixture idempotency test
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 12-06-PLAN.md — live install + phase-gate human-verify (float/icon/bar/menu/commit-refresh)
+
 **UI hint**: yes
 
 ### Phase 13: Autostart + AUR Packaging
+
 **Goal**: Make the desktop app publish-ready — an optional, off-by-default login autostart for the status surface, plus an AUR `PKGBUILD` and documented README install path that declares (never vendors) the Python trust stack and fails loud when it is absent.
 **Depends on**: Phase 12 (the `.desktop` + icon + Waybar artifacts the package installs)
 **Requirements**: DESK-05, DESK-06
 **Success Criteria** (what must be TRUE):
+
   1. Optional login autostart (off by default) autostarts the Waybar **module**, not the TUI window; any opt-in TUI-window autostart still uses the full `-e ngtui` terminal+env wrapper (no revived no-TTY break, no unprompted editor on every login).
   2. An AUR `PKGBUILD` installs the client (TUI + `ngtui status` subcommand + `.desktop` + brand icon + doc snippets) via the idiomatic python-wheel route — installing **no** root-owned/0600 files and **never vendoring** the trust stack (PORT-02); the stack is declared `optdepends` + an `.install` message, and the sudoers entry stays a manual reviewed step.
   3. On a machine without the LifeOS trust stack the packaged app fails **loudly and actionably** at startup (clear "set `NIGHTGUARD_STACK_DIR`" guidance), not cryptically at commit time; the README documents the full install path (`uv tool install` for the author, PKGBUILD for others, `environment.d` for the stack path).
   4. The packaged status reader is still key-less/unprivileged and no packaged launcher/autostart surface can loosen the curfew without the `sudo` prompt; install hooks refresh the icon/desktop caches (`gtk-update-icon-cache` + `update-desktop-database`).
   5. Flag resolved: `python-textual 8.2.7` availability in Arch repos/AUR confirmed at publish time (else documented as a bundled/AUR-dep contingency).
+
 **Plans**: TBD
 
 ## Progress
