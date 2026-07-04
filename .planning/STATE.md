@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
-status: verifying
-stopped_at: Completed 12-06-PLAN.md (Phase 12 complete, 6/6)
-last_updated: "2026-07-04T17:29:44.933Z"
+status: ready_to_plan
+stopped_at: Phase 12 complete (6/6) — ready to discuss Phase 13
+last_updated: 2026-07-04T17:42:17.529Z
 last_activity: 2026-07-04
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 9
-  completed_plans: 9
+  completed_plans: 43
   percent: 67
 ---
 
@@ -21,20 +21,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts. *(v2.0: the wall is now root-backed; `sudo` is the past-the-impulse threshold.)*
-**Current focus:** Phase 12 — launcher-waybar-presence
+**Current focus:** Phase 13 — autostart + aur packaging
 
 ## Current Position
 
-Phase: 12 (launcher-waybar-presence) — EXECUTING
-Plan: 6 of 6
-Status: Phase complete — ready for verification
+Phase: 13
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-07-04
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 20
+- Total plans completed: 26
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -48,6 +48,7 @@ Last activity: 2026-07-04
 | 07.1 | 3 | - | - |
 | 09 | 2 | - | - |
 | 11 | 3 | - | - |
+| 12 | 6 | - | - |
 
 **Recent Trend:**
 
