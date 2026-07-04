@@ -152,6 +152,48 @@ def test_installer_runs_twice_no_dup_backup_and_preserves_comments(tmp_path):
     assert not (fake_home / ".local").exists()
 
 
+def test_installer_handles_inline_modules_center_array(tmp_path):
+    """The author's live ``config.jsonc`` keeps ``modules-center`` as a SINGLE
+    inline array (``["clock", "custom/weather", ...]``), not the fixture's
+    multi-line form. The membership insert must land inside that inline array
+    (Plan 06 live-run finding) and stay idempotent + JSON-valid on a re-run.
+    """
+    env, paths = _make_env(tmp_path)
+
+    # Rewrite the fixture's multi-line modules-center as one inline array.
+    cfg = paths["cfg"]
+    original = cfg.read_text()
+    inline = re.sub(
+        r'"modules-center"\s*:\s*\[[^\]]*\]',
+        '"modules-center": ["clock", "custom/weather", "custom/update"]',
+        original,
+        count=1,
+        flags=re.S,
+    )
+    assert inline != original, "fixture rewrite to inline modules-center failed"
+    cfg.write_text(inline)
+
+    assert _run(env).returncode == 0, "run 1 (inline) failed"
+    assert _run(env).returncode == 0, "run 2 (inline) failed"
+
+    cfg_text = cfg.read_text()
+
+    # Exactly one managed block + one array membership after two runs.
+    assert cfg_text.count(_MARKER) == 1
+    members = re.findall(r'"custom/nightguard"\s*,', cfg_text)
+    assert len(members) == 1, (
+        f'inline membership must appear once, found {len(members)}'
+    )
+
+    # Structurally valid and the module is IN modules-center (not just defined).
+    parsed = json.loads(_strip_jsonc(cfg_text))
+    assert "custom/nightguard" in parsed, "module object must be injected"
+    assert "custom/nightguard" in parsed["modules-center"], (
+        "inline text injection must land inside the modules-center array"
+    )
+    assert "// Waybar config (test fixture)" in cfg_text, "comment must survive"
+
+
 def test_malformed_injection_would_fail_json_parse(tmp_path):
     """Guard the guard: a stray brace in the merged JSONC must FAIL the parse.
 

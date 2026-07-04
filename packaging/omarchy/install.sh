@@ -108,7 +108,9 @@ merge_waybar_config() {
   else
     _backup_once
     local brace_line
-    brace_line="$(grep -n '^[[:space:]]*{[[:space:]]*$' "$f" | head -1 | cut -d: -f1)"
+    # `|| true`: a no-match grep returns 1, which under `set -euo pipefail`
+    # would abort the script before the `-z` guard below can handle it.
+    brace_line="$(grep -n '^[[:space:]]*{[[:space:]]*$' "$f" | head -1 | cut -d: -f1 || true)"
     if [ -z "$brace_line" ]; then
       echo "ERROR: no root '{' line found in $f" >&2
       return 1
@@ -122,24 +124,51 @@ merge_waybar_config() {
     log "injected custom/nightguard module object"
   fi
 
-  # (b) modules-center membership
-  if grep -qE '^[[:space:]]*"custom/nightguard",[[:space:]]*$' "$f"; then
+  # (b) modules-center membership.
+  # Idempotency probe = the ARRAY element, which (unlike the module-object key
+  # `"custom/nightguard": {`) is followed by a `,` or the closing `]`. The
+  # `[],]` class (leading `]` is literal) matches exactly that and never the
+  # `:`-terminated object key, so a re-run after (a) injected the object does
+  # NOT falsely conclude the membership already landed.
+  if grep -qE '"custom/nightguard"[[:space:]]*[],]' "$f"; then
     log "custom/nightguard already present in a modules-* array"
   else
     _backup_once
+    # Two live array styles are supported (fixtures use multi-line; the author's
+    # live config.jsonc uses a single-line array — Plan 06 execution finding):
+    #   multi-line:  a bare `"clock",` element on its own line.
+    #   inline:      `"modules-center": ["clock", "custom/weather", ...]`.
+    # `|| true` on both anchor greps: a legitimate no-match (e.g. the inline
+    # array style has no bare `"clock",` line) must fall through to the next
+    # branch, not abort under `set -euo pipefail`.
     local clock_line
-    clock_line="$(grep -nE '^[[:space:]]*"clock",[[:space:]]*$' "$f" | head -1 | cut -d: -f1)"
-    if [ -z "$clock_line" ]; then
-      echo "ERROR: no \"clock\", array anchor in $f (expected in modules-center)" >&2
+    clock_line="$(grep -nE '^[[:space:]]*"clock",[[:space:]]*$' "$f" | head -1 | cut -d: -f1 || true)"
+    if [ -n "$clock_line" ]; then
+      local tmp
+      tmp="$(mktemp)"
+      head -n "$clock_line" "$f" >"$tmp"
+      printf '    "custom/nightguard",\n' >>"$tmp"
+      tail -n +"$((clock_line + 1))" "$f" >>"$tmp"
+      mv "$tmp" "$f"
+      log "inserted \"custom/nightguard\" into modules-center (multi-line)"
+    else
+      # Inline form: insert right after the `"clock",` element on the
+      # modules-center line (text-only, never a jq round-trip).
+      local inline_line
+      inline_line="$(grep -nE '"modules-center"[[:space:]]*:[[:space:]]*\[.*"clock"' "$f" | head -1 | cut -d: -f1 || true)"
+      if [ -z "$inline_line" ]; then
+        echo "ERROR: no \"clock\" array anchor (multi-line or inline) in $f (expected in modules-center)" >&2
+        return 1
+      fi
+      sed -i "${inline_line}s@\"clock\",[[:space:]]*@\"clock\", \"custom/nightguard\", @" "$f"
+      log "inserted \"custom/nightguard\" into modules-center (inline)"
+    fi
+    # Fail loud if the insert did not actually land (never a silent partial that
+    # leaves the object defined but unrendered — Pitfall 3 / T-12-10).
+    if ! grep -qE '"custom/nightguard"[[:space:]]*[],]' "$f"; then
+      echo "ERROR: failed to insert \"custom/nightguard\" into a modules-* array in $f" >&2
       return 1
     fi
-    local tmp
-    tmp="$(mktemp)"
-    head -n "$clock_line" "$f" >"$tmp"
-    printf '    "custom/nightguard",\n' >>"$tmp"
-    tail -n +"$((clock_line + 1))" "$f" >>"$tmp"
-    mv "$tmp" "$f"
-    log "inserted \"custom/nightguard\" into modules-center"
   fi
 }
 
