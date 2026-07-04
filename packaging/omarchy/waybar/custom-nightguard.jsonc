@@ -1,0 +1,16 @@
+  // >>> nightguard (managed) >>>
+  // Key-less status light: exec reads the read-only ngtui status shim only.
+  // Non-blocking + fail-closed (the reader exits 0 with an `unavailable`
+  // object on a bad stack). "signal": 11 matches Plan 02's
+  // `pkill -RTMIN+11 waybar` post-commit refresh (7/8/9/10 are taken live).
+  // Left-click opens/focuses the TUI; right-click opens the read-only menu.
+  "custom/nightguard": {
+    "return-type": "json",
+    "exec": "ngtui status --json",
+    "interval": 30,
+    "signal": 11,
+    "format": "{}",
+    "on-click": "omarchy-launch-or-focus-tui ngtui",
+    "on-click-right": "ngtui-menu"
+  },
+  // <<< nightguard (managed) <<<
