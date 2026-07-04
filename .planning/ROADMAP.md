@@ -93,7 +93,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 12-05-PLAN.md — D-07: idempotent backup-first installer + fixture idempotency test
+- [x] 12-05-PLAN.md — D-07: idempotent backup-first installer + fixture idempotency test
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -132,5 +132,5 @@ Plans:
 | 9. StayFree Desktop | v2.0 | 2/3 | Parked (spike failed) | — |
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
 | 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete    | 2026-06-25 |
-| 12. Launcher + Waybar Presence | v2.1 | 4/6 | In Progress|  |
+| 12. Launcher + Waybar Presence | v2.1 | 5/6 | In Progress|  |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |

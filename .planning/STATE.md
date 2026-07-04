@@ -4,13 +4,13 @@ milestone: v2.1
 milestone_name: Desktop App
 status: executing
 stopped_at: Phase 12 context gathered
-last_updated: "2026-07-04T09:41:35.911Z"
+last_updated: "2026-07-04T09:50:05.520Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
   percent: 33
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 ## Current Position
 
 Phase: 12 (launcher-waybar-presence) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-07-04
 
@@ -86,6 +86,7 @@ Last activity: 2026-07-04
 | Phase 12 P02 | 4 | 2 tasks | 2 files |
 | Phase 12 P03 | 4 | 1 tasks | 1 files |
 | Phase 12 P04 | 5 | 3 tasks | 5 files |
+| Phase 12 P05 | 12 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -173,7 +174,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-04T09:41:05.805Z
+Last session: 2026-07-04T09:49:51.860Z
 Stopped at: Phase 12 context gathered
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
