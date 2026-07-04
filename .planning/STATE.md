@@ -4,13 +4,13 @@ milestone: v2.1
 milestone_name: Desktop App
 status: executing
 stopped_at: Phase 12 context gathered
-last_updated: "2026-07-03T19:09:46.169Z"
-last_activity: 2026-07-03 -- Phase 12 planning complete
+last_updated: "2026-07-04T09:30:15.015Z"
+last_activity: 2026-07-04
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 3
+  completed_plans: 4
   percent: 33
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts. *(v2.0: the wall is now root-backed; `sudo` is the past-the-impulse threshold.)*
-**Current focus:** Phase 12 — launcher + waybar presence
+**Current focus:** Phase 12 — launcher-waybar-presence
 
 ## Current Position
 
-Phase: 12
-Plan: Not started
+Phase: 12 (launcher-waybar-presence) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-03 -- Phase 12 planning complete
+Last activity: 2026-07-04
 
 ## Performance Metrics
 
@@ -82,6 +82,7 @@ Last activity: 2026-07-03 -- Phase 12 planning complete
 | Phase 11 P01 | 43 | 2 tasks | 4 files |
 | Phase 11 P02 | 2 | 2 tasks | 2 files |
 | Phase 11 P03 | ~1min | 2 tasks (human-verify) | 0 files |
+| Phase 12 P01 | 2 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,7 @@ Recent decisions affecting current work:
 - [Phase 11]: [Phase 11, 11-01]: ngtui status core is a pure stdlib status.py — _VERDICT_CLASS maps the 5 guard verdicts to same-name Waybar classes with dict.get(verdict,'locked') fail-closed (unknown -> locked, never unavailable/outside_curfew); UNAVAILABLE={text:'○ —',class:'unavailable'} is reserved for Plan 02's import/read except branch (empty data is 'locked', Pitfall 3); backend.cache_only_verdict neutralizes guard._sntp/_http_time (instant-raise, restored in finally) so a cold timecache falls to offline_blocked in <0.2s, never a ~4s block; key-less and zero new deps.
 - [Phase 11]: [Phase 11, 11-03]: install/PTY boundary HUMAN-VERIFIED GREEN on the live box (no code change). SC-1: `uv tool install --python 3.14 .` puts a real `ngtui` on the bare login PATH (`~/.local/bin/ngtui`) that resolves the LifeOS stack under a scrubbed `env -i` (backend.py hardcoded defaults). DESK-02/SC-3: installed-shim `ngtui status --json` emits a single jq-valid Waybar object with a real verdict class, fails closed to `{"text":"○ —","class":"unavailable"}` exit 0 on a poisoned NIGHTGUARD_STACK_DIR. SC-5 GREEN: guard.json + sanctioned config `root:root 0644` (readable), `.guardkey` `root:root 0600` (denied) — isolated venv never reads the key. SC-4: a REAL loosen-with-token commit succeeded end-to-end from the installed shim, inline-`sudo` prompt appeared in-terminal (App.suspend() released a genuine PTY despite the global-install interpreter), token decremented, guard did NOT revert the sanctioned commit. DESK-01/DESK-02 satisfied; Phase 11 COMPLETE (3/3).
 - [Phase ?]: [Phase 11, 11-02]: ngtui/__main__ is a bare-argv front-controller — `ngtui status [--json]` routes to head-less _status (import ngtui.backend INSIDE the try so a poisoned NIGHTGUARD_STACK_DIR RuntimeError-at-import degrades to UNAVAILABLE; verdict via cache_only_verdict not live_verdict; one json.dumps line; ALWAYS exit 0). Bare ngtui -> _run_tui behind a sys.stdin.isatty() SystemExit(2) guard on the TUI branch ONLY, with ngtui.app/textual imported lazily so status never pays textual's cost. 67 headless tests green.
+- [Phase ?]: [Phase 12, 12-01]: ngtui install-gate PASSED — uv tool install --python 3.14 . reinstalled the shim; command -v ngtui -> ~/.local/bin/ngtui (T-12-01 mitigated, first-party wheel only). ngtui status --json jq-valid (class+text), exit 0, fail-closed. D-10 baseline LOCKED at 67 passing ngtui tests. Generated ngtui/uv.lock gitignored. All P12 live-wiring surfaces unblocked.
 
 ### Pending Todos
 
@@ -166,9 +168,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-03T18:31:24.864Z
+Last session: 2026-07-04T09:29:39.967Z
 Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-launcher-waybar-presence/12-CONTEXT.md
+Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
 
 ## Deferred Items

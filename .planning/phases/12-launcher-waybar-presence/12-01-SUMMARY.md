@@ -116,3 +116,10 @@ None - no external service configuration required. The `~/.local/bin/ngtui` inst
 ---
 *Phase: 12-launcher-waybar-presence*
 *Completed: 2026-07-04*
+
+## Self-Check: PASSED
+- FOUND: `.planning/phases/12-launcher-waybar-presence/12-01-SUMMARY.md`
+- FOUND: `ngtui/.gitignore` (uv.lock ignored)
+- FOUND: `~/.local/bin/ngtui` (executable, resolves on PATH)
+- FOUND commit: `2c0ffef` (chore — gitignore uv.lock)
+- FOUND commit: `70efa6c` (docs — summary)
