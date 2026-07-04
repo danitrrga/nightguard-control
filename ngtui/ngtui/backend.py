@@ -195,6 +195,24 @@ def commit(proposed_text: str) -> dict:
             stdout=subprocess.PIPE,
             text=True,
         )
+        # BAR-04 / D-11: instant Waybar refresh, success-only + non-perturbing.
+        # Only on a real success (returncode == 0) do we nudge the custom/nightguard
+        # module (which declares "signal": 11) so the bar reflects a token spend the
+        # instant it happens instead of on the next 30s poll. SIGRTMIN+11 is free
+        # (live config uses 7/8/9/10). The push is fire-and-forget: check=False and a
+        # swallow-all try/except so a missing pkill / absent waybar / any OSError can
+        # NEVER flip the bar on a refused commit (T-12-02) nor propagate into or alter
+        # the commit result (T-12-03) — the returned dict is built independently below.
+        if proc.returncode == 0:
+            try:
+                subprocess.run(
+                    ["pkill", "-RTMIN+11", "waybar"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+            except Exception:
+                pass
         return {"returncode": proc.returncode, "stdout": (proc.stdout or "").strip()}
     finally:
         try:
