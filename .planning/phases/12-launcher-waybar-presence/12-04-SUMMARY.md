@@ -122,3 +122,7 @@ read-only/open-only ("a window, never a lever").
   and the `command -v ngtui` prerequisite (`ngtui` may be absent from PATH).
 - `ngtui-menu` installs to a Waybar-PATH dir (`~/.local/bin` or
   `~/.local/share/omarchy/bin`).
+
+## Self-Check: PASSED
+
+All five artifacts + SUMMARY.md exist on disk; all four commits (c5e6e54, 3b7f18d, de6cbbd, 5f03733) present in git.

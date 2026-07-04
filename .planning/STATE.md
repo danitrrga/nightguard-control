@@ -4,13 +4,13 @@ milestone: v2.1
 milestone_name: Desktop App
 status: executing
 stopped_at: Phase 12 context gathered
-last_updated: "2026-07-04T09:36:54.746Z"
+last_updated: "2026-07-04T09:41:35.911Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 7
   percent: 33
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 ## Current Position
 
 Phase: 12 (launcher-waybar-presence) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-07-04
 
@@ -85,6 +85,7 @@ Last activity: 2026-07-04
 | Phase 12 P01 | 2 | 2 tasks | 1 files |
 | Phase 12 P02 | 4 | 2 tasks | 2 files |
 | Phase 12 P03 | 4 | 1 tasks | 1 files |
+| Phase 12 P04 | 5 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -137,6 +138,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 11, 11-02]: ngtui/__main__ is a bare-argv front-controller — `ngtui status [--json]` routes to head-less _status (import ngtui.backend INSIDE the try so a poisoned NIGHTGUARD_STACK_DIR RuntimeError-at-import degrades to UNAVAILABLE; verdict via cache_only_verdict not live_verdict; one json.dumps line; ALWAYS exit 0). Bare ngtui -> _run_tui behind a sys.stdin.isatty() SystemExit(2) guard on the TUI branch ONLY, with ngtui.app/textual imported lazily so status never pays textual's cost. 67 headless tests green.
 - [Phase ?]: [Phase 12, 12-01]: ngtui install-gate PASSED — uv tool install --python 3.14 . reinstalled the shim; command -v ngtui -> ~/.local/bin/ngtui (T-12-01 mitigated, first-party wheel only). ngtui status --json jq-valid (class+text), exit 0, fail-closed. D-10 baseline LOCKED at 67 passing ngtui tests. Generated ngtui/uv.lock gitignored. All P12 live-wiring surfaces unblocked.
 - [Phase 12]: [Phase 12, 12-02]: D-11/BAR-04 shipped — backend.commit() fires pkill -RTMIN+11 waybar ONLY on returncode==0, inside check=False + swallow-all try/except; result dict built independently so a refused commit never flips the bar (T-12-02) and a raising/absent pkill never perturbs the outcome (T-12-03). SIGRTMIN+11 free (7/8/9/10 taken). 71 ngtui tests (67 baseline +4).
+- [Phase ?]: [Phase 12, 12-04]: five canonical omarchy artifacts shipped (D-06) — nightguard.desktop (app-id=org.omarchy.ngtui, Terminal=false, -e ngtui), explicit 3-line Hyprland float rule keyed on class not title (SC-1/T-12-07), key-less custom/nightguard module (signal 11, on-click omarchy-launch-or-focus-tui, on-click-right ngtui-menu), six-class semantic style.css (D-09), ngtui-menu walker --dmenu read-only/open-only menu (no loosen action, T-12-06). Marker-guarded for Plan 05. No ngtui code touched -> D-10 71-test baseline intact.
 
 ### Pending Todos
 
@@ -171,7 +173,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-04T09:36:35.549Z
+Last session: 2026-07-04T09:41:05.805Z
 Stopped at: Phase 12 context gathered
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
