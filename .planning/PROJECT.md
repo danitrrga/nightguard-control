@@ -67,13 +67,13 @@ reverts. Everything else is secondary to that guarantee holding.
 
 - ✓ **Global install (DESK-01):** `uv tool install --python 3.14 .` exposes a real `ngtui` on the bare login PATH (`~/.local/bin/ngtui`) that resolves the LifeOS trust stack under a scrubbed `env -i` via backend hardcoded defaults; the inline-`sudo` PTY commit survives the global-install interpreter (live token-spending commit human-verified). — Phase 11
 - ✓ **Key-less `ngtui status --json` (DESK-02):** the installed shim emits a single jq-valid Waybar object key-lessly (no HMAC/key read on the status path), fails closed to `{"text":"○ —","class":"unavailable"}` exit 0 on a bad stack — the Waybar-module substrate. — Phase 11
+- ✓ **App-launcher entry (DESK-03):** a marker-guarded `.desktop` file opens `ngtui` in a **floating, centered terminal window** (Hyprland `class`-keyed windowrule + `xdg-terminal-exec --app-id=org.omarchy.ngtui -e ngtui`); appears in walker (float human-verified live). — Phase 12
+- ✓ **Custom brand icon (DESK-04):** the own-brand "Ceramic Night" mark (porcelain crescent + cobalt guard arc, identical to `src/assets/logo.svg`) rasterized 16→512 into the hicolor theme + scalable SVG (no borrowed logos). — Phase 12
+- ✓ **Waybar module (BAR-01/02/03/04):** `custom/nightguard` consumes `ngtui status --json` — **left-click** opens/focuses the floating TUI, **right-click** shows a strictly read-only walker menu (no loosen/commit/grace), and a successful commit fires `SIGRTMIN+11` for **instant** bar refresh (fail-safe: refused commits never flip the bar). Installed by an idempotent, backup-first, JSONC-comment-preserving installer. — Phase 12
 
 ### Active (v2.1 · Desktop App)
 
-- [ ] **App-launcher entry:** a `.desktop` file opens `ngtui` in a **floating terminal window** (Hyprland window rule + omarchy terminal `-e ngtui`); the app appears in wofi/walker.
-- [ ] **Waybar module:** a nightguard icon in the bar (consumes the shipped `ngtui status --json`); **left-click** opens the TUI; **right-click** shows a status/actions menu.
-- [ ] **Custom brand icon:** an own-brand icon installed into the hicolor theme (no borrowed logos) so the launcher/Waybar shows it.
-- [ ] **Autostart / login pin:** optional login autostart or a pinned entry for the status surface.
+- [ ] **Autostart / login pin:** optional login autostart (module, not window) or a pinned entry for the status surface. — Phase 13
 - [ ] **Publish-ready packaging:** an AUR `PKGBUILD` + a documented README install path that handles the Python trust-stack dependency for non-author installs.
 
 *Deferred from v2.0 (not in v2.1 unless pulled in): offline StayFree blocklist import; Nyquist backfill for phases 6/7/7.1; browser-policy root-lock; ROOT-02 watchdog wording.*
@@ -156,10 +156,11 @@ This document evolves at phase transitions and milestone boundaries.
 
 **To run the TUI:** `cd ngtui && env NIGHTGUARD_STACK_DIR=/home/danitrrga/dev/Projects/LifeOS/scripts/nightguard NIGHTGUARD_DIR=/home/danitrrga/dev/Projects/LifeOS/nightguard .venv/bin/python -m ngtui`
 
-**v2.1 progress:** Phase 11 (Global Install + Status Subcommand) complete — `ngtui` is now a globally-installed `uv tool` command resolving the trust stack from a bare login shell, with a key-less `ngtui status --json` Waybar substrate. Next: Phase 12 (Launcher + Waybar Presence).
+**v2.1 progress:** Phases 11 + 12 complete. Phase 11 made `ngtui` a globally-installed `uv tool` command with a key-less `ngtui status --json` substrate; Phase 12 turned it into a first-class omarchy surface — a brand-iconed floating-terminal `.desktop` launcher and a `custom/nightguard` Waybar module (left-click open, right-click read-only menu, instant SIGRTMIN+11 post-commit refresh), landed on the author's live box via an idempotent backup-first installer and human-verified. Next: Phase 13 (Autostart + AUR Packaging).
 
 ---
-*Last updated: 2026-06-25 after Phase 11 (Global Install + Status Subcommand). v2.1 · Desktop App in progress (1/3 phases).*
+*Last updated: 2026-07-04 after Phase 12 (Launcher + Waybar Presence). v2.1 · Desktop App in progress (2/3 phases).*
+*Prior: 2026-06-25 after Phase 11 (Global Install + Status Subcommand).*
 *Prior: 2026-06-24 after v2.0 · Linux Port milestone (shipped). The Windows DPAPI/PowerShell/Tauri stack is retired; v2.0 runs on a single Python trust stack + an omarchy TUI.*
 *Prior: 2026-06-23 — Phase 7.1 (Curfew Hook) complete; curfew now blocks Claude Code sessions (CURF-01).*
 *Prior: 2026-06-22 — opened milestone v2.0 · Linux Port (ingested from `docs/linux-port-brief.md`).*
