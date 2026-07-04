@@ -41,7 +41,7 @@
 Package the existing `ngtui` Textual TUI as a first-class omarchy desktop app — a global `ngtui` command + key-less status subcommand, a floating-terminal launcher with a brand icon, a Waybar `custom/nightguard` module, optional autostart, and an AUR-ready PKGBUILD. Packaging/integration only — no new editing features. Every surface honors the two load-bearing invariants: the inline-`sudo` commit needs a real PTY, and the bar/launcher is *a window, never a lever*.
 
 - [x] Phase 11: Global Install + Status Subcommand (3 plans) — `uv tool install` exposes a global `ngtui`; key-less `ngtui status --json` emits Waybar JSON — DESK-01, DESK-02
-- [ ] Phase 12: Launcher + Waybar Presence — floating-terminal `.desktop` + brand icon + Hyprland windowrule; `custom/nightguard` bar module (left-click open, right-click read-only menu, signal refresh) — DESK-03, DESK-04, BAR-01..04
+- [x] Phase 12: Launcher + Waybar Presence — floating-terminal `.desktop` + brand icon + Hyprland windowrule; `custom/nightguard` bar module (left-click open, right-click read-only menu, signal refresh) — DESK-03, DESK-04, BAR-01..04 (completed 2026-07-04)
 - [ ] Phase 13: Autostart + AUR Packaging — optional login autostart (module, not window) + publish-ready PKGBUILD/README that declares (never vendors) the trust stack — DESK-05, DESK-06
 
 ### 📋 v3.0 — (next milestone)
@@ -97,7 +97,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 12-06-PLAN.md — live install + phase-gate human-verify (float/icon/bar/menu/commit-refresh)
+- [x] 12-06-PLAN.md — live install + phase-gate human-verify (float/icon/bar/menu/commit-refresh)
 
 **UI hint**: yes
 
@@ -132,5 +132,5 @@ Plans:
 | 9. StayFree Desktop | v2.0 | 2/3 | Parked (spike failed) | — |
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
 | 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete    | 2026-06-25 |
-| 12. Launcher + Waybar Presence | v2.1 | 5/6 | In Progress|  |
+| 12. Launcher + Waybar Presence | v2.1 | 6/6 | Complete   | 2026-07-04 |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |

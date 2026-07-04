@@ -120,3 +120,8 @@ None — no external service configuration. The live desktop configs were instal
 ---
 *Phase: 12-launcher-waybar-presence*
 *Completed: 2026-07-04*
+
+## Self-Check: PASSED
+
+- Files: `12-06-SUMMARY.md`, `packaging/omarchy/install.sh`, `ngtui/tests/test_installer_idempotent.py` — all present.
+- Commits: `1db34ff` (installer fix), `e07778f` (SUMMARY) — both in history.
