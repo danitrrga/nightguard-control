@@ -1,0 +1,13 @@
+/* Waybar style (test fixture) — mirrors the live #custom-*.<state> idiom. */
+* {
+  font-family: "CaskaydiaMono Nerd Font", sans-serif;
+  font-size: 13px;
+}
+
+#custom-update {
+  color: #7aa2ff;
+}
+
+#custom-update.pending {
+  color: #c8a24a;
+}

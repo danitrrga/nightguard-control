@@ -1,0 +1,23 @@
+{
+  // Waybar config (test fixture) — a minimal but realistic JSONC shape.
+  // The // comments below MUST survive the installer's text merge (T-12-11):
+  // a jq/JSON round-trip would strip them and corrupt the author's config.
+  "layer": "top",
+  "position": "top",
+  "modules-left": ["hyprland/workspaces"],
+  "modules-center": [
+    "clock",
+    "custom/update"
+  ],
+  "modules-right": ["pulseaudio", "network", "battery"],
+  // "clock" as a MODULE DEFINITION (distinct from the array element above —
+  // the installer's `"clock",` anchor must match the array element, not this).
+  "clock": {
+    "format": "{:%H:%M}",
+    "tooltip-format": "{:%A %d %B %Y}"
+  },
+  "custom/update": {
+    "exec": "echo update-fixture",
+    "interval": 3600
+  }
+}
