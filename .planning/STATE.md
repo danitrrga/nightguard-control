@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
-status: ready_to_plan
-stopped_at: Phase 12 complete (6/6) — ready to discuss Phase 13
-last_updated: 2026-07-04T17:42:17.529Z
+status: planning
+stopped_at: Phase 13 context gathered
+last_updated: "2026-07-04T18:27:08.315Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 9
-  completed_plans: 43
+  completed_plans: 9
   percent: 67
 ---
 
@@ -177,9 +177,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-04T17:29:44.873Z
-Stopped at: Completed 12-06-PLAN.md (Phase 12 complete, 6/6)
-Resume file: None
+Last session: 2026-07-04T18:27:08.310Z
+Stopped at: Phase 13 context gathered
+Resume file: .planning/phases/13-autostart-aur-packaging/13-CONTEXT.md
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
 
 ## Deferred Items
