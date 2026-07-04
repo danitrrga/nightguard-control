@@ -85,9 +85,9 @@ install path (DESK-06 → Phase 13); any new curfew-editing capability; granting
   duplicates the module; a marker/guard comment delimits the injected block). This is an
   outward, hard-to-reverse edit to the author's system — executor treats it as such.
 - **D-08:** The **publish path (drop-in snippets + README paste instructions)** is
-  **deferred to Phase 13** (DESK-06 / PKGBUILD). Phase 12's job is the artifacts + the
-  author-immediate install; Phase 13 packages the same artifacts without clobbering
-  arbitrary users' configs.
+  **deferred to Phase 13** (DESK-06 / PKGBUILD) — a Phase-12 scope fence, not a deliverable.
+  Phase 12's job is the artifacts + the author-immediate install; Phase 13 packages the same
+  artifacts without clobbering arbitrary users' configs. (Scope fence recorded in Plan 05.)
 
 ### Bar appearance (BAR-01)
 - **D-09:** **State color = fixed semantic classes, not live theme.** `status.py` already
