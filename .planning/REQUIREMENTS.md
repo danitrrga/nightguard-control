@@ -24,7 +24,7 @@
 - [x] **BAR-01**: A Waybar `custom/nightguard` module shows live curfew status in the bar (lock glyph + tokens, colored by state), sourced key-lessly from `ngtui status --json`, non-blocking and fail-closed.
 - [ ] **BAR-02**: Left-clicking the module opens/focuses the Nightguard Control TUI (floating terminal).
 - [ ] **BAR-03**: Right-clicking the module shows a **read-only** status/actions menu (verdict, tokens left, grace remaining, "open status" / "open editor") — with **no curfew-loosening action**.
-- [ ] **BAR-04**: The bar refreshes instantly after a commit (signal-based push, e.g. `SIGRTMIN+N`), not just polling.
+- [x] **BAR-04**: The bar refreshes instantly after a commit (signal-based push, e.g. `SIGRTMIN+N`), not just polling.
 
 ## Future Requirements (deferred)
 
@@ -55,6 +55,6 @@
 | BAR-01 | Phase 12 | Complete |
 | BAR-02 | Phase 12 | Pending |
 | BAR-03 | Phase 12 | Pending |
-| BAR-04 | Phase 12 | Pending |
+| BAR-04 | Phase 12 | Complete |
 
 *(Phase column filled by the roadmapper.)*
