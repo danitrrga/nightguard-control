@@ -15,7 +15,7 @@
 - [x] **DESK-01**: `uv tool install` exposes a global `ngtui` command that runs outside the dev venv and resolves the LifeOS trust stack from a clean login shell (no dev-shell env). *(keystone)*
 - [x] **DESK-02**: A new **key-less** `ngtui status --json` subcommand emits Waybar-shaped JSON (`text`/`tooltip`/`class`) from `backend.live_verdict`/`tokens_left` — never reads the key, never needs root.
 - [x] **DESK-03**: A `.desktop` launcher opens `ngtui` in a **floating terminal window** (`xdg-terminal-exec … -e ngtui`, `Terminal=false`) and appears in wofi/walker; floating is enforced by a Hyprland windowrule on a stable app-id/class, and the inline-`sudo` commit still works because it runs in a real terminal.
-- [ ] **DESK-04**: A custom own-brand icon (no borrowed logos) is installed into the hicolor theme and shown by the launcher and Waybar.
+- [x] **DESK-04**: A custom own-brand icon (no borrowed logos) is installed into the hicolor theme and shown by the launcher and Waybar.
 - [ ] **DESK-05**: Optional login autostart / pin (off by default) — autostarts the Waybar *module*; TUI-window autostart is opt-in.
 - [ ] **DESK-06**: Publish-ready packaging — an AUR `PKGBUILD` installs the client (TUI + launcher + icon + status subcommand) **without vendoring the trust stack** (declared `optdepends`), plus a documented README install path; fails loud and explains when the trust stack is absent.
 
@@ -49,7 +49,7 @@
 | DESK-01 | Phase 11 | Complete |
 | DESK-02 | Phase 11 | Complete |
 | DESK-03 | Phase 12 | Complete |
-| DESK-04 | Phase 12 | Pending |
+| DESK-04 | Phase 12 | Complete |
 | DESK-05 | Phase 13 | Pending |
 | DESK-06 | Phase 13 | Pending |
 | BAR-01 | Phase 12 | Complete |

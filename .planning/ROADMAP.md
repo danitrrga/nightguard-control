@@ -88,7 +88,7 @@ Plans:
 
 - [x] 12-01-PLAN.md — [BLOCKING] (re)install `ngtui` on PATH + green baseline (prereq)
 - [x] 12-02-PLAN.md — BAR-04: success-only `SIGRTMIN+11` bar refresh in `backend.commit()` (TDD)
-- [ ] 12-03-PLAN.md — DESK-04: hand-authored crescent-on-tile brand SVG
+- [x] 12-03-PLAN.md — DESK-04: hand-authored crescent-on-tile brand SVG
 - [ ] 12-04-PLAN.md — DESK-03/BAR-01/02/03: `.desktop` + windowrule + module + style + `ngtui-menu` artifacts
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -132,5 +132,5 @@ Plans:
 | 9. StayFree Desktop | v2.0 | 2/3 | Parked (spike failed) | — |
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
 | 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete    | 2026-06-25 |
-| 12. Launcher + Waybar Presence | v2.1 | 2/6 | In Progress|  |
+| 12. Launcher + Waybar Presence | v2.1 | 3/6 | In Progress|  |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |
