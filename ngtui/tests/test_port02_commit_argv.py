@@ -1,37 +1,27 @@
-"""GAP-02 (PORT-02/PORT-03): commit() uses the exact sudoers argv with no shell.
+"""GAP-02 (PORT-02/PORT-03): commit() runs the exact sudoers command, no injection.
 
-Requirement: "backend.commit() shells exactly ['sudo','/usr/bin/python3',
-<abs ctl.py>,'commit','--from',tmp] and maps exit/stdout to a result"
-(PORT-02 / T-10-03 / 10-01-PLAN).
+Requirement (evolved): backend.commit() runs
+``sudo /usr/bin/python3 <abs ctl.py> commit --from <tmp>`` and maps exit/stdout to a
+result. Originally this was a direct ``subprocess.run(['sudo', …])`` with an inline TTY
+prompt; that hung in the walker-launched Wayland float (App.suspend()/TTY handoff broke),
+and a ``sudo -A`` GUI askpass hung on walker (debug: commit-freeze-launcher-sudo).
 
-This test monkeypatches subprocess.run to capture the exact argv the commit()
-function builds and verifies:
-  1. argv[0] == "sudo"
-  2. argv[1] == "-A"  (read the password from the GUI SUDO_ASKPASS dialog, not the TTY)
-  3. argv[2] == "/usr/bin/python3"
-  4. argv[3] is the absolute path to nightguard_ctl.py (== backend.CTL_SCRIPT)
-  5. argv[4] == "commit"
-  6. argv[5] == "--from"
-  7. argv[6] is a real temp-file path (absolute, ends .yaml)
-  8. shell=False (not shell=True — the sudoers alias requires an exact match)
-  9. stdout AND stderr are PIPE (the GUI dialog carries the prompt, so the CLI's
-     REFUSED line is captured for in-widget display — the old TTY-inline design,
-     which left stderr uncaptured, hung in a walker-launched Wayland float)
- 10. The temp file is cleaned up after the call (mkstemp 0600, then unlink)
-
-The `-A` is a sudo *option*; it does not change the matched command, so the sudoers
-Cmnd_Alias (`/usr/bin/python3 <ctl> commit *`) still matches.
-
-These properties cannot be verified by reading the source alone; they require
-actually running the function with a captured subprocess.run.
+The reliable design runs the SAME sudo command inside a freshly-spawned terminal
+(``[launcher, '-e', 'sh', '-c', inner]``) so the password prompt has a genuine TTY. This
+test monkeypatches subprocess.run to capture the spawn and verifies:
+  1. argv is ``[<launcher>, '-e', 'sh', '-c', <inner>]`` (a real terminal, not headless)
+  2. inner contains the exact ``sudo /usr/bin/python3 <CTL_SCRIPT> commit --from <tmp>``
+  3. the temp .yaml path (config is a FILE, never inline content — no injection)
+  4. shell=False on subprocess.run (the argv list is exact; sh is the terminal's child)
+  5. the exit code is captured from a .rc file and mapped to the result
+  6. all three temp files (.yaml/.rc/.out) are cleaned up after the call
 """
 from __future__ import annotations
 
 import os
 import pathlib
-from unittest.mock import MagicMock, patch
-
-import pytest
+import re
+from unittest.mock import patch
 
 from ngtui import backend
 
@@ -39,25 +29,33 @@ from ngtui import backend
 class _FakeProc:
     """Minimal subprocess.CompletedProcess stand-in."""
 
-    def __init__(
-        self,
-        returncode: int = 0,
-        stdout: str = "committed (tighten, free)",
-        stderr: str = "",
-    ):
+    def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = ""):
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
 
 
-def _capture_commit(proposed_text: str = "timezone: Europe/Amsterdam\n") -> tuple[dict, "_Call"]:
-    """Run backend.commit() with a monkeypatched subprocess.run and return
-    (result_dict, mock_call_args_dict)."""
+def _capture_commit(
+    proposed_text: str = "timezone: Europe/Amsterdam\n", *, sim_rc: str = "0", sim_out: str = ""
+):
+    """Run backend.commit() with subprocess.run mocked; simulate the terminal writing
+    the .rc/.out files. Returns (result_dict, captured_terminal_call_dict)."""
     captured: list[dict] = []
 
-    def fake_run(argv, *, stdout, text, **kwargs):
-        captured.append({"argv": argv, "stdout": stdout, "text": text, "kwargs": kwargs})
-        return _FakeProc()
+    def fake_run(argv, **kwargs):
+        if argv and argv[0] == "pkill":
+            return _FakeProc(0)
+        inner = argv[-1]
+        captured.append({"argv": argv, "inner": inner, "kwargs": kwargs})
+        rc_match = re.search(r"> (\S+\.rc)", inner)
+        if rc_match:
+            with open(rc_match.group(1), "w", encoding="utf-8") as f:
+                f.write(sim_rc)
+        out_match = re.search(r"> (\S+\.out)", inner)
+        if out_match and sim_out:
+            with open(out_match.group(1), "w", encoding="utf-8") as f:
+                f.write(sim_out)
+        return _FakeProc(0)
 
     with patch("ngtui.backend.subprocess.run", side_effect=fake_run):
         result = backend.commit(proposed_text)
@@ -65,131 +63,109 @@ def _capture_commit(proposed_text: str = "timezone: Europe/Amsterdam\n") -> tupl
     return result, captured[0]
 
 
-# --- Test 1: argv shape is the exact sudoers Cmnd_Alias ----------------------
+# --- Test 1: spawns a real terminal running the exact sudo command -----------
 
 
-def test_commit_argv_matches_sudoers_shape():
-    """commit() builds ['sudo', '-A', '/usr/bin/python3', CTL_SCRIPT, 'commit', '--from', <tmp>]."""
-    result, call = _capture_commit()
+def test_commit_spawns_terminal_with_exact_sudo_command():
+    """commit() runs `[launcher, -e, sh, -c, inner]` where inner is the sudoers Cmnd."""
+    _result, call = _capture_commit()
 
     argv = call["argv"]
-    assert len(argv) == 7, f"Expected 7 argv items, got {len(argv)}: {argv}"
-    assert argv[0] == "sudo", f"argv[0] must be 'sudo', got {argv[0]!r}"
-    assert argv[1] == "-A", f"argv[1] must be '-A' (GUI askpass), got {argv[1]!r}"
-    assert argv[2] == "/usr/bin/python3", f"argv[2] must be '/usr/bin/python3', got {argv[2]!r}"
-    assert argv[3] == backend.CTL_SCRIPT, (
-        f"argv[3] must be the validated CTL_SCRIPT ({backend.CTL_SCRIPT!r}), "
-        f"got {argv[3]!r}"
+    assert argv[1:4] == ["-e", "sh", "-c"], (
+        f"commit must spawn a terminal via `-e sh -c`, got {argv!r}"
     )
-    assert argv[4] == "commit", f"argv[4] must be 'commit', got {argv[4]!r}"
-    assert argv[5] == "--from", f"argv[5] must be '--from', got {argv[5]!r}"
-    # argv[6] is the temp file path — must be absolute and end with .yaml
-    tmp_path = argv[6]
-    assert pathlib.Path(tmp_path).is_absolute(), (
-        f"argv[6] (temp file) must be absolute, got {tmp_path!r}"
+    inner = call["inner"]
+    # The exact sudoers Cmnd shape (order preserved) runs inside the terminal.
+    m = re.search(
+        r"sudo /usr/bin/python3 (\S+) commit --from (\S+\.yaml)", inner
     )
-    assert tmp_path.endswith(".yaml"), (
-        f"argv[6] (temp file) must end with .yaml, got {tmp_path!r}"
+    assert m, f"inner must contain the exact sudo commit command, got: {inner!r}"
+    assert m.group(1) == backend.CTL_SCRIPT, (
+        f"sudo target must be the validated CTL_SCRIPT ({backend.CTL_SCRIPT!r}), "
+        f"got {m.group(1)!r}"
     )
+    tmp_path = m.group(2)
+    assert pathlib.Path(tmp_path).is_absolute(), f"temp file must be absolute: {tmp_path!r}"
 
 
-# --- Test 2: shell=False (not shell=True) -------------------------------------
+# --- Test 2: shell=False (the sudo argv is exact; sh is the terminal's child) -
 
 
-def test_commit_uses_no_shell():
-    """commit() must NOT use shell=True — sudoers requires exact argv match."""
+def test_commit_uses_no_shell_on_subprocess():
+    """subprocess.run must NOT use shell=True — the launcher argv is an exact list."""
     _result, call = _capture_commit()
-
-    # shell is not passed as a kwarg (defaulting to False) — that is correct.
-    # If it were passed as shell=True that would be a violation.
-    shell = call["kwargs"].get("shell", False)
-    assert shell is False, (
-        f"commit() must not pass shell=True — sudoers Cmnd_Alias requires exact argv. "
-        f"Got shell={shell!r}"
+    assert call["kwargs"].get("shell", False) is False, (
+        f"commit() must not pass shell=True. Got shell={call['kwargs'].get('shell')!r}"
     )
 
 
-# --- Test 3: stderr IS captured (GUI askpass carries the prompt) -------------
+# --- Test 3: config content is a FILE, never inline (no injection) ------------
 
 
-def test_commit_captures_stderr():
-    """stderr must be captured now that authentication is a GUI askpass dialog.
-
-    The old design left stderr on the TTY so the inline sudo prompt was visible —
-    but that inline prompt hangs in a walker-launched Wayland float
-    (commit-freeze-launcher-sudo). With `sudo -A` the dialog carries the prompt, so
-    stderr is free to be captured and the CLI's REFUSED line surfaced in-widget.
-    """
-    import subprocess as sp
-
-    _result, call = _capture_commit()
-
-    stderr = call["kwargs"].get("stderr", None)
-    assert stderr is sp.PIPE, (
-        "commit() must capture stderr now (GUI askpass carries the prompt). "
-        f"Got stderr={stderr!r}"
+def test_commit_does_not_put_config_content_on_command_line():
+    """The proposed config text must never appear in the shell command (injection guard)."""
+    sentinel = "curfew:\n  start: '99:99'  # INJECT_SENTINEL_$(rm -rf)\n"
+    _result, call = _capture_commit(sentinel)
+    assert "INJECT_SENTINEL" not in call["inner"], (
+        "config content must be passed via the temp FILE, never interpolated into the "
+        f"shell command. Inner was: {call['inner']!r}"
     )
 
 
-# --- Test 4: CTL_SCRIPT is absolute and under the validated STACK_DIR --------
+# --- Test 4: CTL_SCRIPT is absolute and under the validated STACK_DIR ---------
 
 
 def test_commit_ctl_script_is_absolute_and_under_stack_dir():
-    """The script path handed to sudo is absolute and lives under the pinned STACK_DIR.
-
-    This ensures the env cannot redirect the sudo call to a different script by
-    manipulating NIGHTGUARD_STACK_DIR after module load (CR-02).
-    """
+    """The script path handed to sudo is absolute and lives under the pinned STACK_DIR (CR-02)."""
     ctl = pathlib.Path(backend.CTL_SCRIPT)
     assert ctl.is_absolute(), f"CTL_SCRIPT must be absolute, got {backend.CTL_SCRIPT!r}"
     assert backend.CTL_SCRIPT.startswith(backend.STACK_DIR), (
-        f"CTL_SCRIPT ({backend.CTL_SCRIPT!r}) must be under STACK_DIR "
-        f"({backend.STACK_DIR!r}) — env redirect attack vector"
+        f"CTL_SCRIPT ({backend.CTL_SCRIPT!r}) must be under STACK_DIR ({backend.STACK_DIR!r})"
     )
     assert ctl.name == "nightguard_ctl.py", (
         f"CTL_SCRIPT filename must be 'nightguard_ctl.py', got {ctl.name!r}"
     )
 
 
-# --- Test 5: temp file is cleaned up after call (T-10-04) --------------------
+# --- Test 5: exit code is captured from the .rc file and mapped to result -----
 
 
-def test_commit_temp_file_is_cleaned_up_after_call():
-    """The mkstemp temp file must be unlinked after commit() returns (T-10-04).
+def test_commit_maps_rc_file_and_output_to_result():
+    """commit() reads the terminal's .rc exit code + .out output into the result dict."""
+    result, _call = _capture_commit(
+        sim_rc="0", sim_out="committed (tighten, free): config_hmac=abc\n"
+    )
+    assert result["returncode"] == 0
+    assert result["stdout"] == "committed (tighten, free): config_hmac=abc"
 
-    Leaving the proposed-config temp file on disk after commit is an information
-    disclosure and a potential symlink-race target for the next call.
-    """
-    collected_tmp: list[str] = []
+    # A refused commit (rc 1) maps through faithfully.
+    result2, _ = _capture_commit(sim_rc="1", sim_out="REFUSED (quota)")
+    assert result2["returncode"] == 1
 
-    def fake_run(argv, *, stdout, text, **kwargs):
-        # Record the temp path before it might get deleted (argv[6] after `sudo -A`).
-        collected_tmp.append(argv[6])
-        return _FakeProc()
+
+# --- Test 6: all temp files are cleaned up after the call --------------------
+
+
+def test_commit_temp_files_are_cleaned_up_after_call():
+    """The .yaml/.rc/.out temp files must be unlinked after commit() returns (T-10-04)."""
+    seen_paths: list[str] = []
+
+    def fake_run(argv, **kwargs):
+        if argv and argv[0] == "pkill":
+            return _FakeProc(0)
+        inner = argv[-1]
+        # Collect every temp path referenced in the inner command.
+        for m in re.finditer(r"(/\S+\.(?:yaml|rc|out))", inner):
+            seen_paths.append(m.group(1))
+        rc_match = re.search(r"> (\S+\.rc)", inner)
+        if rc_match:
+            with open(rc_match.group(1), "w", encoding="utf-8") as f:
+                f.write("0")
+        return _FakeProc(0)
 
     with patch("ngtui.backend.subprocess.run", side_effect=fake_run):
         backend.commit("timezone: Europe/Amsterdam\n")
 
-    assert collected_tmp, "subprocess.run was not called — commit() did not run"
-    tmp = collected_tmp[0]
-    assert not os.path.exists(tmp), (
-        f"Temp file {tmp!r} still exists after commit() returned — "
-        "it must be unlinked in the finally block (T-10-04)"
-    )
-
-
-# --- Test 6: result dict maps returncode and stdout correctly -----------------
-
-
-def test_commit_maps_returncode_and_stdout_to_result():
-    """commit() returns {returncode, stdout} from the subprocess result."""
-
-    def fake_run(argv, *, stdout, text, **kwargs):
-        return _FakeProc(returncode=0, stdout="committed (tighten, free): config_hmac=abc\n")
-
-    with patch("ngtui.backend.subprocess.run", side_effect=fake_run):
-        result = backend.commit("timezone: Europe/Amsterdam\n")
-
-    assert result["returncode"] == 0
-    # stdout is stripped
-    assert result["stdout"] == "committed (tighten, free): config_hmac=abc"
+    assert seen_paths, "no temp files were referenced — commit() did not run"
+    for p in set(seen_paths):
+        assert not os.path.exists(p), f"temp file {p!r} still exists after commit() (T-10-04)"

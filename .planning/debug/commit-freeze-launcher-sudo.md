@@ -4,8 +4,8 @@ trigger: "When I hit commit in the Nightguard TUI launched from walker, the chan
 created: 2026-07-05
 updated: 2026-07-05
 slug: commit-freeze-launcher-sudo
-root_cause: "App.suspend()+terminal `sudo` password prompt is unusable in the walker-launched Wayland float (TTY handoff broken). Manual test confirmed: typing the password blind does NOT complete the commit."
-fix: "Replace the App.suspend()+inline-terminal sudo prompt with a GUI SUDO_ASKPASS dialog (sudo -A). Removes the terminal dependency entirely."
+root_cause: "commit() ran sudo synchronously ON the Textual event loop, and the sudo password prompt had no usable input: (1) the inline prompt needed App.suspend() which is broken in the walker-launched Wayland float; (2) the sudo -A GUI askpass hung because `walker -x -I` never returns (exit 124). Either way subprocess.run blocked the event loop forever = permanent UI freeze."
+fix: "Run the exact `sudo … commit` inside a freshly-spawned terminal (xdg-terminal-exec -e sh -c) so the password prompt has a native TTY; capture the exit code/output via temp .rc/.out files. Run it in a Textual thread worker so the event loop is never blocked. Removes App.suspend() and all GUI-askpass dependency."
 ---
 
 # Debug: commit freezes in launcher-spawned window
@@ -38,6 +38,9 @@ fix: "Replace the App.suspend()+inline-terminal sudo prompt with a GUI SUDO_ASKP
 - timestamp: 2026-07-05 — **MANUAL TEST RESULT (human):** launched from walker, staged a loosen, pressed `y`, typed the sudo password blind + Enter → **STILL FROZEN**, commit did not complete. This confirms the fix fork = the TTY handoff itself is broken (not merely an invisible prompt). Fix = GUI askpass, NOT a terminal banner.
 - timestamp: 2026-07-05 — Available GUI password tools on the box: `zenity`, `walker` (has `-x/--password` + `-I/--inputonly` dmenu mode — omarchy-native), `systemd-ask-password`. Plan: a SUDO_ASKPASS helper that reads the password via a masked GUI prompt; `backend.commit()` calls `sudo -A …` and no longer needs `App.suspend()`.
 - timestamp: 2026-07-05 — Re-confirmed the exact code state before delegating the interactive test. `backend.py:185-197`: `subprocess.run` sets ONLY `stdout=subprocess.PIPE` + `text=True`; stdin/stderr are inherited (TTY). Docstring (`backend.py:175-179`) states stderr is *intentionally* left on the TTY so the sudo prompt reaches the user (Pitfall 3). `edit.py:207-209`: comment "Release the TTY so sudo's password/fingerprint prompt is inline (D-08)" then `with self.app.suspend(): res = backend.commit(...)`. So the design INTENT is an inline prompt; the bug is that in the walker float it is not visibly reaching the user. This is exactly the fork the manual test resolves — no further headless observation can distinguish "invisible prompt" from "broken tty handoff".
+
+- timestamp: 2026-07-05 — **The sudo -A askpass fix DID NOT work — same freeze.** Probes: `walker -x -I -p probe` (empty stdin) → exit 124 (HANGS, returns nothing), so `sudo -A` waits on it forever. `action_do_commit` calls `backend.commit()` SYNCHRONOUSLY on the event loop → the hang froze the whole UI. The "empty box" screenshot is the dead event loop, not a password prompt. walker gapplication-service IS running (pid 1320) — walker's dmenu/password mode is simply the wrong askpass tool.
+- timestamp: 2026-07-05 — **Validated the reliable mechanism end-to-end:** `xdg-terminal-exec -e sh -c '<cmd> > out; echo $? > rc'` spawns a real terminal, runs the command, and the exit code + output are captured via temp files (verified with a plain echo AND with `sudo -n … verify` → rc=1, "sudo: a password is required"). A real terminal gives sudo a working TTY prompt — the one thing that reliably works. Reworked commit() to use it, in a Textual `@work(thread=True)` worker so the event loop can never block. 79 tests pass.
 
 ## Eliminated
 

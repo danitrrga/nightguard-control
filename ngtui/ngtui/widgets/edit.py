@@ -31,6 +31,7 @@ correct tradeoff given the inline-auth requirement.
 """
 from __future__ import annotations
 
+from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -203,17 +204,28 @@ class ConfirmScreen(ModalScreen):
     def action_do_commit(self) -> None:
         """The ``y`` path — the ONLY commit trigger. No-op when commit is disabled.
 
-        ``backend.commit`` authenticates via a GUI askpass dialog (``sudo -A`` +
-        ``SUDO_ASKPASS``), so the TUI no longer suspends and no inline-terminal prompt
-        is used — the inline prompt hung in the walker-launched Wayland float
-        (debug: commit-freeze-launcher-sudo). The password dialog pops over the TUI.
+        ``backend.commit`` opens a real terminal for the ``sudo`` password prompt (the
+        inline prompt and a GUI askpass both hung in the walker-launched Wayland float —
+        debug: commit-freeze-launcher-sudo). The commit runs in a THREAD worker so the
+        event loop is never blocked while that terminal is open — the UI can no longer
+        hard-freeze; the result is applied on the main thread when the worker returns.
         """
         if not self._can_commit:
             self.app.bell()
             return
+        try:
+            self.query_one("#confirm-line", Static).update(
+                "→ Enter your password in the commit terminal that just opened…"
+            )
+        except Exception:
+            pass
+        self._run_commit()
+
+    @work(thread=True)
+    def _run_commit(self) -> None:
+        """Run the (blocking) terminal commit off the event loop; dismiss on the main thread."""
         res = backend.commit(self._proposed_text)
-        # Hand the result back to the EditScreen, which re-reads state (no optimism).
-        self.dismiss(res)
+        self.app.call_from_thread(self.dismiss, res)
 
     def action_cancel(self) -> None:
         self.dismiss(None)

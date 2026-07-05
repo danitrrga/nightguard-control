@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import os
 import pathlib
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -168,64 +170,60 @@ def tokens_left() -> int:
     return ctl.WEEKLY_TOKENS - decision["effective_spent"]
 
 
-# SUDO_ASKPASS helper: a masked GUI password prompt. `sudo -A` runs this to read
-# the password instead of prompting on the terminal — the inline-terminal prompt is
-# unusable in a walker-launched Wayland float (App.suspend()/TTY handoff breaks;
-# debug: commit-freeze-launcher-sudo). walker (omarchy-native, `-x` password mode)
-# first; zenity as a portable fallback. </dev/null so dmenu never blocks on stdin.
-_ASKPASS_SCRIPT = """#!/bin/sh
-# Nightguard sudo askpass — masked GUI password prompt (SUDO_ASKPASS target).
-# Invoked by `sudo -A` during a commit; prints the typed password to stdout.
-if command -v walker >/dev/null 2>&1; then
-  exec walker -x -I -p "sudo — Nightguard commit" </dev/null
-fi
-exec zenity --password --title "Nightguard commit" </dev/null
-"""
+def _terminal_launcher() -> str:
+    """The command that opens a real terminal running ``-e <argv…>``.
 
-
-def _write_askpass_helper() -> str:
-    """Write the GUI askpass helper to a private 0700 temp file; return its path."""
-    fd, path = tempfile.mkstemp(prefix="ngtui-askpass-", suffix=".sh")
-    with os.fdopen(fd, "w") as f:
-        f.write(_ASKPASS_SCRIPT)
-    os.chmod(path, 0o700)  # SUDO_ASKPASS must be executable
-    return path
+    ``xdg-terminal-exec`` (the freedesktop resolver — same one the .desktop launcher
+    uses) first, falling back to the box's Alacritty. Both give the child a real PTY.
+    """
+    for term in ("xdg-terminal-exec",):
+        if shutil.which(term):
+            return term
+    return "alacritty"
 
 
 def commit(proposed_text: str) -> dict:
-    """Sign + commit a proposed config via the sudoers-mandated CLI argv.
+    """Sign + commit a proposed config via the sudoers-mandated CLI, in a real terminal.
 
-    Authentication uses ``sudo -A`` with a GUI askpass helper (``SUDO_ASKPASS``) so the
-    password prompt is a desktop dialog, NOT an inline-terminal prompt: the inline prompt
-    is unusable in a walker-launched Wayland float, where ``App.suspend()``/the TTY handoff
-    breaks and the commit silently hangs (debug: commit-freeze-launcher-sudo). No
-    ``App.suspend()`` is needed anymore, and because the dialog carries the prompt, stdout
-    AND stderr are captured — the real ``REFUSED (...)`` line can be surfaced in-widget.
-    ``-A`` is a sudo option and does not change the matched command, so the sudoers
-    ``Cmnd_Alias`` shape is unchanged; never ``shell=True``; argv after ``-A`` must be
-    ``/usr/bin/python3`` + the absolute script path or sudoers will not match (T-10-03).
+    The ``sudo`` call runs inside a freshly-spawned terminal so its password prompt has
+    a genuine, working TTY — exactly how ``sudo`` behaves in any terminal. The earlier
+    designs both failed in the walker-launched Wayland float: the inline prompt needed
+    ``App.suspend()`` (TTY handoff broken there), and a ``sudo -A`` GUI askpass hung on
+    ``walker -x`` (never returns), freezing the whole event loop (debug:
+    commit-freeze-launcher-sudo). A dedicated terminal sidesteps both.
+
+    The exact ``sudo /usr/bin/python3 <CTL_SCRIPT> commit --from <tmp>`` command runs in
+    the terminal; its exit code and output are captured via two private temp files. All
+    interpolated paths are ``shlex.quote``-d and the config CONTENT is in ``tmp`` (a file),
+    never on the command line — so there is no shell-injection vector, and the sudoers
+    ``Cmnd_Alias`` (``… commit *``) still matches the exact command.
     """
     fd, tmp = tempfile.mkstemp(suffix=".yaml")  # 0600, exclusive create
-    askpass = _write_askpass_helper()
+    rc_fd, rc_path = tempfile.mkstemp(suffix=".rc")
+    out_fd, out_path = tempfile.mkstemp(suffix=".out")
+    os.close(rc_fd)
+    os.close(out_fd)
     try:
         with os.fdopen(fd, "w") as f:
             f.write(proposed_text)
-        proc = subprocess.run(
-            [
-                "sudo",
-                "-A",  # read the password from SUDO_ASKPASS (GUI dialog), never the TTY
-                "/usr/bin/python3",
-                CTL_SCRIPT,  # validated absolute path (CR-02), identical to the
-                #              pinned STACK_DIR/nightguard_ctl.py sudoers shape.
-                "commit",
-                "--from",
-                tmp,
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env={**os.environ, "SUDO_ASKPASS": askpass},
+        # The command run inside the terminal. `sudo` prompts natively on the PTY; the
+        # exit code lands in rc_path and the combined output in out_path (then it is
+        # echoed so the user sees the signer's committed/REFUSED line before the window
+        # auto-closes). shlex.quote guards every interpolated path (all are mkstemp/
+        # validated constants — no config content here).
+        inner = (
+            f"sudo /usr/bin/python3 {shlex.quote(CTL_SCRIPT)} commit "
+            f"--from {shlex.quote(tmp)} > {shlex.quote(out_path)} 2>&1; "
+            f'rc=$?; printf "%s" "$rc" > {shlex.quote(rc_path)}; '
+            f"cat {shlex.quote(out_path)}; "
+            f'printf "\\n[Nightguard] commit finished — closing…\\n"; sleep 2'
         )
+        subprocess.run(
+            [_terminal_launcher(), "-e", "sh", "-c", inner],
+            check=False,
+        )
+        returncode = _read_rc(rc_path)
+        output = _read_text(out_path)
         # BAR-04 / D-11: instant Waybar refresh, success-only + non-perturbing.
         # Only on a real success (returncode == 0) do we nudge the custom/nightguard
         # module (which declares "signal": 11) so the bar reflects a token spend the
@@ -234,7 +232,7 @@ def commit(proposed_text: str) -> dict:
         # swallow-all try/except so a missing pkill / absent waybar / any OSError can
         # NEVER flip the bar on a refused commit (T-12-02) nor propagate into or alter
         # the commit result (T-12-03) — the returned dict is built independently below.
-        if proc.returncode == 0:
+        if returncode == 0:
             try:
                 subprocess.run(
                     ["pkill", "-RTMIN+11", "waybar"],
@@ -244,14 +242,28 @@ def commit(proposed_text: str) -> dict:
                 )
             except Exception:
                 pass
-        return {
-            "returncode": proc.returncode,
-            "stdout": (proc.stdout or "").strip(),
-            "stderr": (proc.stderr or "").strip(),
-        }
+        return {"returncode": returncode, "stdout": output.strip(), "stderr": ""}
     finally:
-        for path in (tmp, askpass):
+        for path in (tmp, rc_path, out_path):
             try:
                 os.unlink(path)
             except OSError:
                 pass
+
+
+def _read_rc(rc_path: str) -> int:
+    """Read the terminal-captured exit code; a missing/blank/garbled file is a failure."""
+    try:
+        with open(rc_path, encoding="utf-8", errors="replace") as f:
+            return int((f.read().strip() or "1"))
+    except (OSError, ValueError):
+        return 1
+
+
+def _read_text(path: str) -> str:
+    """Read the terminal-captured combined output (empty string if unreadable)."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return ""
