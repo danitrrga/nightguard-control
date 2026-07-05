@@ -1,20 +1,18 @@
 """BAR-04 / D-11: commit() fires a success-only, non-perturbing Waybar refresh.
 
-Requirement: "backend.commit() fires `pkill -RTMIN+11 waybar` exactly once when
-the commit succeeded (rc 0), NEVER on failure, and a raising pkill subprocess is
-swallowed so commit() still returns the real result" (BAR-04 / D-11 / 12-02-PLAN).
+Requirement: "backend.commit() fires `pkill -RTMIN+11 waybar` exactly once when the
+commit succeeded (rc 0), NEVER on failure, and a raising pkill subprocess is swallowed
+so commit() still returns the real result" (BAR-04 / D-11 / 12-02-PLAN).
 
-commit() now runs the real `sudo … commit` inside a spawned terminal (native TTY
-password prompt — the inline prompt and a GUI askpass both hung in the walker-
-launched Wayland float; debug: commit-freeze-launcher-sudo). The terminal writes
-its exit code to a temp .rc file, which commit() reads back. So the mock:
-  - for the terminal launcher call: simulates the terminal by writing the desired
-    rc (and some output) to the .rc/.out paths embedded in the inner command;
-  - for "pkill": records the refresh signal (or makes it raise).
+commit() now takes the user's password (collected by a masked in-TUI field) and pipes
+it to `sudo -S` on stdin — no TTY prompt, no App.suspend(), no GUI askpass, no second
+terminal (all of which failed in the walker-launched Wayland float; debug:
+commit-freeze-launcher-sudo). The mock branches on argv[0]:
+  - "sudo"  -> the commit call (returns a _FakeProc with the desired returncode)
+  - "pkill" -> the refresh signal (recorded, or made to raise)
 """
 from __future__ import annotations
 
-import re
 from unittest.mock import patch
 
 from ngtui import backend
@@ -23,42 +21,38 @@ from ngtui import backend
 class _FakeProc:
     """Minimal subprocess.CompletedProcess stand-in."""
 
-    def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = ""):
+    def __init__(
+        self,
+        returncode: int = 0,
+        stdout: str = "committed (tighten, free)",
+        stderr: str = "",
+    ):
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
 
 
-def _run_commit(sim_rc: int, *, pkill_raises: bool = False):
-    """Run backend.commit() with subprocess.run mocked.
+def _run_commit(sudo_rc: int, *, pkill_raises: bool = False):
+    """Run backend.commit() with subprocess.run mocked to branch on argv[0].
 
-    The terminal-launcher call is simulated by writing `sim_rc` (and a fake committed
-    line) to the .rc/.out temp files named in the inner shell command. Returns
-    (result_dict, list_of_pkill_argvs).
+    Returns (result_dict, list_of_pkill_argvs). The "sudo" call returns a _FakeProc with
+    returncode=sudo_rc; the "pkill" call is recorded (and raises OSError when requested).
     """
     pkill_calls: list[list[str]] = []
 
     def fake_run(argv, **kwargs):
         head = argv[0]
+        if head == "sudo":
+            return _FakeProc(returncode=sudo_rc)
         if head == "pkill":
             pkill_calls.append(list(argv))
             if pkill_raises:
                 raise OSError("pkill absent / no waybar running")
-            return _FakeProc(returncode=0)
-        # Otherwise this is the terminal launcher: `[launcher, "-e", "sh", "-c", inner]`.
-        inner = argv[-1]
-        rc_match = re.search(r"> (\S+\.rc)", inner)
-        assert rc_match, f"inner must redirect the exit code to a .rc file: {inner!r}"
-        with open(rc_match.group(1), "w", encoding="utf-8") as f:
-            f.write(str(sim_rc))
-        out_match = re.search(r"> (\S+\.out)", inner)
-        if out_match:
-            with open(out_match.group(1), "w", encoding="utf-8") as f:
-                f.write("committed (tighten, free)")
-        return _FakeProc(returncode=0)  # the terminal's own exit code (commit ignores it)
+            return _FakeProc(returncode=0, stdout="")
+        raise AssertionError(f"unexpected subprocess.run argv[0]={head!r}")
 
     with patch("ngtui.backend.subprocess.run", side_effect=fake_run):
-        result = backend.commit("timezone: Europe/Amsterdam\n")
+        result = backend.commit("timezone: Europe/Amsterdam\n", "hunter2")
 
     return result, pkill_calls
 
@@ -67,8 +61,8 @@ def _run_commit(sim_rc: int, *, pkill_raises: bool = False):
 
 
 def test_success_fires_pkill_signal_once():
-    """rc 0 (from the terminal's .rc file) -> exactly one `pkill -RTMIN+11 waybar`."""
-    result, pkill_calls = _run_commit(sim_rc=0)
+    """returncode 0 -> exactly one `pkill -RTMIN+11 waybar` call."""
+    result, pkill_calls = _run_commit(sudo_rc=0)
 
     assert result["returncode"] == 0
     assert len(pkill_calls) == 1, (
@@ -84,8 +78,8 @@ def test_success_fires_pkill_signal_once():
 
 
 def test_failure_does_not_fire_signal():
-    """A non-zero commit rc must NOT fire the refresh signal (T-12-02)."""
-    result, pkill_calls = _run_commit(sim_rc=1)
+    """A non-zero commit returncode must NOT fire the refresh signal (T-12-02)."""
+    result, pkill_calls = _run_commit(sudo_rc=1)
 
     assert pkill_calls == [], (
         f"a refused/failed commit must not flip the bar, got {pkill_calls!r}"
@@ -100,7 +94,7 @@ def test_failure_does_not_fire_signal():
 
 def test_raising_pkill_is_non_perturbing():
     """A pkill that raises must not propagate or change the commit result (T-12-03)."""
-    result, pkill_calls = _run_commit(sim_rc=0, pkill_raises=True)
+    result, pkill_calls = _run_commit(sudo_rc=0, pkill_raises=True)
 
     assert len(pkill_calls) == 1, "the signal should still be attempted on success"
     assert result["returncode"] == 0, (
@@ -114,7 +108,7 @@ def test_raising_pkill_is_non_perturbing():
 
 def test_result_dict_shape():
     """The returned dict is {returncode, stdout, stderr}; the signal adds no keys."""
-    result, _pkill_calls = _run_commit(sim_rc=0)
+    result, _pkill_calls = _run_commit(sudo_rc=0)
 
     assert set(result.keys()) == {"returncode", "stdout", "stderr"}, (
         f"unexpected commit result keys, got {sorted(result)!r}"
@@ -122,15 +116,14 @@ def test_result_dict_shape():
     assert result["stdout"] == "committed (tighten, free)"
 
 
-# --- Test E: commit runs sudo in a real terminal (regression) ----------------
+# --- Test E: password is piped to `sudo -S` (regression) ---------------------
 
 
-def test_commit_runs_sudo_in_a_spawned_terminal():
-    """Regression (commit-freeze-launcher-sudo): the sudo prompt must have a real TTY.
+def test_commit_pipes_password_to_sudo_S_on_stdin():
+    """Regression (commit-freeze-launcher-sudo): password goes to `sudo -S` via stdin.
 
-    The inline prompt needed App.suspend() (broken in the Wayland float) and a sudo -A
-    GUI askpass hung on walker. The reliable design runs the exact sudo command inside a
-    spawned terminal via `-e sh -c <inner>`, capturing the exit code from a .rc file.
+    No TTY prompt / App.suspend() / GUI askpass / second terminal. `-S` reads from stdin,
+    `-k` forces real re-auth (friction), `-p ''` silences sudo's own prompt.
     """
     seen: dict = {}
 
@@ -138,22 +131,26 @@ def test_commit_runs_sudo_in_a_spawned_terminal():
         if argv[0] == "pkill":
             return _FakeProc(0)
         seen["argv"] = list(argv)
-        inner = argv[-1]
-        seen["inner"] = inner
-        rc_match = re.search(r"> (\S+\.rc)", inner)
-        with open(rc_match.group(1), "w", encoding="utf-8") as f:
-            f.write("0")
+        seen["kwargs"] = kwargs
         return _FakeProc(0)
 
     with patch("ngtui.backend.subprocess.run", side_effect=fake_run):
-        backend.commit("timezone: Europe/Amsterdam\n")
+        backend.commit("timezone: Europe/Amsterdam\n", "s3cret")
 
     argv = seen["argv"]
-    assert argv[1:4] == ["-e", "sh", "-c"], f"must spawn a terminal via -e sh -c, got {argv!r}"
-    inner = seen["inner"]
-    # The exact sudoers Cmnd shape runs inside the terminal.
-    assert "sudo /usr/bin/python3" in inner, f"sudo command missing/altered: {inner!r}"
-    assert backend.CTL_SCRIPT in inner, "the validated CTL_SCRIPT must be the sudo target"
-    assert "commit --from" in inner, f"commit --from <tmp> shape lost: {inner!r}"
-    # It captures the exit code from a .rc file rather than the terminal's own rc.
-    assert re.search(r"> \S+\.rc", inner), "commit must capture the sudo exit code to a .rc file"
+    assert argv[0] == "sudo", f"argv[0] must be sudo, got {argv!r}"
+    assert "-S" in argv, "sudo must read the password from stdin (-S)"
+    assert "-k" in argv, "sudo must force re-auth every commit (-k) — the friction"
+    # -p '' silences sudo's own prompt (the TUI shows the password field).
+    i = argv.index("-p")
+    assert argv[i + 1] == "", "sudo prompt must be silenced with -p ''"
+    # Exact sudoers Cmnd shape follows the options.
+    assert "/usr/bin/python3" in argv and backend.CTL_SCRIPT in argv
+    assert "commit" in argv and "--from" in argv
+    # The password is fed on stdin, never on the command line.
+    assert seen["kwargs"].get("input") == "s3cret\n", "password must be piped via stdin"
+    assert "s3cret" not in " ".join(argv), "password must never appear in argv"
+    import subprocess as sp
+
+    assert seen["kwargs"].get("stdout") is sp.PIPE
+    assert seen["kwargs"].get("stderr") is sp.PIPE

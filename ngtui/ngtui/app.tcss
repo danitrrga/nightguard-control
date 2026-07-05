@@ -163,8 +163,8 @@ Screen {
 #edit-status.warning    { color: $warning; }
 #edit-status.text-muted { color: $text-muted; }
 
-/* --- modal boxes (confirm gate, inline input, discard) --- */
-#confirm-box, #inline-box {
+/* --- modal boxes (confirm gate + in-window password, discard) --- */
+#confirm-box {
     width: auto;
     height: auto;
     border: round $primary;          /* accent reserved: the deliberate-friction gate */
@@ -179,3 +179,11 @@ Screen {
 #confirm-line.accent  { color: $accent; }
 #confirm-line.warning { color: $warning; }
 #confirm-line.error   { color: $error; }
+
+/* masked password field revealed in the confirm gate on `y` */
+#commit-pass {
+    width: 34;
+    margin-top: 1;
+    border: round $primary;
+    background: $surface-lighten-1;
+}

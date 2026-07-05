@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import os
 import pathlib
-import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -170,60 +168,44 @@ def tokens_left() -> int:
     return ctl.WEEKLY_TOKENS - decision["effective_spent"]
 
 
-def _terminal_launcher() -> str:
-    """The command that opens a real terminal running ``-e <argv…>``.
+def commit(proposed_text: str, password: str) -> dict:
+    """Sign + commit a proposed config via the sudoers CLI, password piped to ``sudo -S``.
 
-    ``xdg-terminal-exec`` (the freedesktop resolver — same one the .desktop launcher
-    uses) first, falling back to the box's Alacritty. Both give the child a real PTY.
-    """
-    for term in ("xdg-terminal-exec",):
-        if shutil.which(term):
-            return term
-    return "alacritty"
+    The password is collected by a masked in-TUI ``Input`` and fed to ``sudo -S`` on
+    STDIN, so there is NO TTY prompt, no ``App.suspend()``, no GUI askpass, and no second
+    terminal — every one of which failed or was clumsy in the walker-launched Wayland
+    float (debug: commit-freeze-launcher-sudo). Because sudo never touches the terminal,
+    it does not matter that Textual owns it.
 
-
-def commit(proposed_text: str) -> dict:
-    """Sign + commit a proposed config via the sudoers-mandated CLI, in a real terminal.
-
-    The ``sudo`` call runs inside a freshly-spawned terminal so its password prompt has
-    a genuine, working TTY — exactly how ``sudo`` behaves in any terminal. The earlier
-    designs both failed in the walker-launched Wayland float: the inline prompt needed
-    ``App.suspend()`` (TTY handoff broken there), and a ``sudo -A`` GUI askpass hung on
-    ``walker -x`` (never returns), freezing the whole event loop (debug:
-    commit-freeze-launcher-sudo). A dedicated terminal sidesteps both.
-
-    The exact ``sudo /usr/bin/python3 <CTL_SCRIPT> commit --from <tmp>`` command runs in
-    the terminal; its exit code and output are captured via two private temp files. All
-    interpolated paths are ``shlex.quote``-d and the config CONTENT is in ``tmp`` (a file),
-    never on the command line — so there is no shell-injection vector, and the sudoers
-    ``Cmnd_Alias`` (``… commit *``) still matches the exact command.
+    ``-S`` reads the password from stdin; ``-k`` forces real re-auth on every commit (the
+    anti-impulse friction — the correct password is required each time, never a cached
+    bypass); ``-p ''`` silences sudo's own prompt (the TUI shows it). The argv is the
+    exact sudoers ``Cmnd_Alias`` shape; never ``shell=True``; the config CONTENT lives in
+    ``tmp`` (a file), never on the command line. The caller runs this in a thread worker
+    so the event loop never blocks.
     """
     fd, tmp = tempfile.mkstemp(suffix=".yaml")  # 0600, exclusive create
-    rc_fd, rc_path = tempfile.mkstemp(suffix=".rc")
-    out_fd, out_path = tempfile.mkstemp(suffix=".out")
-    os.close(rc_fd)
-    os.close(out_fd)
     try:
         with os.fdopen(fd, "w") as f:
             f.write(proposed_text)
-        # The command run inside the terminal. `sudo` prompts natively on the PTY; the
-        # exit code lands in rc_path and the combined output in out_path (then it is
-        # echoed so the user sees the signer's committed/REFUSED line before the window
-        # auto-closes). shlex.quote guards every interpolated path (all are mkstemp/
-        # validated constants — no config content here).
-        inner = (
-            f"sudo /usr/bin/python3 {shlex.quote(CTL_SCRIPT)} commit "
-            f"--from {shlex.quote(tmp)} > {shlex.quote(out_path)} 2>&1; "
-            f'rc=$?; printf "%s" "$rc" > {shlex.quote(rc_path)}; '
-            f"cat {shlex.quote(out_path)}; "
-            f'printf "\\n[Nightguard] commit finished — closing…\\n"; sleep 2'
+        proc = subprocess.run(
+            [
+                "sudo",
+                "-S",  # read the password from stdin (piped from the TUI), not the TTY
+                "-k",  # invalidate any cached creds: always require the password (friction)
+                "-p",
+                "",  # empty prompt — the TUI presents the password field, not sudo
+                "/usr/bin/python3",
+                CTL_SCRIPT,  # validated absolute path (CR-02), the pinned sudoers shape
+                "commit",
+                "--from",
+                tmp,
+            ],
+            input=(password or "") + "\n",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
-        subprocess.run(
-            [_terminal_launcher(), "-e", "sh", "-c", inner],
-            check=False,
-        )
-        returncode = _read_rc(rc_path)
-        output = _read_text(out_path)
         # BAR-04 / D-11: instant Waybar refresh, success-only + non-perturbing.
         # Only on a real success (returncode == 0) do we nudge the custom/nightguard
         # module (which declares "signal": 11) so the bar reflects a token spend the
@@ -232,7 +214,7 @@ def commit(proposed_text: str) -> dict:
         # swallow-all try/except so a missing pkill / absent waybar / any OSError can
         # NEVER flip the bar on a refused commit (T-12-02) nor propagate into or alter
         # the commit result (T-12-03) — the returned dict is built independently below.
-        if returncode == 0:
+        if proc.returncode == 0:
             try:
                 subprocess.run(
                     ["pkill", "-RTMIN+11", "waybar"],
@@ -242,28 +224,13 @@ def commit(proposed_text: str) -> dict:
                 )
             except Exception:
                 pass
-        return {"returncode": returncode, "stdout": output.strip(), "stderr": ""}
+        return {
+            "returncode": proc.returncode,
+            "stdout": (proc.stdout or "").strip(),
+            "stderr": (proc.stderr or "").strip(),
+        }
     finally:
-        for path in (tmp, rc_path, out_path):
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
-
-
-def _read_rc(rc_path: str) -> int:
-    """Read the terminal-captured exit code; a missing/blank/garbled file is a failure."""
-    try:
-        with open(rc_path, encoding="utf-8", errors="replace") as f:
-            return int((f.read().strip() or "1"))
-    except (OSError, ValueError):
-        return 1
-
-
-def _read_text(path: str) -> str:
-    """Read the terminal-captured combined output (empty string if unreadable)."""
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            return f.read()
-    except OSError:
-        return ""
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass

@@ -103,26 +103,31 @@ def confirm_copy(decision: dict) -> tuple[str, str, bool]:
     )
 
 
-def result_line(returncode: int, stdout: str) -> tuple[str, str]:
-    """Post-commit result line + colour role, from the CLI's actual exit/stdout.
+def result_line(returncode: int, stdout: str, stderr: str = "") -> tuple[str, str]:
+    """Post-commit result line + colour role, from the CLI's actual exit/stdout/stderr.
 
-    Never fabricated. exit 0 + "no-op" → muted; exit 0 (committed) → success,
-    surfacing the CLI stdout verbatim with a ✓ marker; nonzero → ``$error``,
-    returncode-keyed (stderr stayed on the TTY during the inline-sudo suspend, so
-    the in-widget line points the user at the terminal output rather than echoing
-    a captured REFUSED string — intentional UI-SPEC deviation, see module docstring).
+    Never fabricated. exit 0 + "no-op" → muted; exit 0 (committed) → success, surfacing
+    the CLI stdout verbatim with a ✓ marker. Nonzero → ``$error``: the password is piped
+    to ``sudo -S`` so stderr IS captured now — surface the signer's real REFUSED line (or
+    sudo's auth error), falling back to a returncode-keyed message when stderr is empty.
     """
     out = (stdout or "").strip()
+    err = (stderr or "").strip()
     if returncode == 0:
         if out.lower().startswith("no-op") or "no-op:" in out.lower():
             return f"· {out}" if out else "· no-op: nothing written.", "text-muted"
         return (f"✓ {out}" if out else "✓ committed."), "success"
-    # Nonzero — refused / error. stderr is on the TTY above; key off the returncode.
-    return (
-        "✕ commit refused — see terminal output above; "
-        "weekly tokens may be exhausted",
-        "error",
-    )
+    # Nonzero — refused / auth failure. Prefer the real reason from the CLI/sudo.
+    detail = ""
+    if err:
+        detail = err.splitlines()[-1].strip()
+    elif out:
+        detail = out.splitlines()[-1].strip()
+    if detail and "password" in detail.lower():
+        return "✕ commit refused — incorrect password", "error"
+    if detail:
+        return f"✕ commit refused — {detail}", "error"
+    return "✕ commit refused — the change was not applied", "error"
 
 
 # --- editable field model (D-09) ---------------------------------------------
@@ -174,13 +179,15 @@ def _format_value(value, kind: str) -> str:
 
 
 class ConfirmScreen(ModalScreen):
-    """The anti-impulse confirm gate. ``y`` is the ONLY thing that commits.
+    """The anti-impulse confirm gate + in-window password entry. ``y`` starts the commit.
 
-    Shows ``confirm_copy(decision)`` in one unmistakable line. On ``y`` (only when
-    the decision permits), suspends the app and runs the real commit; on ``n``/
-    ``Escape`` returns without committing. The token cost + direction were already
-    visible on the EditScreen preview — this gate front-loads the consequence one
-    more time before the (inline) sudo prompt, never after it.
+    Shows ``confirm_copy(decision)`` in one unmistakable line. On ``y`` (only when the
+    decision permits) it reveals a MASKED password field right in the gate — the token
+    cost + direction were already shown on the EditScreen preview, so this front-loads the
+    consequence one last time, then takes the password. The password is piped to
+    ``sudo -S`` (``backend.commit``) on a thread worker, so nothing suspends, no second
+    terminal opens, and the event loop never blocks (debug: commit-freeze-launcher-sudo).
+    ``n``/``Escape`` returns without committing.
     """
 
     BINDINGS = [
@@ -194,6 +201,7 @@ class ConfirmScreen(ModalScreen):
         self._proposed_text = proposed_text
         self._decision = decision
         self._line, self._role, self._can_commit = confirm_copy(decision)
+        self._authing = False  # True once the password field is showing
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-box"):
@@ -202,29 +210,36 @@ class ConfirmScreen(ModalScreen):
                 yield Static("[n] back", classes="dim")
 
     def action_do_commit(self) -> None:
-        """The ``y`` path — the ONLY commit trigger. No-op when commit is disabled.
-
-        ``backend.commit`` opens a real terminal for the ``sudo`` password prompt (the
-        inline prompt and a GUI askpass both hung in the walker-launched Wayland float —
-        debug: commit-freeze-launcher-sudo). The commit runs in a THREAD worker so the
-        event loop is never blocked while that terminal is open — the UI can no longer
-        hard-freeze; the result is applied on the main thread when the worker returns.
-        """
-        if not self._can_commit:
-            self.app.bell()
+        """``y`` → reveal the masked password field (only when the commit is permitted)."""
+        if not self._can_commit or self._authing:
+            if not self._can_commit:
+                self.app.bell()
             return
+        self._authing = True
+        self.query_one("#confirm-line", Static).update(
+            "🔒 Enter your password to commit — Enter to confirm, Esc to cancel"
+        )
+        box = self.query_one("#confirm-box", Vertical)
+        box.mount(Input(password=True, placeholder="password", id="commit-pass"))
+        self.query_one("#commit-pass", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Password entered → run the commit off the event loop with it."""
+        if event.input.id != "commit-pass":
+            return
+        event.stop()
+        password = event.value
         try:
-            self.query_one("#confirm-line", Static).update(
-                "→ Enter your password in the commit terminal that just opened…"
-            )
+            self.query_one("#commit-pass", Input).remove()
         except Exception:
             pass
-        self._run_commit()
+        self.query_one("#confirm-line", Static).update("committing…")
+        self._run_commit(password)
 
     @work(thread=True)
-    def _run_commit(self) -> None:
-        """Run the (blocking) terminal commit off the event loop; dismiss on the main thread."""
-        res = backend.commit(self._proposed_text)
+    def _run_commit(self, password: str) -> None:
+        """Pipe the password to ``sudo -S`` off the event loop; dismiss on the main thread."""
+        res = backend.commit(self._proposed_text, password)
         self.app.call_from_thread(self.dismiss, res)
 
     def action_cancel(self) -> None:
@@ -508,7 +523,9 @@ class EditScreen(Screen):
         """After the confirm gate: render the CLI result + re-read state (no optimism)."""
         if res is None:
             return  # cancelled — nothing committed
-        text, role = result_line(res.get("returncode", 1), res.get("stdout", ""))
+        text, role = result_line(
+            res.get("returncode", 1), res.get("stdout", ""), res.get("stderr", "")
+        )
         cell = self.query_one("#edit-status", Static)
         cell.update(text)
         cell.set_classes(role)
