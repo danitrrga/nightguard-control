@@ -179,15 +179,15 @@ def _format_value(value, kind: str) -> str:
 
 
 class ConfirmScreen(ModalScreen):
-    """The anti-impulse confirm gate + in-window password entry. ``y`` starts the commit.
+    """The anti-impulse commit dialog: confirm the consequence, authorize, see the result.
 
-    Shows ``confirm_copy(decision)`` in one unmistakable line. On ``y`` (only when the
-    decision permits) it reveals a MASKED password field right in the gate — the token
-    cost + direction were already shown on the EditScreen preview, so this front-loads the
-    consequence one last time, then takes the password. The password is piped to
-    ``sudo -S`` (``backend.commit``) on a thread worker, so nothing suspends, no second
-    terminal opens, and the event loop never blocks (debug: commit-freeze-launcher-sudo).
-    ``n``/``Escape`` returns without committing.
+    A centered dialog with four clear parts — a title, the one-line consequence
+    (``confirm_copy``), a hint line that guides the next keystroke, and a result line.
+    On ``y`` it reveals a MASKED password field; on Enter the password is piped to
+    ``sudo -S`` (``backend.commit``) on a thread worker — nothing suspends, no second
+    terminal, the event loop never blocks (debug: commit-freeze-launcher-sudo). The real
+    ✓/✕ result is shown INSIDE the dialog: success auto-closes (any key closes sooner);
+    a wrong password / refusal shows the reason and lets you retry. ``n``/``Esc`` cancels.
     """
 
     BINDINGS = [
@@ -201,26 +201,44 @@ class ConfirmScreen(ModalScreen):
         self._proposed_text = proposed_text
         self._decision = decision
         self._line, self._role, self._can_commit = confirm_copy(decision)
-        self._authing = False  # True once the password field is showing
+        self._authing = False           # True while the password field is showing
+        self._result: dict | None = None  # set once a commit succeeds
+        self._closing = False           # guards the double-close (timer + keypress)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-box"):
+            yield Static("Authorize commit", id="confirm-title")
             yield Static(self._line, id="confirm-line", classes=self._role)
-            if not self._can_commit:
-                yield Static("[n] back", classes="dim")
+            hint = (
+                "Press  y  to authorize  ·  n  to cancel"
+                if self._can_commit
+                else "Press  n  to go back"
+            )
+            yield Static(hint, id="confirm-hint", classes="dim")
+            yield Static("", id="confirm-result")
 
     def action_do_commit(self) -> None:
         """``y`` → reveal the masked password field (only when the commit is permitted)."""
-        if not self._can_commit or self._authing:
-            if not self._can_commit:
-                self.app.bell()
+        if not self._can_commit:
+            self.app.bell()
             return
+        if self._authing or self._result is not None:
+            return
+        self._arm_password()
+
+    def _arm_password(self) -> None:
+        """Show (or re-show, for a retry) the masked password field and focus it."""
         self._authing = True
-        self.query_one("#confirm-line", Static).update(
-            "🔒 Enter your password to commit — Enter to confirm, Esc to cancel"
+        hint = self.query_one("#confirm-hint", Static)
+        hint.update("🔒 Type your password, then Enter to commit  ·  Esc to cancel")
+        hint.set_classes("accent")
+        try:
+            self.query_one("#commit-pass", Input).remove()
+        except Exception:
+            pass
+        self.query_one("#confirm-box", Vertical).mount(
+            Input(password=True, placeholder="password", id="commit-pass")
         )
-        box = self.query_one("#confirm-box", Vertical)
-        box.mount(Input(password=True, placeholder="password", id="commit-pass"))
         self.query_one("#commit-pass", Input).focus()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -229,21 +247,57 @@ class ConfirmScreen(ModalScreen):
             return
         event.stop()
         password = event.value
+        self._authing = False
         try:
             self.query_one("#commit-pass", Input).remove()
         except Exception:
             pass
-        self.query_one("#confirm-line", Static).update("committing…")
+        self.query_one("#confirm-hint", Static).update("")
+        res_cell = self.query_one("#confirm-result", Static)
+        res_cell.update("⏳ Committing — signing via the trust stack…")
+        res_cell.set_classes("dim")
         self._run_commit(password)
 
     @work(thread=True)
     def _run_commit(self, password: str) -> None:
-        """Pipe the password to ``sudo -S`` off the event loop; dismiss on the main thread."""
+        """Pipe the password to ``sudo -S`` off the event loop; report on the main thread."""
         res = backend.commit(self._proposed_text, password)
-        self.app.call_from_thread(self.dismiss, res)
+        self.app.call_from_thread(self._show_result, res)
+
+    def _show_result(self, res: dict) -> None:
+        """Show the real ✓/✕ result in the dialog; auto-close on success, retry on failure."""
+        rc = res.get("returncode", 1)
+        text, role = result_line(rc, res.get("stdout", ""), res.get("stderr", ""))
+        res_cell = self.query_one("#confirm-result", Static)
+        res_cell.update(text)
+        res_cell.set_classes(role)
+        hint = self.query_one("#confirm-hint", Static)
+        if rc == 0:
+            self._result = res  # hand back to EditScreen so it re-reads sanctioned state
+            hint.update("✓ Done — press any key to close")
+            hint.set_classes("dim")
+            self.set_timer(2.5, self._close)
+        else:
+            hint.update("Esc to cancel  ·  or type your password to try again")
+            hint.set_classes("error")
+            self._arm_password()
+
+    def _close(self) -> None:
+        """Single-shot dismiss (guards against the timer + a keypress both firing)."""
+        if self._closing:
+            return
+        self._closing = True
+        self.dismiss(self._result)
+
+    def on_key(self, event) -> None:
+        """After a successful commit, any key closes the dialog immediately."""
+        if self._result is not None:
+            event.stop()
+            self._close()
 
     def action_cancel(self) -> None:
-        self.dismiss(None)
+        # Hand back a committed result if one happened; else None (nothing committed).
+        self._close()
 
 
 # --- EditScreen ---------------------------------------------------------------

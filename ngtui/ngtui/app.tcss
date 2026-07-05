@@ -163,14 +163,25 @@ Screen {
 #edit-status.warning    { color: $warning; }
 #edit-status.text-muted { color: $text-muted; }
 
-/* --- modal boxes (confirm gate + in-window password, discard) --- */
+/* --- commit dialog (confirm gate + in-window password + result) --- */
+ConfirmScreen {
+    align: center middle;            /* centre the dialog, not a tiny corner box */
+    background: $background 55%;      /* dim the editor behind it */
+}
+
 #confirm-box {
-    width: auto;
+    width: 66;
+    max-width: 90%;
     height: auto;
     border: round $primary;          /* accent reserved: the deliberate-friction gate */
     padding: 1 2;
-    margin: 2 4;
     background: $surface;
+}
+
+#confirm-title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
 }
 
 #confirm-line {
@@ -180,9 +191,27 @@ Screen {
 #confirm-line.warning { color: $warning; }
 #confirm-line.error   { color: $error; }
 
-/* masked password field revealed in the confirm gate on `y` */
+#confirm-hint {
+    margin-top: 1;
+}
+#confirm-hint.dim    { color: $text-muted; }
+#confirm-hint.accent { color: $accent; }
+#confirm-hint.error  { color: $error; }
+
+#confirm-result {
+    margin-top: 1;
+    text-style: bold;
+}
+#confirm-result.success    { color: $success; }
+#confirm-result.error      { color: $error; }
+#confirm-result.warning    { color: $warning; }
+#confirm-result.text-muted { color: $text-muted; }
+#confirm-result.dim        { color: $text-muted; }
+#confirm-result.accent     { color: $accent; }
+
+/* masked password field revealed in the dialog on `y` */
 #commit-pass {
-    width: 34;
+    width: 1fr;
     margin-top: 1;
     border: round $primary;
     background: $surface-lighten-1;
