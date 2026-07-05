@@ -1,8 +1,10 @@
 ---
-status: fixing
+status: resolved
 trigger: "When I hit commit in the Nightguard TUI launched from walker, the change doesn't take effect and the window renders mostly empty / freezes."
 created: 2026-07-05
 updated: 2026-07-05
+resolved: 2026-07-05
+verification: "Author confirmed in-window commit works: edit inline → c → y → touch fingerprint sensor → committed, no freeze, no second terminal."
 slug: commit-freeze-launcher-sudo
 root_cause: "sudo authenticates FINGERPRINT-FIRST: /etc/pam.d/sudo has `auth sufficient pam_fprintd.so`. Every attempt to give sudo a password without a real interactive tty for the sensor hung or was clumsy: (1) inline prompt needs App.suspend() (broken in the Wayland float); (2) sudo -A GUI askpass hung because `walker -x` never returns; (3) piping the password to `sudo -S` HANGS forever because PAM blocks on the fingerprint sensor before ever reading the password (proven: `sudo -S -k` + piped pw → exit 124; a PTY-fed password also stays blocked on 'Place your finger…'). Combined with commit() running synchronously on the event loop, that hang froze the whole UI."
 fix: "Run `sudo -k … commit` on a pseudo-terminal (_run_sudo_pty) so PAM's interactive auth works IN-WINDOW: the fingerprint sensor activates and the user touches it, straight from the dialog. No password field, no second terminal, no App.suspend(), no GUI askpass. Runs in a Textual thread worker (event loop never blocks); Esc aborts a pending scan (cancel_event → 130), 60s guard → 124. Dialog shows the sensor prompt + real ✓/✕ result."
