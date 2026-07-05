@@ -7,14 +7,20 @@ Requirement: "backend.commit() shells exactly ['sudo','/usr/bin/python3',
 This test monkeypatches subprocess.run to capture the exact argv the commit()
 function builds and verifies:
   1. argv[0] == "sudo"
-  2. argv[1] == "/usr/bin/python3"
-  3. argv[2] is the absolute path to nightguard_ctl.py (== backend.CTL_SCRIPT)
-  4. argv[3] == "commit"
-  5. argv[4] == "--from"
-  6. argv[5] is a real temp-file path (absolute, ends .yaml)
-  7. shell=False (not shell=True — the sudoers alias requires an exact match)
-  8. stdout is PIPE; stderr is NOT captured (stays on TTY for inline sudo prompt)
-  9. The temp file is cleaned up after the call (mkstemp 0600, then unlink)
+  2. argv[1] == "-A"  (read the password from the GUI SUDO_ASKPASS dialog, not the TTY)
+  3. argv[2] == "/usr/bin/python3"
+  4. argv[3] is the absolute path to nightguard_ctl.py (== backend.CTL_SCRIPT)
+  5. argv[4] == "commit"
+  6. argv[5] == "--from"
+  7. argv[6] is a real temp-file path (absolute, ends .yaml)
+  8. shell=False (not shell=True — the sudoers alias requires an exact match)
+  9. stdout AND stderr are PIPE (the GUI dialog carries the prompt, so the CLI's
+     REFUSED line is captured for in-widget display — the old TTY-inline design,
+     which left stderr uncaptured, hung in a walker-launched Wayland float)
+ 10. The temp file is cleaned up after the call (mkstemp 0600, then unlink)
+
+The `-A` is a sudo *option*; it does not change the matched command, so the sudoers
+Cmnd_Alias (`/usr/bin/python3 <ctl> commit *`) still matches.
 
 These properties cannot be verified by reading the source alone; they require
 actually running the function with a captured subprocess.run.
@@ -33,9 +39,15 @@ from ngtui import backend
 class _FakeProc:
     """Minimal subprocess.CompletedProcess stand-in."""
 
-    def __init__(self, returncode: int = 0, stdout: str = "committed (tighten, free)"):
+    def __init__(
+        self,
+        returncode: int = 0,
+        stdout: str = "committed (tighten, free)",
+        stderr: str = "",
+    ):
         self.returncode = returncode
         self.stdout = stdout
+        self.stderr = stderr
 
 
 def _capture_commit(proposed_text: str = "timezone: Europe/Amsterdam\n") -> tuple[dict, "_Call"]:
@@ -57,26 +69,27 @@ def _capture_commit(proposed_text: str = "timezone: Europe/Amsterdam\n") -> tupl
 
 
 def test_commit_argv_matches_sudoers_shape():
-    """commit() builds ['sudo', '/usr/bin/python3', CTL_SCRIPT, 'commit', '--from', <tmp>]."""
+    """commit() builds ['sudo', '-A', '/usr/bin/python3', CTL_SCRIPT, 'commit', '--from', <tmp>]."""
     result, call = _capture_commit()
 
     argv = call["argv"]
-    assert len(argv) == 6, f"Expected 6 argv items, got {len(argv)}: {argv}"
+    assert len(argv) == 7, f"Expected 7 argv items, got {len(argv)}: {argv}"
     assert argv[0] == "sudo", f"argv[0] must be 'sudo', got {argv[0]!r}"
-    assert argv[1] == "/usr/bin/python3", f"argv[1] must be '/usr/bin/python3', got {argv[1]!r}"
-    assert argv[2] == backend.CTL_SCRIPT, (
-        f"argv[2] must be the validated CTL_SCRIPT ({backend.CTL_SCRIPT!r}), "
-        f"got {argv[2]!r}"
+    assert argv[1] == "-A", f"argv[1] must be '-A' (GUI askpass), got {argv[1]!r}"
+    assert argv[2] == "/usr/bin/python3", f"argv[2] must be '/usr/bin/python3', got {argv[2]!r}"
+    assert argv[3] == backend.CTL_SCRIPT, (
+        f"argv[3] must be the validated CTL_SCRIPT ({backend.CTL_SCRIPT!r}), "
+        f"got {argv[3]!r}"
     )
-    assert argv[3] == "commit", f"argv[3] must be 'commit', got {argv[3]!r}"
-    assert argv[4] == "--from", f"argv[4] must be '--from', got {argv[4]!r}"
-    # argv[5] is the temp file path — must be absolute and end with .yaml
-    tmp_path = argv[5]
+    assert argv[4] == "commit", f"argv[4] must be 'commit', got {argv[4]!r}"
+    assert argv[5] == "--from", f"argv[5] must be '--from', got {argv[5]!r}"
+    # argv[6] is the temp file path — must be absolute and end with .yaml
+    tmp_path = argv[6]
     assert pathlib.Path(tmp_path).is_absolute(), (
-        f"argv[5] (temp file) must be absolute, got {tmp_path!r}"
+        f"argv[6] (temp file) must be absolute, got {tmp_path!r}"
     )
     assert tmp_path.endswith(".yaml"), (
-        f"argv[5] (temp file) must end with .yaml, got {tmp_path!r}"
+        f"argv[6] (temp file) must end with .yaml, got {tmp_path!r}"
     )
 
 
@@ -96,24 +109,24 @@ def test_commit_uses_no_shell():
     )
 
 
-# --- Test 3: stderr is NOT captured (stays on TTY for sudo prompt) -----------
+# --- Test 3: stderr IS captured (GUI askpass carries the prompt) -------------
 
 
-def test_commit_does_not_capture_stderr():
-    """stderr must stay attached to the TTY so the sudo prompt appears inline (D-08).
+def test_commit_captures_stderr():
+    """stderr must be captured now that authentication is a GUI askpass dialog.
 
-    If stderr=subprocess.PIPE were passed, the sudo password/fingerprint prompt
-    would be swallowed — the user would see a hung process with no prompt.
+    The old design left stderr on the TTY so the inline sudo prompt was visible —
+    but that inline prompt hangs in a walker-launched Wayland float
+    (commit-freeze-launcher-sudo). With `sudo -A` the dialog carries the prompt, so
+    stderr is free to be captured and the CLI's REFUSED line surfaced in-widget.
     """
     import subprocess as sp
 
     _result, call = _capture_commit()
 
-    # stderr kwarg must be absent OR explicitly set to None (inherits TTY)
     stderr = call["kwargs"].get("stderr", None)
-    assert stderr is not sp.PIPE, (
-        "commit() must NOT capture stderr (it must stay on the TTY for the sudo "
-        "password/fingerprint prompt — Pitfall 3 / D-08). "
+    assert stderr is sp.PIPE, (
+        "commit() must capture stderr now (GUI askpass carries the prompt). "
         f"Got stderr={stderr!r}"
     )
 
@@ -150,8 +163,8 @@ def test_commit_temp_file_is_cleaned_up_after_call():
     collected_tmp: list[str] = []
 
     def fake_run(argv, *, stdout, text, **kwargs):
-        # Record the temp path before it might get deleted.
-        collected_tmp.append(argv[5])
+        # Record the temp path before it might get deleted (argv[6] after `sudo -A`).
+        collected_tmp.append(argv[6])
         return _FakeProc()
 
     with patch("ngtui.backend.subprocess.run", side_effect=fake_run):

@@ -25,9 +25,15 @@ from ngtui import backend
 class _FakeProc:
     """Minimal subprocess.CompletedProcess stand-in (mirrors test_port02)."""
 
-    def __init__(self, returncode: int = 0, stdout: str = "committed (tighten, free)"):
+    def __init__(
+        self,
+        returncode: int = 0,
+        stdout: str = "committed (tighten, free)",
+        stderr: str = "",
+    ):
         self.returncode = returncode
         self.stdout = stdout
+        self.stderr = stderr
 
 
 def _run_commit(sudo_rc: int, *, pkill_raises: bool = False):
@@ -42,12 +48,9 @@ def _run_commit(sudo_rc: int, *, pkill_raises: bool = False):
     def fake_run(argv, **kwargs):
         head = argv[0]
         if head == "sudo":
-            # The commit call — stderr must stay UNCAPTURED (TTY prompt).
-            import subprocess as sp
-
-            assert kwargs.get("stderr", None) is not sp.PIPE, (
-                "commit()'s sudo call must not capture stderr (TTY prompt)."
-            )
+            # The commit call now authenticates via a GUI askpass dialog (sudo -A +
+            # SUDO_ASKPASS), so stderr IS captured (no TTY prompt to preserve). The
+            # detailed askpass contract is asserted in test_commit_uses_gui_askpass.
             return _FakeProc(returncode=sudo_rc)
         if head == "pkill":
             pkill_calls.append(list(argv))
@@ -111,15 +114,62 @@ def test_raising_pkill_is_non_perturbing():
     assert result["stdout"] == "committed (tighten, free)"
 
 
-# --- Test D: result dict shape is unchanged by the signal --------------------
+# --- Test D: result dict shape (signal adds no keys; askpass adds stderr) ------
 
 
-def test_result_dict_shape_unchanged():
-    """The returned dict stays exactly {returncode, stdout} — signal adds no keys."""
+def test_result_dict_shape():
+    """The returned dict is {returncode, stdout, stderr} — the signal adds no keys.
+
+    ``stderr`` is present because the GUI-askpass commit captures it (there is no
+    TTY prompt to leave it attached to anymore).
+    """
     result, _pkill_calls = _run_commit(sudo_rc=0)
 
-    assert set(result.keys()) == {"returncode", "stdout"}, (
-        f"signal must not add keys to the commit result, got {sorted(result)!r}"
+    assert set(result.keys()) == {"returncode", "stdout", "stderr"}, (
+        f"unexpected commit result keys, got {sorted(result)!r}"
     )
     # stdout is stripped (mirrors the existing commit contract).
     assert result["stdout"] == "committed (tighten, free)"
+
+
+# --- Test E: GUI askpass contract (regression: commit-freeze-launcher-sudo) ----
+
+
+def test_commit_uses_gui_askpass_not_tty():
+    """commit() must authenticate via `sudo -A` + an executable SUDO_ASKPASS helper.
+
+    Regression for the walker-launched-float freeze: the inline-terminal sudo prompt
+    (App.suspend() + TTY) hangs in a Wayland float. The fix routes the password through
+    a GUI askpass dialog, so the sudo call must pass `-A`, capture stderr, and point
+    SUDO_ASKPASS at an existing executable — while keeping the sudoers Cmnd shape.
+    """
+    import os
+    import subprocess as sp
+
+    seen: dict = {}
+
+    def fake_run(argv, **kwargs):
+        if argv[0] == "sudo":
+            seen["argv"] = list(argv)
+            seen["kwargs"] = kwargs
+            ap = kwargs.get("env", {}).get("SUDO_ASKPASS")
+            seen["askpass"] = ap
+            # Must exist + be executable AT CALL TIME (cleaned up in commit's finally).
+            assert ap and os.path.exists(ap), f"SUDO_ASKPASS must be a real file, got {ap!r}"
+            assert os.access(ap, os.X_OK), "SUDO_ASKPASS helper must be executable"
+            return _FakeProc(returncode=0)
+        if argv[0] == "pkill":
+            return _FakeProc(returncode=0, stdout="")
+        raise AssertionError(f"unexpected argv[0]={argv[0]!r}")
+
+    with patch("ngtui.backend.subprocess.run", side_effect=fake_run):
+        backend.commit("timezone: Europe/Amsterdam\n")
+
+    argv = seen["argv"]
+    assert argv[0] == "sudo" and argv[1] == "-A", f"must be `sudo -A …`, got {argv!r}"
+    # sudoers Cmnd shape preserved after the -A option.
+    assert argv[2] == "/usr/bin/python3", f"argv after -A must be python3, got {argv!r}"
+    assert "commit" in argv and "--from" in argv, f"commit argv shape lost: {argv!r}"
+    assert seen["kwargs"].get("stderr") is sp.PIPE, "commit must capture stderr now"
+    # The helper is cleaned up after commit returns (no leaked temp files).
+    assert not os.path.exists(seen["askpass"]), "askpass helper must be removed after commit"

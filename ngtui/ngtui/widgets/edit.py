@@ -32,6 +32,7 @@ correct tradeoff given the inline-auth requirement.
 from __future__ import annotations
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Footer, Header, Input, Label, Static
@@ -200,13 +201,17 @@ class ConfirmScreen(ModalScreen):
                 yield Static("[n] back", classes="dim")
 
     def action_do_commit(self) -> None:
-        """The ``y`` path — the ONLY commit trigger. No-op when commit is disabled."""
+        """The ``y`` path — the ONLY commit trigger. No-op when commit is disabled.
+
+        ``backend.commit`` authenticates via a GUI askpass dialog (``sudo -A`` +
+        ``SUDO_ASKPASS``), so the TUI no longer suspends and no inline-terminal prompt
+        is used — the inline prompt hung in the walker-launched Wayland float
+        (debug: commit-freeze-launcher-sudo). The password dialog pops over the TUI.
+        """
         if not self._can_commit:
             self.app.bell()
             return
-        # Release the TTY so sudo's password/fingerprint prompt is inline (D-08).
-        with self.app.suspend():
-            res = backend.commit(self._proposed_text)
+        res = backend.commit(self._proposed_text)
         # Hand the result back to the EditScreen, which re-reads state (no optimism).
         self.dismiss(res)
 
@@ -235,6 +240,9 @@ class EditScreen(Screen):
     BINDINGS = [
         ("j", "field_next", "Down"),
         ("k", "field_prev", "Up"),
+        # Arrow keys mirror j/k (hidden from the footer legend to keep it clean).
+        Binding("down", "field_next", "Down", show=False),
+        Binding("up", "field_prev", "Up", show=False),
         ("enter", "edit_field", "Edit"),
         ("space", "toggle", "Toggle bool"),
         ("c", "commit", "Commit"),

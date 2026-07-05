@@ -168,23 +168,52 @@ def tokens_left() -> int:
     return ctl.WEEKLY_TOKENS - decision["effective_spent"]
 
 
+# SUDO_ASKPASS helper: a masked GUI password prompt. `sudo -A` runs this to read
+# the password instead of prompting on the terminal — the inline-terminal prompt is
+# unusable in a walker-launched Wayland float (App.suspend()/TTY handoff breaks;
+# debug: commit-freeze-launcher-sudo). walker (omarchy-native, `-x` password mode)
+# first; zenity as a portable fallback. </dev/null so dmenu never blocks on stdin.
+_ASKPASS_SCRIPT = """#!/bin/sh
+# Nightguard sudo askpass — masked GUI password prompt (SUDO_ASKPASS target).
+# Invoked by `sudo -A` during a commit; prints the typed password to stdout.
+if command -v walker >/dev/null 2>&1; then
+  exec walker -x -I -p "sudo — Nightguard commit" </dev/null
+fi
+exec zenity --password --title "Nightguard commit" </dev/null
+"""
+
+
+def _write_askpass_helper() -> str:
+    """Write the GUI askpass helper to a private 0700 temp file; return its path."""
+    fd, path = tempfile.mkstemp(prefix="ngtui-askpass-", suffix=".sh")
+    with os.fdopen(fd, "w") as f:
+        f.write(_ASKPASS_SCRIPT)
+    os.chmod(path, 0o700)  # SUDO_ASKPASS must be executable
+    return path
+
+
 def commit(proposed_text: str) -> dict:
     """Sign + commit a proposed config via the sudoers-mandated CLI argv.
 
-    The caller wraps this in ``App.suspend()`` (Wave 3) so the TTY is released.
-    stderr is intentionally NOT captured — it stays attached to the TTY so the
-    sudo password / fingerprint prompt and any ``REFUSED`` line reach the user
-    (Pitfall 3). The argv is the exact sudoers ``Cmnd_Alias`` shape; never
-    ``shell=True``; argv[1] must be ``/usr/bin/python3`` and the script path
-    absolute or sudoers will not match (T-10-03).
+    Authentication uses ``sudo -A`` with a GUI askpass helper (``SUDO_ASKPASS``) so the
+    password prompt is a desktop dialog, NOT an inline-terminal prompt: the inline prompt
+    is unusable in a walker-launched Wayland float, where ``App.suspend()``/the TTY handoff
+    breaks and the commit silently hangs (debug: commit-freeze-launcher-sudo). No
+    ``App.suspend()`` is needed anymore, and because the dialog carries the prompt, stdout
+    AND stderr are captured — the real ``REFUSED (...)`` line can be surfaced in-widget.
+    ``-A`` is a sudo option and does not change the matched command, so the sudoers
+    ``Cmnd_Alias`` shape is unchanged; never ``shell=True``; argv after ``-A`` must be
+    ``/usr/bin/python3`` + the absolute script path or sudoers will not match (T-10-03).
     """
     fd, tmp = tempfile.mkstemp(suffix=".yaml")  # 0600, exclusive create
+    askpass = _write_askpass_helper()
     try:
         with os.fdopen(fd, "w") as f:
             f.write(proposed_text)
         proc = subprocess.run(
             [
                 "sudo",
+                "-A",  # read the password from SUDO_ASKPASS (GUI dialog), never the TTY
                 "/usr/bin/python3",
                 CTL_SCRIPT,  # validated absolute path (CR-02), identical to the
                 #              pinned STACK_DIR/nightguard_ctl.py sudoers shape.
@@ -193,7 +222,9 @@ def commit(proposed_text: str) -> dict:
                 tmp,
             ],
             stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
+            env={**os.environ, "SUDO_ASKPASS": askpass},
         )
         # BAR-04 / D-11: instant Waybar refresh, success-only + non-perturbing.
         # Only on a real success (returncode == 0) do we nudge the custom/nightguard
@@ -213,9 +244,14 @@ def commit(proposed_text: str) -> dict:
                 )
             except Exception:
                 pass
-        return {"returncode": proc.returncode, "stdout": (proc.stdout or "").strip()}
+        return {
+            "returncode": proc.returncode,
+            "stdout": (proc.stdout or "").strip(),
+            "stderr": (proc.stderr or "").strip(),
+        }
     finally:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
+        for path in (tmp, askpass):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
