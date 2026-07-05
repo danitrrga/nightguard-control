@@ -135,6 +135,16 @@ Screen {
     color: $text;
 }
 
+/* inline field editor: a one-line Input mounted in the row (no modal screen) */
+#inline-edit {
+    width: 1fr;
+    height: 1;
+    border: none;
+    padding: 0;
+    background: $surface-lighten-1;
+    color: $text;
+}
+
 /* The per-field anti-impulse preview line (glyph + word + colour). */
 #edit-preview {
     margin: 1 1 0 1;

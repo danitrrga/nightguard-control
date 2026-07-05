@@ -35,7 +35,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Footer, Header, Input, Label, Static
+from textual.widgets import Footer, Header, Input, Static
 
 from ngtui import backend, lineedit
 from ngtui.backend import WEEKLY_TOKENS  # signer's constant (WR-03), never a local literal
@@ -260,8 +260,10 @@ class EditScreen(Screen):
         self._staged: list[tuple[str, str, str]] = []  # (op, dotted_key, value)
         self._focus = 0
         # In-flight inline edit context (op, dotted_key, kind); set by
-        # action_edit_field before the _InlineInput callback fires (WR-04).
+        # action_edit_field before the inline Input is submitted (WR-04).
         self._pending: tuple[str, str, str] | None = None
+        # Row index currently being edited in place (None when not editing).
+        self._editing_row: int | None = None
 
     # --- compose ---
 
@@ -277,7 +279,7 @@ class EditScreen(Screen):
         with VerticalScroll(id="edit-fields"):
             for i, (label, dotted, kind) in enumerate(EDITABLE_FIELDS):
                 value = _read_dotted(self._base_cfg, dotted)
-                with Horizontal(classes="edit-row"):
+                with Horizontal(classes="edit-row", id=f"row-{i}"):
                     yield Static(label, classes="edit-label", id=f"label-{i}")
                     yield Static(
                         _format_value(value, kind), classes="edit-value", id=f"value-{i}"
@@ -387,29 +389,67 @@ class EditScreen(Screen):
         self._stage("toggle", dotted, "false" if cur else "true")
 
     def action_edit_field(self) -> None:
-        """``Enter`` begins an inline edit of the focused field.
+        """``Enter`` edits the focused field IN PLACE — no separate screen.
 
-        Time/string fields open a masked/free-text ``Input``; booleans toggle; list
-        fields open a single-line add ``Input`` (one entry per Enter — the lighter
-        list editor; ``d`` deletes the last entry).
+        Booleans toggle. Time/string/list fields mount a one-line ``Input`` right in
+        the field's own row (the value cell is hidden while editing) so every other
+        setting stays visible in the same list. ``Enter`` submits, ``Escape`` cancels.
+        Time/string prefill the current value; list is an add-one-entry field.
         """
         label, dotted, kind = EDITABLE_FIELDS[self._focus]
         if kind == _BOOL:
             self.action_toggle()
             return
+        if self._editing_row is not None:
+            return  # an inline edit is already open
+        prefill = ""
         if kind in (_TIME, _STR):
-            placeholder = "HH:MM" if kind == _TIME else "value"
-            self.app.push_screen(
-                _InlineInput(label, placeholder), self._on_inline_value
+            try:
+                cur = _read_dotted(backend_yaml_load(self._proposed_text()), dotted)
+            except Exception:
+                cur = _read_dotted(self._base_cfg, dotted)
+            prefill = "" if cur is None else str(cur)
+        placeholder = "HH:MM" if kind == _TIME else ("entry" if kind == _LIST else "value")
+        self._pending = ("list_add" if kind == _LIST else op_for_kind(kind), dotted, kind)
+        self._editing_row = self._focus
+        try:
+            self.query_one(f"#value-{self._focus}", Static).display = False
+            row = self.query_one(f"#row-{self._focus}", Horizontal)
+            row.mount(
+                _InlineFieldInput(value=prefill, placeholder=placeholder, id="inline-edit")
             )
-            self._pending = (op_for_kind(kind), dotted, kind)
+            self.query_one("#inline-edit", Input).focus()
+        except Exception:
+            # Never leave the row half-edited if mounting failed.
+            self._teardown_inline()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """``Enter`` in the inline field Input: stage the value, restore the row."""
+        if event.input.id != "inline-edit":
             return
-        if kind == _LIST:
-            self.app.push_screen(
-                _InlineInput(f"{label} — add entry", "entry"), self._on_inline_value
-            )
-            self._pending = ("list_add", dotted, kind)
-            return
+        event.stop()
+        value = event.value
+        self._teardown_inline()
+        self._on_inline_value(value)
+
+    def cancel_inline_edit(self) -> None:
+        """``Escape`` from an inline edit — restore the value cell, stage nothing."""
+        self._pending = None
+        self._teardown_inline()
+
+    def _teardown_inline(self) -> None:
+        """Remove the inline Input and un-hide the field's value cell."""
+        try:
+            self.query_one("#inline-edit", Input).remove()
+        except Exception:
+            pass
+        if self._editing_row is not None:
+            try:
+                self.query_one(f"#value-{self._editing_row}", Static).display = True
+            except Exception:
+                pass
+        self._editing_row = None
+        self.set_focus(None)  # hand key routing back to the screen bindings
 
     def _on_inline_value(self, value: str | None) -> None:
         if value is None or value == "" or self._pending is None:
@@ -491,26 +531,21 @@ class EditScreen(Screen):
 # --- small modal helpers ------------------------------------------------------
 
 
-class _InlineInput(ModalScreen):
-    """A one-line inline ``Input`` modal; dismisses with the entered string (or None)."""
+class _InlineFieldInput(Input):
+    """A one-line ``Input`` edited IN PLACE inside a field row (no modal screen).
 
-    BINDINGS = [("escape", "cancel", "Cancel")]
+    ``Enter`` submits (``Input.Submitted`` bubbles to ``EditScreen.on_input_submitted``);
+    ``Escape`` asks the owning EditScreen to cancel and restore the value cell. The
+    Escape binding lives on the focused Input so it wins over the screen's
+    ``Escape`` → back binding while a field is being edited.
+    """
 
-    def __init__(self, prompt: str, placeholder: str) -> None:
-        super().__init__()
-        self._prompt = prompt
-        self._placeholder = placeholder
+    BINDINGS = [Binding("escape", "cancel_edit", "Cancel", show=False)]
 
-    def compose(self) -> ComposeResult:
-        with Vertical(id="inline-box"):
-            yield Label(self._prompt)
-            yield Input(placeholder=self._placeholder, id="inline-input")
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        self.dismiss(event.value)
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
+    def action_cancel_edit(self) -> None:
+        cancel = getattr(self.screen, "cancel_inline_edit", None)
+        if callable(cancel):
+            cancel()
 
 
 class _ConfirmDiscard(ModalScreen):
