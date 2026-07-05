@@ -4,12 +4,11 @@ Requirement: "backend.commit() fires `pkill -RTMIN+11 waybar` exactly once when 
 commit succeeded (rc 0), NEVER on failure, and a raising pkill subprocess is swallowed
 so commit() still returns the real result" (BAR-04 / D-11 / 12-02-PLAN).
 
-commit() now takes the user's password (collected by a masked in-TUI field) and pipes
-it to `sudo -S` on stdin — no TTY prompt, no App.suspend(), no GUI askpass, no second
-terminal (all of which failed in the walker-launched Wayland float; debug:
-commit-freeze-launcher-sudo). The mock branches on argv[0]:
-  - "sudo"  -> the commit call (returns a _FakeProc with the desired returncode)
-  - "pkill" -> the refresh signal (recorded, or made to raise)
+commit() authorises `sudo` on a PTY (``_run_sudo_pty``) so PAM's interactive auth works
+in-window — on this box a fingerprint touch (pam_fprintd first + sufficient). A piped
+password to `sudo -S` hangs on that stack (debug: commit-freeze-launcher-sudo). Tests
+mock the PTY seam (``_run_sudo_pty``) for the auth result and ``subprocess.run`` for the
+pkill signal.
 """
 from __future__ import annotations
 
@@ -19,40 +18,33 @@ from ngtui import backend
 
 
 class _FakeProc:
-    """Minimal subprocess.CompletedProcess stand-in."""
-
-    def __init__(
-        self,
-        returncode: int = 0,
-        stdout: str = "committed (tighten, free)",
-        stderr: str = "",
-    ):
+    def __init__(self, returncode: int = 0):
         self.returncode = returncode
-        self.stdout = stdout
-        self.stderr = stderr
 
 
-def _run_commit(sudo_rc: int, *, pkill_raises: bool = False):
-    """Run backend.commit() with subprocess.run mocked to branch on argv[0].
+def _run_commit(sudo_rc: int, *, pkill_raises: bool = False, output: str = "committed (tighten, free)"):
+    """Run backend.commit() with the PTY auth + pkill mocked.
 
-    Returns (result_dict, list_of_pkill_argvs). The "sudo" call returns a _FakeProc with
-    returncode=sudo_rc; the "pkill" call is recorded (and raises OSError when requested).
+    Returns (result_dict, list_of_pkill_argvs). ``_run_sudo_pty`` returns (sudo_rc, output);
+    the "pkill" subprocess.run is recorded (and raises OSError when requested).
     """
     pkill_calls: list[list[str]] = []
 
+    def fake_pty(argv, cancel_event=None, status_cb=None):
+        return sudo_rc, output
+
     def fake_run(argv, **kwargs):
-        head = argv[0]
-        if head == "sudo":
-            return _FakeProc(returncode=sudo_rc)
-        if head == "pkill":
+        if argv and argv[0] == "pkill":
             pkill_calls.append(list(argv))
             if pkill_raises:
                 raise OSError("pkill absent / no waybar running")
-            return _FakeProc(returncode=0, stdout="")
-        raise AssertionError(f"unexpected subprocess.run argv[0]={head!r}")
+            return _FakeProc(0)
+        raise AssertionError(f"unexpected subprocess.run argv={argv!r}")
 
-    with patch("ngtui.backend.subprocess.run", side_effect=fake_run):
-        result = backend.commit("timezone: Europe/Amsterdam\n", "hunter2")
+    with patch("ngtui.backend._run_sudo_pty", side_effect=fake_pty), patch(
+        "ngtui.backend.subprocess.run", side_effect=fake_run
+    ):
+        result = backend.commit("timezone: Europe/Amsterdam\n")
 
     return result, pkill_calls
 
@@ -61,45 +53,29 @@ def _run_commit(sudo_rc: int, *, pkill_raises: bool = False):
 
 
 def test_success_fires_pkill_signal_once():
-    """returncode 0 -> exactly one `pkill -RTMIN+11 waybar` call."""
     result, pkill_calls = _run_commit(sudo_rc=0)
-
     assert result["returncode"] == 0
-    assert len(pkill_calls) == 1, (
-        f"expected exactly one pkill call on success, got {pkill_calls!r}"
-    )
+    assert len(pkill_calls) == 1, f"expected one pkill on success, got {pkill_calls!r}"
     argv = pkill_calls[0]
-    assert argv[0] == "pkill", f"signal argv[0] must be 'pkill', got {argv!r}"
-    assert "-RTMIN+11" in argv, f"signal must use -RTMIN+11, got {argv!r}"
-    assert "waybar" in argv, f"signal must target waybar, got {argv!r}"
+    assert argv[0] == "pkill" and "-RTMIN+11" in argv and "waybar" in argv, argv
 
 
 # --- Test B: failure -> NO signal, real result returned ----------------------
 
 
 def test_failure_does_not_fire_signal():
-    """A non-zero commit returncode must NOT fire the refresh signal (T-12-02)."""
-    result, pkill_calls = _run_commit(sudo_rc=1)
-
-    assert pkill_calls == [], (
-        f"a refused/failed commit must not flip the bar, got {pkill_calls!r}"
-    )
-    assert result["returncode"] == 1, (
-        f"commit() must return the real returncode, got {result!r}"
-    )
+    result, pkill_calls = _run_commit(sudo_rc=1, output="")
+    assert pkill_calls == [], f"a failed commit must not flip the bar, got {pkill_calls!r}"
+    assert result["returncode"] == 1
 
 
 # --- Test C: raising pkill is swallowed (non-perturbing) ----------------------
 
 
 def test_raising_pkill_is_non_perturbing():
-    """A pkill that raises must not propagate or change the commit result (T-12-03)."""
     result, pkill_calls = _run_commit(sudo_rc=0, pkill_raises=True)
-
     assert len(pkill_calls) == 1, "the signal should still be attempted on success"
-    assert result["returncode"] == 0, (
-        f"a raising pkill must leave the commit result unchanged, got {result!r}"
-    )
+    assert result["returncode"] == 0
     assert result["stdout"] == "committed (tighten, free)"
 
 
@@ -107,50 +83,34 @@ def test_raising_pkill_is_non_perturbing():
 
 
 def test_result_dict_shape():
-    """The returned dict is {returncode, stdout, stderr}; the signal adds no keys."""
-    result, _pkill_calls = _run_commit(sudo_rc=0)
-
-    assert set(result.keys()) == {"returncode", "stdout", "stderr"}, (
-        f"unexpected commit result keys, got {sorted(result)!r}"
-    )
+    result, _pkill = _run_commit(sudo_rc=0)
+    assert set(result.keys()) == {"returncode", "stdout", "stderr"}, sorted(result)
     assert result["stdout"] == "committed (tighten, free)"
 
 
-# --- Test E: password is piped to `sudo -S` (regression) ---------------------
+# --- Test E: commit authorises via sudo -k on a PTY (regression) --------------
 
 
-def test_commit_pipes_password_to_sudo_S_on_stdin():
-    """Regression (commit-freeze-launcher-sudo): password goes to `sudo -S` via stdin.
+def test_commit_authorises_via_sudo_on_a_pty():
+    """Regression (commit-freeze-launcher-sudo): auth runs `sudo -k …` on a PTY.
 
-    No TTY prompt / App.suspend() / GUI askpass / second terminal. `-S` reads from stdin,
-    `-k` forces real re-auth (friction), `-p ''` silences sudo's own prompt.
+    No `-S` password piping (which hangs on the fingerprint-first PAM stack). The PTY lets
+    PAM do the fingerprint touch in-window.
     """
     seen: dict = {}
 
-    def fake_run(argv, **kwargs):
-        if argv[0] == "pkill":
-            return _FakeProc(0)
+    def fake_pty(argv, cancel_event=None, status_cb=None):
         seen["argv"] = list(argv)
-        seen["kwargs"] = kwargs
-        return _FakeProc(0)
+        return 0, "committed (tighten, free)"
 
-    with patch("ngtui.backend.subprocess.run", side_effect=fake_run):
-        backend.commit("timezone: Europe/Amsterdam\n", "s3cret")
+    with patch("ngtui.backend._run_sudo_pty", side_effect=fake_pty), patch(
+        "ngtui.backend.subprocess.run", side_effect=lambda *a, **k: _FakeProc(0)
+    ):
+        backend.commit("timezone: Europe/Amsterdam\n")
 
     argv = seen["argv"]
-    assert argv[0] == "sudo", f"argv[0] must be sudo, got {argv!r}"
-    assert "-S" in argv, "sudo must read the password from stdin (-S)"
+    assert argv[0] == "sudo", f"auth must run sudo, got {argv!r}"
     assert "-k" in argv, "sudo must force re-auth every commit (-k) — the friction"
-    # -p '' silences sudo's own prompt (the TUI shows the password field).
-    i = argv.index("-p")
-    assert argv[i + 1] == "", "sudo prompt must be silenced with -p ''"
-    # Exact sudoers Cmnd shape follows the options.
+    assert "-S" not in argv, "must NOT pipe a password (-S hangs on fingerprint-first PAM)"
     assert "/usr/bin/python3" in argv and backend.CTL_SCRIPT in argv
     assert "commit" in argv and "--from" in argv
-    # The password is fed on stdin, never on the command line.
-    assert seen["kwargs"].get("input") == "s3cret\n", "password must be piped via stdin"
-    assert "s3cret" not in " ".join(argv), "password must never appear in argv"
-    import subprocess as sp
-
-    assert seen["kwargs"].get("stdout") is sp.PIPE
-    assert seen["kwargs"].get("stderr") is sp.PIPE

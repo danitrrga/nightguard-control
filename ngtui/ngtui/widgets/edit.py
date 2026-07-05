@@ -31,6 +31,8 @@ correct tradeoff given the inline-auth requirement.
 """
 from __future__ import annotations
 
+import threading
+
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -181,13 +183,14 @@ def _format_value(value, kind: str) -> str:
 class ConfirmScreen(ModalScreen):
     """The anti-impulse commit dialog: confirm the consequence, authorize, see the result.
 
-    A centered dialog with four clear parts — a title, the one-line consequence
-    (``confirm_copy``), a hint line that guides the next keystroke, and a result line.
-    On ``y`` it reveals a MASKED password field; on Enter the password is piped to
-    ``sudo -S`` (``backend.commit``) on a thread worker — nothing suspends, no second
-    terminal, the event loop never blocks (debug: commit-freeze-launcher-sudo). The real
-    ✓/✕ result is shown INSIDE the dialog: success auto-closes (any key closes sooner);
-    a wrong password / refusal shows the reason and lets you retry. ``n``/``Esc`` cancels.
+    A centered dialog: a title, the one-line consequence (``confirm_copy``), a hint line,
+    and a result line. On ``y`` it authorises the commit via ``backend.commit``, which runs
+    ``sudo`` on a PTY so PAM's interactive auth works IN-WINDOW — on this box that is a
+    **fingerprint touch** (``pam_fprintd`` is first + ``sufficient``; a piped password can't
+    satisfy it and hangs — debug: commit-freeze-launcher-sudo). The commit runs on a thread
+    worker (event loop never blocks); the sensor prompt and the real ✓/✕ result show inside
+    the dialog. Success auto-closes; a failure/timeout lets you retry with ``y``. ``Esc``
+    aborts a pending authorisation (or closes); ``n`` cancels.
     """
 
     BINDINGS = [
@@ -201,9 +204,10 @@ class ConfirmScreen(ModalScreen):
         self._proposed_text = proposed_text
         self._decision = decision
         self._line, self._role, self._can_commit = confirm_copy(decision)
-        self._authing = False           # True while the password field is showing
+        self._committing = False        # True while an authorisation is pending
         self._result: dict | None = None  # set once a commit succeeds
         self._closing = False           # guards the double-close (timer + keypress)
+        self._cancel_event = threading.Event()
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-box"):
@@ -218,56 +222,62 @@ class ConfirmScreen(ModalScreen):
             yield Static("", id="confirm-result")
 
     def action_do_commit(self) -> None:
-        """``y`` → reveal the masked password field (only when the commit is permitted)."""
+        """``y`` → authorise the commit (touch the fingerprint sensor) if permitted."""
         if not self._can_commit:
             self.app.bell()
             return
-        if self._authing or self._result is not None:
+        if self._committing or self._result is not None:
             return
-        self._arm_password()
-
-    def _arm_password(self) -> None:
-        """Show (or re-show, for a retry) the masked password field and focus it."""
-        self._authing = True
+        self._committing = True
+        self._cancel_event = threading.Event()  # fresh event per attempt
         hint = self.query_one("#confirm-hint", Static)
-        hint.update("🔒 Type your password, then Enter to commit  ·  Esc to cancel")
+        hint.update("👆 Touch the fingerprint sensor to authorize  ·  Esc to cancel")
         hint.set_classes("accent")
-        try:
-            self.query_one("#commit-pass", Input).remove()
-        except Exception:
-            pass
-        self.query_one("#confirm-box", Vertical).mount(
-            Input(password=True, placeholder="password", id="commit-pass")
-        )
-        self.query_one("#commit-pass", Input).focus()
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Password entered → run the commit off the event loop with it."""
-        if event.input.id != "commit-pass":
-            return
-        event.stop()
-        password = event.value
-        self._authing = False
-        try:
-            self.query_one("#commit-pass", Input).remove()
-        except Exception:
-            pass
-        self.query_one("#confirm-hint", Static).update("")
         res_cell = self.query_one("#confirm-result", Static)
-        res_cell.update("⏳ Committing — signing via the trust stack…")
+        res_cell.update("⏳ Waiting for your fingerprint…")
         res_cell.set_classes("dim")
-        self._run_commit(password)
+        self._run_commit()
 
     @work(thread=True)
-    def _run_commit(self, password: str) -> None:
-        """Pipe the password to ``sudo -S`` off the event loop; report on the main thread."""
-        res = backend.commit(self._proposed_text, password)
+    def _run_commit(self) -> None:
+        """Authorise + commit off the event loop; stream status, report on the main thread."""
+        res = backend.commit(
+            self._proposed_text,
+            cancel_event=self._cancel_event,
+            status_cb=self._on_status,
+        )
         self.app.call_from_thread(self._show_result, res)
+
+    def _on_status(self, text: str) -> None:
+        """Worker-thread PTY output → a short live status in the dialog (marshalled)."""
+        low = text.lower()
+        if "verification failed" in low or "failed to match" in low or "sorry, try again" in low:
+            msg = "✗ Not recognized — touch the sensor again…"
+        elif "place your" in low or "finger on" in low or "swipe your" in low:
+            msg = "👆 Touch the fingerprint sensor to authorize…"
+        else:
+            return
+        self.app.call_from_thread(self._set_status, msg)
+
+    def _set_status(self, msg: str) -> None:
+        try:
+            cell = self.query_one("#confirm-result", Static)
+            cell.update(msg)
+            cell.set_classes("dim")
+        except Exception:
+            pass
 
     def _show_result(self, res: dict) -> None:
         """Show the real ✓/✕ result in the dialog; auto-close on success, retry on failure."""
+        self._committing = False
         rc = res.get("returncode", 1)
-        text, role = result_line(rc, res.get("stdout", ""), res.get("stderr", ""))
+        if rc == 130:  # user cancelled the pending authorisation
+            self._close()
+            return
+        if rc == 124:  # timed out waiting for the sensor
+            text, role = "✕ Authorization timed out — press y to try again", "error"
+        else:
+            text, role = result_line(rc, res.get("stdout", ""), res.get("stderr", ""))
         res_cell = self.query_one("#confirm-result", Static)
         res_cell.update(text)
         res_cell.set_classes(role)
@@ -278,9 +288,8 @@ class ConfirmScreen(ModalScreen):
             hint.set_classes("dim")
             self.set_timer(2.5, self._close)
         else:
-            hint.update("Esc to cancel  ·  or type your password to try again")
+            hint.update("Press  y  to try again  ·  Esc to cancel")
             hint.set_classes("error")
-            self._arm_password()
 
     def _close(self) -> None:
         """Single-shot dismiss (guards against the timer + a keypress both firing)."""
@@ -296,7 +305,10 @@ class ConfirmScreen(ModalScreen):
             self._close()
 
     def action_cancel(self) -> None:
-        # Hand back a committed result if one happened; else None (nothing committed).
+        """``n``/``Esc``: abort a pending authorisation, else close (handing back any result)."""
+        if self._committing and self._result is None:
+            self._cancel_event.set()  # tell the PTY auth to stop; worker will report 130
+            return
         self._close()
 
 
