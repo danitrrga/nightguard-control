@@ -22,7 +22,7 @@ import pytest
 
 # Import the live ngcommon via the same bootstrap backend uses, to round-trip the edits.
 _STACK = os.environ.get(
-    "NIGHTGUARD_STACK_DIR", "/home/danitrrga/dev/Projects/LifeOS/scripts/nightguard"
+    "NIGHTGUARD_STACK_DIR", "/home/danitrrga/dev/Projects/nightguard-control/scripts/linux"
 )
 if _STACK not in sys.path:
     sys.path.insert(0, _STACK)

@@ -11,10 +11,10 @@ from __future__ import annotations
 import os
 
 os.environ.setdefault(
-    "NIGHTGUARD_STACK_DIR", "/home/danitrrga/dev/Projects/LifeOS/scripts/nightguard"
+    "NIGHTGUARD_STACK_DIR", "/home/danitrrga/dev/Projects/nightguard-control/scripts/linux"
 )
 os.environ.setdefault(
-    "NIGHTGUARD_DIR", "/home/danitrrga/dev/Projects/LifeOS/nightguard"
+    "NIGHTGUARD_DIR", "/home/danitrrga/.local/share/nightguard"
 )
 
 import json  # noqa: E402

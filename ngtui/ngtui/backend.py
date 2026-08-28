@@ -29,7 +29,7 @@ import time
 # contain nightguard_ctl.py, otherwise we fail closed with a clear error rather
 # than silently importing — and sudo-running — a substituted stack. The legit
 # LifeOS override still works because it points at a dir that holds the script.
-_DEFAULT_STACK_DIR = "/home/danitrrga/dev/Projects/LifeOS/scripts/nightguard"
+_DEFAULT_STACK_DIR = "/home/danitrrga/dev/Projects/nightguard-control/scripts/linux"
 
 
 def _resolve_stack_dir() -> str:
@@ -51,7 +51,7 @@ STACK_DIR = _resolve_stack_dir()
 # so the path handed to sudo can never diverge from the pinned STACK_DIR.
 CTL_SCRIPT = str(pathlib.Path(STACK_DIR) / "nightguard_ctl.py")
 os.environ.setdefault(
-    "NIGHTGUARD_DIR", "/home/danitrrga/dev/Projects/LifeOS/nightguard"
+    "NIGHTGUARD_DIR", "/home/danitrrga/.local/share/nightguard"
 )
 if STACK_DIR not in sys.path:
     sys.path.insert(0, STACK_DIR)

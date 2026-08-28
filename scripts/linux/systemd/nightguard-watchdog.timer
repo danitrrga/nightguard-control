@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the nightguard watchdog every minute (root system timer)
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=15
+
+[Install]
+WantedBy=timers.target

@@ -36,10 +36,10 @@ def test_legit_override_still_works(monkeypatch):
     """The real LifeOS override resolves cleanly (no regression for the author box)."""
     monkeypatch.setenv(
         "NIGHTGUARD_STACK_DIR",
-        "/home/danitrrga/dev/Projects/LifeOS/scripts/nightguard",
+        "/home/danitrrga/dev/Projects/nightguard-control/scripts/linux",
     )
     resolved = backend._resolve_stack_dir()
-    assert resolved.endswith("LifeOS/scripts/nightguard")
+    assert resolved.endswith("nightguard-control/scripts/linux")
 
 
 def test_ctl_script_lives_under_pinned_stack_dir():

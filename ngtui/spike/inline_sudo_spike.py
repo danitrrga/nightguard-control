@@ -15,7 +15,7 @@ import subprocess
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Static
 
-CTL = "/home/danitrrga/dev/Projects/LifeOS/scripts/nightguard/nightguard_ctl.py"
+CTL = "/home/danitrrga/dev/Projects/nightguard-control/scripts/linux/nightguard_ctl.py"
 
 
 class SudoSpike(App):

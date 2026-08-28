@@ -1,0 +1,24 @@
+# /etc/sudoers.d/nightguard — Phase 7 ROOT-03/04
+#
+# Allow the nightguard owner to invoke the control-CLI as root to sign sanctioned
+# config changes. Password REQUIRED (no NOPASSWD): the password prompt IS the
+# deliberate anti-impulse friction (ROOT-04). Scoped to the control-CLI's
+# commit/verify subcommands only; the CLI validates its own args (argparse) and
+# only ever writes inside NIGHTGUARD_DIR, then chowns config.yaml back to the user.
+#
+# Install (validate BEFORE it lands in /etc):
+#   sudo visudo -cf /home/danitrrga/dev/Projects/nightguard-control/scripts/linux/nightguard.sudoers \
+#     && sudo install -m 0440 -o root -g root \
+#        /home/danitrrga/dev/Projects/nightguard-control/scripts/linux/nightguard.sudoers \
+#        /etc/sudoers.d/nightguard
+#
+# Footgun note (07-CONTEXT): scope to fixed subcommands, never a bare trailing '*'
+# on the whole command line. The user is already a sudoer, so this rule does not
+# broaden their privilege — it defines the stable, audited path the TUI (Phase 10)
+# shells: `sudo /usr/bin/python3 .../nightguard_ctl.py commit --from <file>`.
+
+Cmnd_Alias NIGHTGUARD_CTL = \
+    /usr/bin/python3 /home/danitrrga/dev/Projects/nightguard-control/scripts/linux/nightguard_ctl.py commit *, \
+    /usr/bin/python3 /home/danitrrga/dev/Projects/nightguard-control/scripts/linux/nightguard_ctl.py verify
+
+danitrrga ALL=(root) NIGHTGUARD_CTL
