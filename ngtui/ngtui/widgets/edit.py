@@ -270,6 +270,13 @@ class ConfirmScreen(ModalScreen):
     def _show_result(self, res: dict) -> None:
         """Show the real ✓/✕ result in the dialog; auto-close on success, retry on failure."""
         self._committing = False
+        # Repaint everything before drawing the result. sudo's PAM stack can put bytes on the
+        # terminal that Textual does not know about, which leaves the screen looking frozen —
+        # a stale half-drawn frame with the footer doubled. A full refresh reclaims it.
+        try:
+            self.app.refresh(repaint=True, layout=True)
+        except Exception:
+            pass
         rc = res.get("returncode", 1)
         if rc == 130:  # user cancelled the pending authorisation
             self._close()
@@ -297,6 +304,10 @@ class ConfirmScreen(ModalScreen):
             return
         self._closing = True
         self.dismiss(self._result)
+        try:
+            self.app.refresh(repaint=True, layout=True)
+        except Exception:
+            pass
 
     def on_key(self, event) -> None:
         """After a successful commit, any key closes the dialog immediately."""

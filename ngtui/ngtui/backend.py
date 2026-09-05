@@ -8,6 +8,7 @@ and is never called here (PORT-03).
 """
 from __future__ import annotations
 
+import fcntl
 import os
 import pathlib
 import re
@@ -15,6 +16,7 @@ import select
 import subprocess
 import sys
 import tempfile
+import termios
 import time
 
 # --- trust-stack import bootstrap (env-overridable for portability) ----------
@@ -244,8 +246,18 @@ _AUTH_NOISE = (
     "authentication failure",
     "using device",
     "failed to match",
+    # sudo/PAM session audit record: "...;comm=sudo;targetuser=root;type=session"
+    "comm=sudo",
+    "targetuser=root",
 )
-_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b[()][AB0]|\r")
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b[()][AB0]")
+# A PTY ends lines with \r\n, and PAM/sudo also emit a BARE \r to redraw a prompt in place.
+# The ANSI pattern used to delete every \r, which welded a bare-\r-terminated line onto the
+# next one — sudo's audit record ("...;comm=sudo;targetuser=root;type=session") fused to the
+# signer's "committed ..." line, sailed through the noise filter because the merged line
+# contained the result keyword, and was rendered raw into the dialog. Normalise instead.
+_EOL_RE = re.compile(r"\r\n?")
+_RESULT_KEYS = ("committed", "no-op", "refused")
 
 
 def _split_commit_output(raw: str, rc: int) -> tuple[str, str]:
@@ -255,14 +267,18 @@ def _split_commit_output(raw: str, rc: int) -> tuple[str, str]:
     line (``committed`` / ``no-op`` / ``REFUSED``). On failure, keep the most useful
     remaining line (e.g. a fingerprint failure) as the detail for ``result_line``.
     """
-    clean = _ANSI_RE.sub("", raw or "")
+    clean = _EOL_RE.sub("\n", _ANSI_RE.sub("", raw or ""))
     lines = [ln.strip() for ln in clean.splitlines() if ln.strip()]
     kept = [ln for ln in lines if not any(n in ln.lower() for n in _AUTH_NOISE)]
     result = ""
     for ln in kept:
         low = ln.lower()
-        if "committed" in low or "no-op" in low or "refused" in low:
-            result = ln
+        # Slice FROM the keyword rather than taking the whole line: belt-and-braces against
+        # anything else the auth stack prepends without a newline. The signer's line is the
+        # part we show, never whatever shared the line with it.
+        cut = min((low.index(k) for k in _RESULT_KEYS if k in low), default=-1)
+        if cut >= 0:
+            result = ln[cut:]
             break
     if rc == 0:
         return (result or (kept[-1] if kept else "")), ""
@@ -285,13 +301,29 @@ def _run_sudo_pty(argv, cancel_event=None, status_cb=None, timeout: float = 60.0
     """
     master, slave = os.openpty()
     proc = None
+
+    def _become_session_leader_on_pty():
+        """New session AND make the PTY its CONTROLLING terminal.
+
+        start_new_session alone calls setsid() but never issues TIOCSCTTY, so the child had
+        no controlling terminal at all. Anything in the auth stack that talks to /dev/tty
+        rather than to stderr then escapes the capture — which is how audit chatter reached
+        the terminal the TUI was drawing on. With a real controlling tty every byte lands in
+        the pty we read.
+        """
+        os.setsid()
+        try:
+            fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+        except OSError:
+            pass  # not fatal: auth still works over the redirected fds
+
     try:
         proc = subprocess.Popen(
             argv,
             stdin=slave,
             stdout=slave,
             stderr=slave,
-            start_new_session=True,  # own session so sudo/PAM treats the PTY as its tty
+            preexec_fn=_become_session_leader_on_pty,  # noqa: PLW1509 — needs TIOCSCTTY
             close_fds=True,
         )
         os.close(slave)
