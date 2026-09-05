@@ -27,6 +27,18 @@ OLD_DATA=/home/danitrrga/.local/share/nightguard
 echo "== validating sudoers BEFORE it lands in /etc =="
 visudo -cf "$REPO_CODE/nightguard.sudoers"
 
+# If anything below fails we must not leave the machine with the watchdog stopped — that is
+# protection off, which is exactly the state this whole change exists to prevent.
+restore_timer_on_failure() {
+    local rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo "!! deploy failed (exit $rc) — restarting the watchdog timer so protection is not left off"
+        systemctl start nightguard-watchdog.timer 2>/dev/null || true
+        systemctl is-active nightguard-watchdog.timer || true
+    fi
+}
+trap restore_timer_on_failure EXIT
+
 echo "== stopping the watchdog timer for the move =="
 systemctl stop nightguard-watchdog.timer 2>/dev/null || true
 
