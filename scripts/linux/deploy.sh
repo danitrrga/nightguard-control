@@ -109,6 +109,20 @@ install -o root -g root -m 0644 "$REPO_CODE/polkit/00-nightguard.rules" /etc/pol
 echo "== sudoers =="
 install -o root -g root -m 0440 "$REPO_CODE/nightguard.sudoers" /etc/sudoers.d/nightguard
 
+echo "== reinstalling the TUI so the launcher tracks these paths =="
+# ngtui is a uv tool: an installed SNAPSHOT of ngtui/, with the stack and instance paths
+# baked in. It silently rotted when the runtime moved out of LifeOS — backend.py kept
+# pointing at the deleted LifeOS tree, so `ngtui` from the launcher died on import with a
+# RuntimeError and the desktop entry appeared to do nothing. A path change is exactly when
+# it must be rebuilt, so the deploy owns it rather than leaving it to be rediscovered.
+if command -v uv >/dev/null 2>&1; then
+    runuser -u "$OWNER" -- uv tool install --force "$REPO_CODE/../../ngtui" >/dev/null 2>&1 \
+        && echo "   ngtui reinstalled" \
+        || echo "   WARNING: ngtui reinstall failed — run 'uv tool install --force ./ngtui' yourself"
+else
+    echo "   uv not found — skipping (install ngtui manually if the launcher stops working)"
+fi
+
 systemctl daemon-reload
 
 echo "== dry run: one watchdog tick against the deployed stack =="
