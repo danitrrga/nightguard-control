@@ -1,0 +1,17 @@
+// 00-nightguard.rules — require admin authentication to manage the nightguard watchdog.
+//
+// Without this, `systemctl stop nightguard-watchdog.timer` succeeded silently for the
+// desktop user: the whole integrity watchdog switched off with one unprompted command, which
+// is the cheapest bypass of the entire trust model. Polkit evaluates rules in lexical
+// filename order and the first rule returning a value wins, so this file is named to sort
+// ahead of the distribution defaults that grant the active local session its blanket yes.
+//
+// AUTH_ADMIN (not AUTH_ADMIN_KEEP): no timestamp caching, so every stop re-authenticates.
+polkit.addRule(function (action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units") {
+        var unit = action.lookup("unit") || "";
+        if (unit == "nightguard-watchdog.service" || unit == "nightguard-watchdog.timer") {
+            return polkit.Result.AUTH_ADMIN;
+        }
+    }
+});

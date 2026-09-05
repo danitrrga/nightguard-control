@@ -103,7 +103,14 @@ true_unix() resolution per decide() call."""
             _TICK_TIME = result
         return result
 
-    if os.environ.get("NIGHTGUARD_TEST_NTP_OVERRIDE") == "1":
+    # Test seam, DEAD IN PRODUCTION. The adversary is the user, so any env-gated seam is
+    # attacker-controlled: `export NIGHTGUARD_TEST_NTP_OVERRIDE=1
+    # NIGHTGUARD_NTP_OVERRIDE_UNIX=<daytime>` used to replace true time AND skip the
+    # clock-tamper check (source == "override"), turning the curfew off with no password.
+    # The gate is now the instance dir itself, which production pins and a caller cannot
+    # repoint (the hook adapter honors NIGHTGUARD_DIR only under its own test seam, and the
+    # sudoers rule pins the signer's path). Tests run against a fixture dir, so they keep it.
+    if not ng.IS_CANONICAL_INSTANCE and os.environ.get("NIGHTGUARD_TEST_NTP_OVERRIDE") == "1":
         ov = os.environ.get("NIGHTGUARD_NTP_OVERRIDE_UNIX")
         if ov:
             return _store((int(ov), "override"))
@@ -134,14 +141,33 @@ true_unix() resolution per decide() call."""
     return _store((val, source))
 
 
+# A real commit holds the lock for well under a second. Anything holding it longer is a
+# crashed signer or an attempt to freeze the revert, so the suppression expires.
+# Set by verify_and_revert() when the commit lock blocked a revert this call.
+last_revert_suppressed = False
+LOCK_SUPPRESS_MAX_SECS = 90
+# Root-owned marker recording when the current run of lock-suppressed ticks began. The
+# watchdog is a oneshot, so the age bound needs somewhere on disk to live.
+SUPPRESS_MARKER = os.path.join(ng.NIGHTGUARD_DIR, ".lock_suppressed_since")
+
+
 def app_holds_lock():
     """The control CLI holds an exclusive flock on .nightguard.lock while it
 commits (writes sanctioned, then config, then re-signs state). If held, skip
-revert this fire — the mismatch is a commit in progress, not tampering."""
+revert this fire — the mismatch is a commit in progress, not tampering.
+
+The lock file is root-owned 0600 (trust-wall hardening): an ordinary user process holding
+`flock -x .nightguard.lock` used to freeze the revert indefinitely and silently, because
+flock needs only an open descriptor and the file was user-owned. A user that cannot open it
+cannot take it. If we cannot open it ourselves we report NOT held — the safe direction is to
+revert, and a genuine commit runs as root and can always open it."""
     if not os.path.exists(ng.LOCKFILE):
         return False
     import fcntl
-    fh = open(ng.LOCKFILE, "r")
+    try:
+        fh = open(ng.LOCKFILE, "r")
+    except OSError:
+        return False
     try:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fcntl.flock(fh, fcntl.LOCK_UN)
@@ -152,9 +178,44 @@ revert this fire — the mismatch is a commit in progress, not tampering."""
         fh.close()
 
 
+def _suppression_expired():
+    """True once the lock has been suppressing a needed revert for longer than
+LOCK_SUPPRESS_MAX_SECS. Starts the clock on first call of a suppressed run."""
+    import time as _time
+    now = _time.time()
+    try:
+        with open(SUPPRESS_MARKER, encoding="utf-8") as fh:
+            since = float(fh.read().strip())
+    except (OSError, ValueError):
+        since = None
+    if since is None or since > now:
+        try:
+            with open(SUPPRESS_MARKER, "w", encoding="utf-8") as fh:
+                fh.write("%.3f" % now)
+        except OSError:
+            # Cannot record when suppression started, so cannot bound it. Refuse to
+            # suppress rather than grant an unbounded freeze.
+            return True
+        return False
+    return (now - since) > LOCK_SUPPRESS_MAX_SECS
+
+
+def _clear_suppression_marker():
+    try:
+        os.remove(SUPPRESS_MARKER)
+    except OSError:
+        pass
+
+
 def verify_and_revert(key, state):
     """Returns (reverted, fail_closed). Guard never signs — it only copies the
-sanctioned snapshot or writes the hard lockout; re-signing is the CLI's job."""
+sanctioned snapshot or writes the hard lockout; re-signing is the CLI's job.
+
+Sets module-global `last_revert_suppressed` when a needed revert was skipped because the
+commit lock was held. The watchdog reads it so a suppressed tick is visible in the log
+instead of appearing as a clean `tick: ok`."""
+    global last_revert_suppressed
+    last_revert_suppressed = False
     if key is None:
         return False, False
     stored = state.get("config_hmac", "")
@@ -163,9 +224,12 @@ sanctioned snapshot or writes the hard lockout; re-signing is the CLI's job."""
     except OSError:
         live = None
     if live == stored and stored:
+        _clear_suppression_marker()
         return False, False
-    if app_holds_lock():
+    if app_holds_lock() and not _suppression_expired():
+        last_revert_suppressed = True
         return False, False
+    _clear_suppression_marker()
     if os.path.exists(ng.SANCTIONED):
         try:
             if ng.config_hmac(key, ng.SANCTIONED) == stored and stored:

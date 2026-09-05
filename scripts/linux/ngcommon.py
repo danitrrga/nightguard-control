@@ -18,8 +18,24 @@ import os
 _THIS = os.path.dirname(os.path.abspath(__file__))
 # Fixed absolute path, never ~: nightguard_ctl.py runs under sudo (env_reset, HOME=/root)
 # and the root watchdog must resolve the SAME instance dir as the user-side hook.
-_DEFAULT_INSTANCE = "/home/danitrrga/.local/share/nightguard"
-NIGHTGUARD_DIR = os.environ.get("NIGHTGUARD_DIR") or _DEFAULT_INSTANCE
+# Root-owned parent (Phase "trust-wall hardening"): a user-owned instance dir let the
+# adversary — who is the user — rename the root-owned .guardkey / guard.json /
+# config.sanctioned.yaml aside and drop in a self-consistent forged set, because rename and
+# unlink are governed by the DIRECTORY's mode, not the file's. /var/lib/nightguard is
+# root:root 0755; only config.yaml inside it stays user-writable (the revert model needs the
+# hand edit to be possible so it can be undone).
+ROOT_INSTANCE = "/var/lib/nightguard"
+LEGACY_INSTANCE = "/home/danitrrga/.local/share/nightguard"
+# Prefer the root-owned location; fall back to the legacy one only until deploy.sh has moved
+# it. Safe to prefer unconditionally: /var/lib is root:root 0755, so the user can neither
+# create nor shadow ROOT_INSTANCE — once it exists the fallback is unreachable.
+DEFAULT_INSTANCE = ROOT_INSTANCE if os.path.isdir(ROOT_INSTANCE) else LEGACY_INSTANCE
+_DEFAULT_INSTANCE = DEFAULT_INSTANCE  # back-compat alias
+NIGHTGUARD_DIR = os.environ.get("NIGHTGUARD_DIR") or DEFAULT_INSTANCE
+# True when this process is operating on a PRODUCTION instance — either location counts, so
+# the seams stay dead across the migration. The test seams (the NTP time override) are dead
+# whenever this holds, which is what stops them being used as a curfew bypass.
+IS_CANONICAL_INSTANCE = os.path.abspath(NIGHTGUARD_DIR) in (ROOT_INSTANCE, LEGACY_INSTANCE)
 CONFIG = os.path.join(NIGHTGUARD_DIR, "config.yaml")
 SANCTIONED = os.path.join(NIGHTGUARD_DIR, "config.sanctioned.yaml")
 STATE = os.path.join(NIGHTGUARD_DIR, "guard.json")

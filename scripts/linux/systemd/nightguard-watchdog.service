@@ -1,11 +1,16 @@
 [Unit]
-Description=Nightguard watchdog (root) — revert tampered config + verify browser policies
+Description=Nightguard watchdog (root) — revert tampered config + restore browser policies
 # System (root) unit: no %h. Absolute ExecStart + Environment=NIGHTGUARD_DIR (Phase 7 D-2).
 # Runs as root so it can read the root-owned .guardkey (Phase 7 ROOT-01).
+#
+# ExecStart points at the DEPLOYED, root-owned copy, never at the working tree. It used to
+# run /home/danitrrga/dev/Projects/nightguard-control/scripts/linux/nightguard_watchdog.py —
+# a user-writable file in a user-writable directory, executed as root every 60 seconds, so
+# rewriting it was arbitrary root code with no password. Deploy with scripts/linux/deploy.sh.
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-Environment=NIGHTGUARD_DIR=/home/danitrrga/.local/share/nightguard
-ExecStart=/usr/bin/python3 /home/danitrrga/dev/Projects/nightguard-control/scripts/linux/nightguard_watchdog.py
+Environment=NIGHTGUARD_DIR=/var/lib/nightguard
+ExecStart=/usr/bin/python3 /usr/local/lib/nightguard/nightguard_watchdog.py
