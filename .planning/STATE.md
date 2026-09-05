@@ -4,8 +4,8 @@ milestone: v2.1
 milestone_name: Desktop App
 status: planning
 stopped_at: Phase 13 context gathered
-last_updated: "2026-07-04T18:27:08.315Z"
-last_activity: 2026-07-04
+last_updated: "2026-09-05T10:58:00.000Z"
+last_activity: 2026-09-05
 progress:
   total_phases: 3
   completed_phases: 2
@@ -160,6 +160,7 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 20260905 | Close five no-password bypasses of the trust wall (time-override env seam, lock-hold revert freeze, removable browser policy, root running user-writable code, user-owned instance dir) + docker group and polkit | 2026-09-05 | e0c820f | [20260905-nightguard-trust-wall-hardening](./quick/20260905-nightguard-trust-wall-hardening/) |
 | 260616-grc | Grace "+8" button live across the curfew boundary (1s tick re-fetches get_state on boundary) | 2026-06-16 | 2257c04 | [260616-grc-grace-button-live-refresh](./quick/260616-grc-grace-button-live-refresh/) |
 | 260612-fhu | Polish the edit view (sole sanctioned editor) — Ceramic Night | 2026-06-12 | 03a57e9 | [260612-fhu-polish-edit-view](./quick/260612-fhu-polish-edit-view/) |
 | 260612-fsc | Tray number-badge — runtime time-remaining on the tray icon | 2026-06-12 | 8f67492 | [260612-fsc-tray-number-badge](./quick/260612-fsc-tray-number-badge/) |
