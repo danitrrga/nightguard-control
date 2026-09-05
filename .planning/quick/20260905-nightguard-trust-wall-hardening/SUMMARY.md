@@ -80,8 +80,15 @@ renders and reports 3 of 3 tokens.
   chain still cannot prove absence of a wholesale replacement by root.
 - `watchdog.log` (2.1 MB) is unrotated.
 
-## Untested
+## Signing path — proven live
 
-The sudoers path (`sudo /usr/bin/python3 /usr/local/lib/nightguard/nightguard_ctl.py commit`)
-could not be exercised without interactive authentication. The rule validated with `visudo -c`
-and the path exists root-owned, but the first real commit through the TUI is the proof.
+The sudoers route was the one thing the automated checks could not exercise. A real commit
+through the TUI settled it: curfew start tightened 02:00 → 22:15, `committed (tighten, free)`,
+`tokens 0/3 used`, `config.yaml` and `config.sanctioned.yaml` both `7702d885…`, ownership
+handed back to the user, watchdog `tick: ok`. Tighten correctly cost no token.
+
+That commit also surfaced a display bug: sudo's session audit record welded onto the signer's
+result line and left the screen looking frozen. Fixed in `cdb2e3d` — a PTY's bare `\r` was
+being deleted instead of treated as a line terminator, and the sudo child had no controlling
+terminal so parts of the auth stack wrote onto the terminal Textual was drawing on. Five
+regression tests, each shown to fail against the old code first.
