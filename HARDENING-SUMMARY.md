@@ -22,6 +22,16 @@ And the time-cache defence, proved on an isolated copy of the instance so the
 live one was never touched: an honest cache resolves 20:14; a cache forged to
 claim 10:00 resolves to nothing and the loosening is refused.
 
+The cgroup jail was built and proved too — first as a standalone experiment, then
+against the deployed actuator on a harmless process launched for the purpose:
+
+    jail                    /sys/fs/cgroup/nightguard  (outside the delegated subtree)
+    victim                  launched as the user, in session-c18.scope
+    user moves it out       Permission denied
+    user unfreezes it       Permission denied
+    user removes the jail   Permission denied
+    cgroup.kill             process dead, jail left empty and removable
+
 Your `shell.json` was overwritten by `omarchy-refresh-shell` during this work and
 restored from its backup — verified byte-identical, with your nightguard widget
 and your clock settings intact.
@@ -73,6 +83,13 @@ the afternoon made the watchdog kill Steam and Discord in broad daylight. That b
 is now the first test in the file. Nothing is signalled unless the verdict is
 exactly `locked`; a tampered or unverifiable clock is a reason to refuse config
 changes, never a reason to end applications.
+
+Enforcement is that jail, not a signal loop: apps are moved into a root-owned
+cgroup you cannot escape and the tree is killed in one write. A per-process signal
+loop loses anything that forks between the scan and the signal, which is what a
+game launcher does when you close it. A tick that cannot build the jail falls back
+to `SIGTERM` and logs `WEAK MODE`, because a silent downgrade would read as the
+strong path having worked.
 
 - **Blocklist mode** (default): end only the apps named.
 - **Allowlist mode**: end everything except those named. A hardcoded floor that
@@ -150,12 +167,6 @@ makes stopping the watchdog cost an authentication. You are not in it today.
 
 ## What is NOT done, and why
 
-- **The killer has never run as root.** The decision is a pure, fully tested
-  function; the actuator that sends the signal is deliberately thin, and it has
-  not been executed with privileges. It sends `SIGTERM`. The research favours a
-  root-owned jail cgroup with `cgroup.kill` — genuinely un-escapable by your user
-  and fork-race-proof — but creating that cgroup needs a live root experiment this
-  session could not run.
 - **Nobody has looked at the open panel.** The plugin validates, hot-reloads into
   the running shell and produces no QML errors — but its popup only exists once
   clicked, and screenshot capture does not work from an agent context here
