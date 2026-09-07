@@ -92,7 +92,11 @@ BarWidget {
 
   function refresh() {
     if (!statusProc.running) statusProc.running = true
-    if (root.opened && !detailProc.running) detailProc.running = true
+    // Fetched on every tick, not only while open. A popup positions itself as
+    // it maps, so a panel whose data arrives afterwards maps at its collapsed
+    // height and then grows out of place — which is what "opens with stale
+    // content in the wrong spot" looked like.
+    if (!detailProc.running) detailProc.running = true
   }
 
   function openTui() {
