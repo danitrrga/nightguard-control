@@ -164,9 +164,10 @@ Do not make direct repo edits outside a GSD workflow unless the user explicitly 
 
 
 <!-- BEGIN LIFEOS-SYSTEM-POINTER (managed by sync_system_doc.py) -->
+
 ## Shared agent-config system
 
-This project's MCP servers, skills, plugins, and memory are governed by a **shared system rooted in forge** (`/home/danitrrga/dev/Projects/forge`). Generated files here (`.claude/settings.local.json`, `~/.claude.json`, `.mcp.json`) are **overwritten on every SessionStart** — do not hand-edit them.
+This project's MCP servers, skills, plugins, and memory are governed by a **shared system rooted in forge** (`/home/danitrrga/dev/Projects/forge`). Generated files here (`.claude/settings.local.json`, `~/.claude.json`) are **overwritten on every SessionStart** — do not hand-edit them. `.mcp.json` is NOT one of them: nothing generates it, so it is yours to maintain and it will never be corrected.
 
 **Before changing any MCP server, skill, plugin, secret, or memory store, read [`.claude/AGENT-SYSTEM.md`](.claude/AGENT-SYSTEM.md)** — it explains what to edit in forge `config/` and which generator to run. Editing the wrong file silently breaks across sessions.
 <!-- END LIFEOS-SYSTEM-POINTER -->

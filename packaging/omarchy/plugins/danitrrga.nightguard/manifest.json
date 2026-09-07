@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "danitrrga.nightguard",
+  "name": "Nightguard",
+  "version": "1.0.0",
+  "author": "danitrrga",
+  "description": "Estado de nightguard con panel de detalle",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Nightguard",
+    "description": "Estado del toque de queda y fichas restantes",
+    "category": "Info",
+    "allowMultiple": false
+  }
+}

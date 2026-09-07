@@ -85,14 +85,57 @@ def test_the_watchdog_really_does_import_the_blocker():
     assert "appblock" in _local_imports(os.path.join(_LINUX, "nightguard_watchdog.py"))
 
 
-def test_deploy_installs_the_panel_it_ships():
-    """The launcher refuses with a helpful message when the config is absent, so a
-    missing install is not fatal -- but it does mean the panel silently never
-    appears after a deploy."""
+def test_deploy_installs_the_bar_widget_it_ships():
+    """The desktop surface is an omarchy-shell bar widget, and the shell only
+    loads plugins from the owner's own plugin directory -- so a deploy that does
+    not copy them there leaves the bar showing the previous version forever."""
     with open(_DEPLOY, encoding="utf-8") as fh:
         text = fh.read()
-    assert "quickshell/nightguard/shell.qml" in text
-    assert "nightguard-panel" in text
+    assert "plugins/danitrrga.nightguard" in text
+    for name in ("manifest.json", "BarWidget.qml"):
+        assert name in text, "deploy.sh does not install %s" % name
+
+
+def test_the_bar_widget_files_exist_where_deploy_expects_them():
+    root = os.path.dirname(_LINUX)
+    plugin = os.path.join(os.path.dirname(root), "packaging", "omarchy",
+                          "plugins", "danitrrga.nightguard")
+    for name in ("manifest.json", "BarWidget.qml"):
+        assert os.path.isfile(os.path.join(plugin, name)), (
+            "%s is named in deploy.sh but missing from the repo" % name
+        )
+
+
+def test_the_bar_widget_is_installed_as_the_owner_not_as_root():
+    """The shell runs as the user. A root-owned file in his plugin directory
+    would be a path he cannot fix without sudo, in a directory the shell reloads
+    from automatically."""
+    with open(_DEPLOY, encoding="utf-8") as fh:
+        lines = fh.read().splitlines()
+    # Only actual invocations, not prose: an `echo "== installing ..."` line
+    # mentions both words and means nothing.
+    invocations = [
+        line for line in lines
+        if "PLUGIN_DIR" in line and re.search(r"(^|\s|--\s)install\b", line)
+        and not line.strip().startswith(("#", "echo"))
+    ]
+    assert invocations, "deploy.sh no longer installs the plugin at all"
+    for line in invocations:
+        assert "runuser" in line, "plugin install runs as root: %s" % line.strip()
+
+
+def test_the_widget_never_reaches_for_a_privileged_command():
+    """Standing rule: a bar widget may not exec anything privileged, and may not
+    change state. It opens the TUI; the TUI is where the signer is reached."""
+    root = os.path.dirname(os.path.dirname(_LINUX))
+    widget = os.path.join(root, "packaging", "omarchy", "plugins",
+                          "danitrrga.nightguard", "BarWidget.qml")
+    with open(widget, encoding="utf-8") as fh:
+        text = fh.read()
+    for forbidden in ("sudo", "pkexec", "nightguard_ctl", "commit"):
+        assert forbidden not in text, (
+            "the bar widget references %r — it must stay read-only" % forbidden
+        )
 
 
 def test_deploy_runs_the_config_migration():

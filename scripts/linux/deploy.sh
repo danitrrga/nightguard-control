@@ -19,7 +19,7 @@ set -euo pipefail
 OWNER=danitrrga
 REPO_CODE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODE=/usr/local/lib/nightguard
-SHARE=/usr/local/share/nightguard
+PLUGIN_DIR="/home/$OWNER/.config/omarchy/plugins/danitrrga.nightguard"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DATA=/var/lib/nightguard
 OLD_DATA=/home/danitrrga/.local/share/nightguard
@@ -125,13 +125,19 @@ else
     echo "   uv not found — skipping (install ngtui manually if the launcher stops working)"
 fi
 
-echo "== installing the desktop panel -> $SHARE =="
-install -d -o root -g root -m 0755 "$SHARE/quickshell/nightguard"
-install -o root -g root -m 0644 \
-    "$REPO_ROOT/packaging/omarchy/quickshell/nightguard/shell.qml" \
-    "$SHARE/quickshell/nightguard/shell.qml"
-install -o root -g root -m 0755 \
-    "$REPO_ROOT/packaging/omarchy/bin/nightguard-panel" /usr/local/bin/nightguard-panel
+# The desktop panel is an omarchy-shell BAR WIDGET, not a standalone window: it
+# has to live in the bar's right-hand cluster and open on click like the network
+# and bluetooth panels beside it, which only a plugin can do. It is installed
+# into the owner's own plugin directory, not system-wide, because that is where
+# omarchy looks for third-party plugins -- and as the owner, since the shell runs
+# as him and a root-owned file there would be a root-writable path in his session.
+echo "== installing the bar widget -> $PLUGIN_DIR =="
+runuser -u "$OWNER" -- install -d -m 0755 "$PLUGIN_DIR"
+for f in manifest.json BarWidget.qml; do
+    runuser -u "$OWNER" -- install -m 0644 \
+        "$REPO_ROOT/packaging/omarchy/plugins/danitrrga.nightguard/$f" "$PLUGIN_DIR/$f"
+done
+echo "   the shell hot-reloads a changed plugin on its own"
 
 systemctl daemon-reload
 
