@@ -1,8 +1,13 @@
 # Hardening session — 2026-09-07
 
-Five commits on `plan/phase-02-mutation-engine`. Suite went from **87 passed, 3
-skipped** to **260 passed, 3 skipped**. Nothing is deployed: every change is in
+10 commits on `plan/phase-02-mutation-engine`. Suite went from **87 passed, 3
+skipped** to **381 passed, 3 skipped**. Nothing is deployed: every change is in
 the repo and reaches the machine only when you run the deploy command below.
+
+One exception, and it is on your machine right now: the bar widget was installed
+and hot-reloaded live so it could be checked. Your `shell.json` was overwritten by
+`omarchy-refresh-shell` during that and restored from its backup — verified
+byte-identical, with your nightguard widget and your clock settings intact.
 
 ## Run this when you are back
 
