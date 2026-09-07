@@ -83,6 +83,10 @@ def clock(monkeypatch):
 
     def _set(unix_ts):
         monkeypatch.setattr(guard, "true_unix", lambda: (unix_ts, "ntp"))
+        # The system clock moves with it. verified_now_minutes cross-checks the
+        # two and treats a disagreement as tampering, so leaving the real clock
+        # in place would make every stubbed hour read as an attack.
+        monkeypatch.setattr(ctl.time, "time", lambda: unix_ts)
 
     return _set
 
@@ -254,3 +258,71 @@ def test_the_editable_field_list_exposes_the_window():
     the only way to adjust it would be a hand edit the watchdog reverts."""
     keys = {key for _label, key, _kind in edit_mod.EDITABLE_FIELDS}
     assert {"edit_window.enabled", "edit_window.start", "edit_window.end"} <= keys
+
+
+# --- the poisoned time cache -------------------------------------------------
+
+def test_a_poisoned_time_cache_cannot_open_the_edit_window(sanctioned_window, monkeypatch):
+    """The bypass this closes, found on the live box after deploying.
+
+    guard.true_unix() caches to /var/lib/nightguard/.timecache, and deploy.sh
+    leaves that file owned by the user — the same deliberate choice that lets the
+    watchdog revert a hand-edited config. So at 02:00 he can write an entry
+    claiming 10:00, with the correct boot_id and a current monotonic anchor, and
+    the cache read believes it.
+
+    The curfew itself was never exposed: a poisoned cache disagrees with the
+    system clock and reads as clock_tamper. The edit-window gate skipped that
+    check, so a poisoned cache would have bought a token-priced loosening at
+    exactly the hour the feature exists to refuse.
+    """
+    # True time claims 10:00 (inside the window); the system clock says 02:00.
+    monkeypatch.setattr(guard, "true_unix", lambda: (_unix_at(10), "cache"))
+    monkeypatch.setattr(ctl.time, "time", lambda: _unix_at(2))
+
+    preview = backend.preview_change(_LOOSENED)
+    assert preview["decision"]["allowed"] is False
+
+
+def test_an_agreeing_clock_still_opens_the_window(sanctioned_window, monkeypatch):
+    """The positive half, so the test above cannot pass by refusing everything."""
+    monkeypatch.setattr(guard, "true_unix", lambda: (_unix_at(10), "cache"))
+    monkeypatch.setattr(ctl.time, "time", lambda: _unix_at(10))
+
+    preview = backend.preview_change(_LOOSENED)
+    assert preview["decision"]["allowed"] is True
+
+
+def test_small_clock_drift_is_tolerated(sanctioned_window, monkeypatch):
+    """Ordinary drift must not lock him out of a legitimate edit. The tolerance
+    is the signed clock_protection.max_offset_minutes, default five."""
+    monkeypatch.setattr(guard, "true_unix", lambda: (_unix_at(10), "cache"))
+    monkeypatch.setattr(ctl.time, "time", lambda: _unix_at(10) + 120)  # 2 minutes
+
+    preview = backend.preview_change(_LOOSENED)
+    assert preview["decision"]["allowed"] is True
+
+
+def test_disabling_clock_protection_does_not_open_the_window(monkeypatch):
+    """Turning the tamper check off must not be a route into the edit window.
+    Only its tolerance is honoured, never its on/off switch."""
+    config = _CONFIG_WITH_WINDOW + "\nclock_protection:\n  enabled: false\n  max_offset_minutes: 5\n"
+    monkeypatch.setattr(backend, "sanctioned_config", lambda: ng.yaml_load(config))
+    monkeypatch.setattr(ng, "load_state",
+                        lambda: {"weekly_spent": 0, "week_anchor": "", "ledger": []})
+    monkeypatch.setattr(guard, "true_unix", lambda: (_unix_at(10), "cache"))
+    monkeypatch.setattr(ctl.time, "time", lambda: _unix_at(2))
+
+    loosened = config.replace('start: "21:30"', 'start: "23:30"')
+    assert backend.preview_change(loosened)["decision"]["allowed"] is False
+
+
+def test_the_root_signer_uses_the_same_cross_check(monkeypatch):
+    """The preview and the signer must agree, or the gate is decorative on one
+    side. Both go through verified_now_minutes."""
+    monkeypatch.setattr(guard, "true_unix", lambda: (_unix_at(10), "cache"))
+    monkeypatch.setattr(ctl.time, "time", lambda: _unix_at(2))
+    assert ctl.verified_now_minutes(ng.yaml_load(_CONFIG_WITH_WINDOW)) is None
+
+    monkeypatch.setattr(ctl.time, "time", lambda: _unix_at(10))
+    assert ctl.verified_now_minutes(ng.yaml_load(_CONFIG_WITH_WINDOW)) == 10 * 60

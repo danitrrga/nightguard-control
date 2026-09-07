@@ -117,12 +117,25 @@ echo "== reinstalling the TUI so the launcher tracks these paths =="
 # pointing at the deleted LifeOS tree, so `ngtui` from the launcher died on import with a
 # RuntimeError and the desktop entry appeared to do nothing. A path change is exactly when
 # it must be rebuilt, so the deploy owns it rather than leaving it to be rediscovered.
-if command -v uv >/dev/null 2>&1; then
-    runuser -u "$OWNER" -- uv tool install --force "$REPO_CODE/../../ngtui" >/dev/null 2>&1 \
-        && echo "   ngtui reinstalled" \
-        || echo "   WARNING: ngtui reinstall failed — run 'uv tool install --force ./ngtui' yourself"
+# `command -v uv` was checked against ROOT's PATH, which does not contain the
+# owner's ~/.local/bin -- so on this box it always missed and the TUI was never
+# reinstalled. Skipping it is not cosmetic: the TUI carries the pre-auth preview,
+# and an old copy shows "allowed, 1 token" for a change the new signer will
+# refuse, putting a fingerprint prompt in front of a refusal. Resolve uv as the
+# OWNER, the way he would.
+NG_UV="$(runuser -u "$OWNER" -- bash -lc 'command -v uv' 2>/dev/null || true)"
+if [[ -n $NG_UV ]]; then
+    if runuser -u "$OWNER" -- "$NG_UV" tool install --force "$REPO_CODE/../../ngtui" >/dev/null 2>&1; then
+        echo "   ngtui reinstalled ($NG_UV)"
+    else
+        echo "   !! ngtui reinstall FAILED — the edit screen will not show the"
+        echo "      edit-window refusal before authentication. Run yourself:"
+        echo "      uv tool install --force $REPO_CODE/../../ngtui"
+    fi
 else
-    echo "   uv not found — skipping (install ngtui manually if the launcher stops working)"
+    echo "   !! uv not found even as $OWNER — ngtui NOT updated."
+    echo "      The edit screen will not show the edit-window refusal before"
+    echo "      authentication until you run: uv tool install --force ./ngtui"
 fi
 
 # The desktop panel is an omarchy-shell BAR WIDGET, not a standalone window: it

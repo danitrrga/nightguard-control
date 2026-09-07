@@ -31,6 +31,7 @@ Subcommands:
 import argparse
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -361,6 +362,34 @@ def verified_now_minutes(sanctioned_doc):
         ts, _source = guard.true_unix()
         if ts is None:
             return None
+
+        # Cross-check the resolved time against the system clock, the way
+        # curfew_verdict does before it trusts an hour.
+        #
+        # This is load-bearing, not belt-and-braces. guard.true_unix() caches to
+        # /var/lib/nightguard/.timecache, and deploy.sh leaves that file owned by
+        # the user -- so at 02:00 he can write an entry claiming 10:00, with the
+        # right boot_id and a current monotonic anchor, and the cache read will
+        # believe it. The curfew itself is immune because a poisoned cache then
+        # disagrees with the system clock and reads as clock_tamper. Without the
+        # same check here, that poisoned cache would have opened the edit window
+        # and bought a token-priced loosening at the exact hour this feature
+        # exists to refuse.
+        #
+        # Moving BOTH the cache and the system clock defeats it, but changing the
+        # system clock needs a password (polkit auth_admin_keep on set-time), so
+        # the friction the pact depends on survives.
+        #
+        # Applied whatever clock_protection.enabled says: turning that off must
+        # not be a way to open the edit window. Only its tolerance is honoured.
+        clock = (sanctioned_doc or {}).get("clock_protection") or {}
+        try:
+            tolerance = int(clock.get("max_offset_minutes", 5)) * 60
+        except (TypeError, ValueError):
+            tolerance = 300
+        if abs(ts - int(time.time())) > max(0, tolerance):
+            return None
+
         local = guard.localize(sanctioned_doc or {}, ts)
         return local.hour * 60 + local.minute
     except Exception:
@@ -468,7 +497,6 @@ def _write_commit(key, canonical, prev, weekly_spent, week_anchor, ledger, audit
 
 
 def cmd_commit(args):
-    import time
     key = ng.read_key()
     if key is None:
         print("ERROR: cannot read .guardkey — run as root via `sudo`. Refusing (wrote nothing).",
