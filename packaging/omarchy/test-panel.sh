@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 # Exercise the Nightguard bar widget against the RUNNING shell, without a mouse.
 #
-# This exists because every bug in this plugin so far was invisible to the unit
-# tests: the Python underneath was green the whole time while the widget failed
-# to instantiate, failed to open, and froze on a binding loop. The only thing
+# This exists because every bug in this plugin was invisible to the unit tests:
+# the Python underneath stayed green the whole time while the widget failed to
+# instantiate, failed to open, and left its buttons unreachable. The only thing
 # that catches those is loading it into the real shell and driving it.
 #
-# The IPC route the widget declares is what makes it drivable — `open`, `close`
-# and `toggle` are the same entry points the bar click uses, so opening the panel
-# from here exercises the path a click takes.
+# The IPC route the widget declares is what makes it drivable — open, close and
+# toggle are the same entry points a bar click uses, so exercising them here
+# walks the path a click walks. `state` reports what the widget computed and is
+# about to draw, and `activate` runs exactly what the panel's buttons run, so
+# "the icon is wrong" and "the buttons are inert" — both reported by eye and
+# neither previously checkable — became assertions.
 #
 # Read-only with respect to the user's config: it never writes shell.json and
-# never installs anything. Exit 0 means the panel loaded, opened, mapped a
-# surface and produced no QML diagnostics.
+# never installs anything. Exit 0 means the plugin loaded, the panel opened and
+# closed, the icon is a real glyph with a clickable area, the actions run, and
+# no QML diagnostic came from this plugin's own files.
 set -uo pipefail
 
 PLUGIN_ID="danitrrga.nightguard"
@@ -120,7 +124,70 @@ diag=$(new_diagnostics "$mark")
     || { bad "diagnostics after repeated toggling:"; echo "$diag" | sed 's/^/          /'; }
 
 echo
-echo "== 7. the shell is still healthy =="
+echo "== 7. what the widget is actually drawing =="
+# The point of this section: "the icon is wrong" and "the buttons are inert"
+# were both reported by eye and neither was checkable. The widget now reports
+# what it computed, so both become assertions.
+st=$(omarchy-shell "$PLUGIN_ID" state 2>/dev/null)
+if echo "$st" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
+    ok "the widget reports its state"
+    py() { echo "$st" | python3 -c "import json,sys; print(json.load(sys.stdin)$1)"; }
+
+    glyph_cp=$(echo "$st" | python3 -c "import json,sys; g=json.load(sys.stdin)['glyph']; print('%X' % ord(g[0]) if len(g)==1 else '%X' % ord(g))" 2>/dev/null         || echo "$st" | python3 -c "
+import json,sys
+g = json.load(sys.stdin)['glyph']
+print('%X' % ord(g)) if len(g) == 1 else print('%X' % (0x10000 + (ord(g[0])-0xD800)*0x400 + (ord(g[1])-0xDC00)))")
+    case "$glyph_cp" in
+        F033E|F033F|F051F|F002A|F015B|F099D)
+            ok "bar icon is a padlock/state glyph (U+$glyph_cp), not text" ;;
+        *)  bad "bar icon is U+$glyph_cp — not one of the six state glyphs" ;;
+    esac
+
+    if fc-match -f "%{family[0]}" ":charset=$(echo "$glyph_cp" | tr 'A-Z' 'a-z')" 2>/dev/null | grep -qi nerd; then
+        ok "that glyph exists in an installed Nerd Font"
+    else
+        bad "the glyph would render as tofu — no font provides it"
+    fi
+
+    [[ $(py "['buttonWidth']") -gt 0 && $(py "['buttonHeight']") -gt 0 ]] \
+        && ok "the icon has a clickable area ($(py "['buttonWidth']")x$(py "['buttonHeight']"))" \
+        || bad "the icon has zero size — there is nothing to click"
+
+    [[ $(py "['slotVisible']") == "True" ]] && ok "the widget slot is visible" \
+        || bad "the widget is invisible, so the bar gives it no width"
+
+    for k in panelLoaded panelWired anchored barInjected hasDetail; do
+        [[ $(py "['$k']") == "True" ]] && ok "$k" || bad "$k is false"
+    done
+
+    left=$(py "['tokensLeft']"); total=$(py "['tokensTotal']")
+    [[ $left -ge 0 && $total -gt 0 && $left -le $total ]] \
+        && ok "token pips have something coherent to draw ($left/$total)" \
+        || bad "token counts are nonsense ($left/$total)"
+else
+    bad "the widget did not report state: ${st:0:120}"
+fi
+
+echo
+echo "== 8. the panel's buttons actually do something =="
+# Same functions the buttons call, reached over IPC. "Inert" is now testable.
+[[ $(omarchy-shell "$PLUGIN_ID" activate refresh 2>&1) == "ok" ]] \
+    && ok "the refresh action runs" || bad "the refresh action did not run"
+[[ $(omarchy-shell "$PLUGIN_ID" activate nonsense 2>&1) == unknown* ]] \
+    && ok "the action dispatch is live (an unknown one is rejected)" \
+    || bad "the dispatch is not reachable"
+
+echo
+echo "== 9. opening and closing changes the reported state =="
+omarchy-shell "$PLUGIN_ID" open >/dev/null 2>&1; sleep 1
+[[ $(omarchy-shell "$PLUGIN_ID" state 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['opened'])") == "True" ]] \
+    && ok "state says opened after open" || bad "state did not go to opened"
+omarchy-shell "$PLUGIN_ID" close >/dev/null 2>&1; sleep 1
+[[ $(omarchy-shell "$PLUGIN_ID" state 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['opened'])") == "False" ]] \
+    && ok "state says closed after close" || bad "state stayed opened — the binding is dead"
+
+echo
+echo "== 10. the shell is still healthy =="
 pgrep -x quickshell >/dev/null && ok "shell still running" || bad "the shell DIED"
 
 echo

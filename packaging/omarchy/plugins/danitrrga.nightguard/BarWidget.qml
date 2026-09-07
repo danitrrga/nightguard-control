@@ -190,8 +190,15 @@ BarWidget {
     }
   }
 
-  // Lets the panel be opened without a mouse, which is also the only way to
-  // exercise it from a test script.
+  // The panel driven without a mouse. This is not a convenience: a bar widget
+  // cannot otherwise be tested at all, and every bug this plugin has had was
+  // invisible to the Python suite because it lived entirely in the UI.
+  //
+  // `state` reports what the widget actually computed and is about to draw, so
+  // a test can assert the icon is the right glyph and the pip count matches the
+  // tokens WITHOUT anyone looking at the screen. `activate` runs exactly what
+  // the panel's buttons run, so "the buttons are inert" becomes a checkable
+  // claim rather than something only a human can see.
   IpcHandler {
     target: "danitrrga.nightguard"
 
@@ -201,6 +208,33 @@ BarWidget {
     function show(): void { root.open() }
     function hide(): void { root.close() }
     function toggle(): void { root.togglePanel() }
+
+    function state(): string {
+      return JSON.stringify({
+        opened: root.opened,
+        glyph: root.glyph,
+        verdict: root.verdict,
+        tokensLeft: root.tokensLeft,
+        tokensTotal: root.tokensTotal,
+        active: root.curfewActive || root.tokensLeft === 0,
+        hasDetail: root.detail !== null,
+        detailFailed: root.detailFailed,
+        panelLoaded: panelLoader.item !== null,
+        panelWired: panelLoader.item ? panelLoader.item.hostWidget === root : false,
+        anchored: panelLoader.item ? panelLoader.item.anchorItem === button : false,
+        barInjected: panelLoader.item ? panelLoader.item.bar === root.bar : false,
+        buttonWidth: button.implicitWidth,
+        buttonHeight: button.implicitHeight,
+        slotVisible: root.visible
+      })
+    }
+
+    // The button paths, reachable from a script. Same functions, same arguments.
+    function activate(which: string): string {
+      if (which === "tui") { root.openTui(); return "ok" }
+      if (which === "refresh") { root.refresh(); return "ok" }
+      return "unknown action: " + which
+    }
   }
 
   BarIconButton {

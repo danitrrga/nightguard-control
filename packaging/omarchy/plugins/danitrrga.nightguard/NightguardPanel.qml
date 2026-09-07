@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Shapes
 import Quickshell
 import qs.Commons
 import qs.Ui
@@ -68,105 +69,182 @@ Panel {
     return isFinite(n) ? n : -1
   }
 
+  readonly property int nowMinutes: minuteOr(detail ? detail.now_minutes : -1)
+  readonly property int curfewStartMin: minuteOr(detail && detail.curfew ? detail.curfew.start_minutes : -1)
+  readonly property int curfewEndMin: minuteOr(detail && detail.curfew ? detail.curfew.end_minutes : -1)
+  readonly property int windowStartMin: minuteOr(detail && detail.edit_window ? detail.edit_window.start_minutes : -1)
+  readonly property int windowEndMin: minuteOr(detail && detail.edit_window ? detail.edit_window.end_minutes : -1)
+
+  function untilMinutes(target) {
+    if (nowMinutes < 0 || target < 0) return -1
+    var d = target - nowMinutes
+    return d < 0 ? d + 1440 : d
+  }
+
+  function humanDuration(minutes) {
+    if (minutes < 0) return "—"
+    var h = Math.floor(minutes / 60)
+    var m = minutes % 60
+    if (h === 0) return m + " min"
+    if (m === 0) return h + " h"
+    return h + " h " + m
+  }
+
+  // The single number worth putting in the middle of the dial: how long until
+  // the thing that is about to change, changes.
+  readonly property int curfewLocked: verdict === "locked" ? 1 : 0
+  readonly property string dialHeadline: {
+    if (!detail || nowMinutes < 0) return "—"
+    if (curfewLocked === 1) return humanDuration(untilMinutes(curfewEndMin))
+    return humanDuration(untilMinutes(curfewStartMin))
+  }
+  readonly property string dialCaption: {
+    if (!detail || nowMinutes < 0) return "hora sin verificar"
+    return curfewLocked === 1 ? "hasta que abra" : "hasta el curfew"
+  }
+
   // --- pieces ---------------------------------------------------------------
 
-  // The one picture that answers "when am I locked, and when may I change it"
-  // without reading a word: a whole day left to right, the curfew shaded, the
-  // hours the pact may be weakened marked beneath it, and a line at now.
-  component DayStrip: Item {
-    id: strip
+  // A 24-hour dial: the whole day as a ring, the curfew as one arc and the
+  // hours the pact may be weakened as another, with a mark at now and the next
+  // transition counted down in the middle.
+  //
+  // A ring rather than another bar because a day is a cycle, and the question
+  // it answers — "how long until this changes?" — is a distance around a
+  // circle. Built with Shape/PathAngleArc, which is how the shell draws its own
+  // dial (Ui/SpeedTestOverlay.qml:265-321); Canvas is used nowhere in the tree.
+  component DayDial: Item {
+    id: dial
 
     property int curfewStart: -1
     property int curfewEnd: -1
     property int windowStart: -1
     property int windowEnd: -1
     property int nowMinutes: -1
+    property string headline: ""
+    property string caption: ""
+    property color headlineColor: root.foreground
 
-    readonly property real minuteWidth: width / 1440
+    readonly property real ringRadius: Math.min(width, height) / 2 - Style.space(7)
+    readonly property real ringWidth: Math.max(Style.space(6), Style.space(7))
 
-    implicitHeight: Style.space(44)
+    // Midnight at the top, clockwise. PathAngleArc puts 0 degrees at 3 o'clock,
+    // so the day starts a quarter turn back.
+    function angleOf(minutes) { return -90 + (minutes / 1440) * 360 }
 
-    // A window that wraps midnight is two bands, not one — drawing 21:30→05:30
-    // as a single rectangle would shade the daytime instead of the night.
-    function spans(from, to) {
-      if (from < 0 || to < 0 || from === to) return []
-      if (from < to) return [[from, to]]
-      return [[from, 1440], [0, to]]
+    // An arc that wraps midnight is still one arc here — unlike the flat strip,
+    // a ring has no seam to split at, which is half the reason it reads better.
+    function sweepOf(from, to) {
+      var span = to - from
+      if (span < 0) span += 1440
+      return (span / 1440) * 360
     }
+    function drawable(from, to) { return from >= 0 && to >= 0 && from !== to }
 
-    Item {
-      id: curfewRow
-      width: parent.width
-      height: Style.space(14)
+    implicitHeight: Style.space(150)
 
-      Rectangle {
-        anchors.fill: parent
-        radius: Style.cornerRadius > 0 ? height / 2 : 0
-        color: root.track
-      }
+    Shape {
+      anchors.fill: parent
+      preferredRendererType: Shape.CurveRenderer
 
-      Repeater {
-        model: strip.spans(strip.curfewStart, strip.curfewEnd)
-        Rectangle {
-          required property var modelData
-          x: modelData[0] * strip.minuteWidth
-          width: Math.max(1, (modelData[1] - modelData[0]) * strip.minuteWidth)
-          height: parent.height
-          radius: Style.cornerRadius > 0 ? height / 2 : 0
-          color: root.alpha(root.urgent, 0.8)
+      // The day itself.
+      ShapePath {
+        strokeWidth: dial.ringWidth
+        strokeColor: root.track
+        fillColor: "transparent"
+        capStyle: ShapePath.FlatCap
+        PathAngleArc {
+          centerX: dial.width / 2; centerY: dial.height / 2
+          radiusX: dial.ringRadius; radiusY: dial.ringRadius
+          startAngle: -90; sweepAngle: 360
         }
       }
 
-      Rectangle {
-        visible: strip.nowMinutes >= 0
-        x: strip.nowMinutes * strip.minuteWidth - width / 2
-        y: -Style.space(4)
-        width: Math.max(2, Style.space(2))
-        height: parent.height + Style.space(8)
-        color: root.foreground
+      // The curfew.
+      ShapePath {
+        strokeWidth: dial.ringWidth
+        strokeColor: dial.drawable(dial.curfewStart, dial.curfewEnd)
+                     ? root.alpha(root.urgent, 0.85) : "transparent"
+        fillColor: "transparent"
+        capStyle: ShapePath.FlatCap
+        PathAngleArc {
+          centerX: dial.width / 2; centerY: dial.height / 2
+          radiusX: dial.ringRadius; radiusY: dial.ringRadius
+          startAngle: dial.angleOf(dial.curfewStart)
+          sweepAngle: dial.drawable(dial.curfewStart, dial.curfewEnd)
+                      ? dial.sweepOf(dial.curfewStart, dial.curfewEnd) : 0
+        }
       }
-    }
 
-    Item {
-      id: windowRow
-      anchors.top: curfewRow.bottom
-      anchors.topMargin: Style.space(4)
-      width: parent.width
-      height: Style.space(4)
-
-      Repeater {
-        model: strip.spans(strip.windowStart, strip.windowEnd)
-        Rectangle {
-          required property var modelData
-          x: modelData[0] * strip.minuteWidth
-          width: Math.max(1, (modelData[1] - modelData[0]) * strip.minuteWidth)
-          height: parent.height
-          radius: Style.cornerRadius > 0 ? height / 2 : 0
-          color: Color.accent
+      // When the pact may be weakened, on an inner track so the two never
+      // overlap into an unreadable smear.
+      ShapePath {
+        strokeWidth: Math.max(2, Style.space(3))
+        strokeColor: dial.drawable(dial.windowStart, dial.windowEnd)
+                     ? Color.accent : "transparent"
+        fillColor: "transparent"
+        capStyle: ShapePath.FlatCap
+        PathAngleArc {
+          centerX: dial.width / 2; centerY: dial.height / 2
+          radiusX: dial.ringRadius - dial.ringWidth
+          radiusY: dial.ringRadius - dial.ringWidth
+          startAngle: dial.angleOf(dial.windowStart)
+          sweepAngle: dial.drawable(dial.windowStart, dial.windowEnd)
+                      ? dial.sweepOf(dial.windowStart, dial.windowEnd) : 0
         }
       }
     }
 
-    Item {
-      anchors.top: windowRow.bottom
-      anchors.topMargin: Style.space(2)
-      width: parent.width
-      height: Style.space(12)
+    // Now.
+    Rectangle {
+      visible: dial.nowMinutes >= 0
+      width: Style.space(7)
+      height: width
+      radius: width / 2
+      color: root.foreground
+      border.width: Math.max(1, Style.space(2))
+      border.color: Color.popups.background
+      x: dial.width / 2 + dial.ringRadius * Math.cos(dial.angleOf(dial.nowMinutes) * Math.PI / 180) - width / 2
+      y: dial.height / 2 + dial.ringRadius * Math.sin(dial.angleOf(dial.nowMinutes) * Math.PI / 180) - height / 2
+    }
 
-      Repeater {
-        model: [0, 6, 12, 18]
-        Text {
-          required property int modelData
-          textFormat: Text.PlainText
-          x: modelData === 0
-             ? 0
-             : Math.min(parent.width - implicitWidth,
-                        modelData * 60 * strip.minuteWidth - implicitWidth / 2)
-          text: modelData < 10 ? "0" + modelData : String(modelData)
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
+    // The one number worth reading, in the middle where the eye lands.
+    Column {
+      anchors.centerIn: parent
+      spacing: Style.space(2)
+
+      Text {
+        anchors.horizontalCenter: parent.horizontalCenter
+        textFormat: Text.PlainText
+        text: dial.headline
+        color: dial.headlineColor
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.heading
+        font.bold: true
+      }
+      Text {
+        anchors.horizontalCenter: parent.horizontalCenter
+        textFormat: Text.PlainText
+        text: dial.caption
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
+    }
+
+    // 00 / 06 / 12 / 18, so the ring can be read as a clock.
+    Repeater {
+      model: [0, 6, 12, 18]
+      Text {
+        required property int modelData
+        readonly property real a: dial.angleOf(modelData * 60) * Math.PI / 180
+        textFormat: Text.PlainText
+        text: modelData < 10 ? "0" + modelData : String(modelData)
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        x: dial.width / 2 + (dial.ringRadius + Style.space(9)) * Math.cos(a) - width / 2
+        y: dial.height / 2 + (dial.ringRadius + Style.space(9)) * Math.sin(a) - height / 2
       }
     }
   }
@@ -279,17 +357,16 @@ Panel {
             fontFamily: root.fontFamily
           }
 
-          DayStrip {
+          DayDial {
             width: parent.width
-            curfewStart: root.minuteOr(root.detail && root.detail.curfew
-                                       ? root.detail.curfew.start_minutes : -1)
-            curfewEnd: root.minuteOr(root.detail && root.detail.curfew
-                                     ? root.detail.curfew.end_minutes : -1)
-            windowStart: root.minuteOr(root.detail && root.detail.edit_window
-                                       ? root.detail.edit_window.start_minutes : -1)
-            windowEnd: root.minuteOr(root.detail && root.detail.edit_window
-                                     ? root.detail.edit_window.end_minutes : -1)
-            nowMinutes: root.minuteOr(root.detail ? root.detail.now_minutes : -1)
+            curfewStart: root.curfewStartMin
+            curfewEnd: root.curfewEndMin
+            windowStart: root.windowStartMin
+            windowEnd: root.windowEndMin
+            nowMinutes: root.nowMinutes
+            headline: root.dialHeadline
+            caption: root.dialCaption
+            headlineColor: root.curfewLocked === 1 ? root.urgent : root.foreground
           }
 
           Row {
