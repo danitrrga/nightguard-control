@@ -1,26 +1,30 @@
 # Hardening session — 2026-09-07
 
-10 commits on `plan/phase-02-mutation-engine`. Suite went from **87 passed, 3
-skipped** to **381 passed, 3 skipped**. Nothing is deployed: every change is in
-the repo and reaches the machine only when you run the deploy command below.
+12 commits on `plan/phase-02-mutation-engine`. Suite went from **87 passed, 3
+skipped** to **386 passed, 3 skipped**.
 
-One exception, and it is on your machine right now: the bar widget was installed
-and hot-reloaded live so it could be checked. Your `shell.json` was overwritten by
-`omarchy-refresh-shell` during that and restored from its backup — verified
-byte-identical, with your nightguard widget and your clock settings intact.
+## Deployed and verified live, 2026-09-07 20:13
 
-## Run this when you are back
+The deploy ran clean: the terminal UI reinstalled, the bar widget installed, the
+config migration reported itself already current (idempotent, as intended), and
+the watchdog ticked ok.
 
-```
-sudo /home/danitrrga/dev/Projects/nightguard-control/scripts/linux/deploy.sh
-```
+Proved against the running stack at 20:14, with the window signed as 05:30-14:00:
 
-It installs the code, runs an idempotent config migration that adds the new
-fields, installs the panel, and re-enables the watchdog timer. It re-signs once
-during the migration, so `ngtui` will show a fresh config hash afterwards.
+| Attempt | Result |
+|---|---|
+| Push the curfew two hours later | refused, no fingerprint asked |
+| Turn app blocking off | refused, no fingerprint asked |
+| Widen the edit window itself | refused, no fingerprint asked |
+| Pull the curfew ninety minutes earlier | allowed, free |
 
-The deploy also installs the bar widget. Click the nightguard icon in the bar's
-right-hand cluster to see it.
+And the time-cache defence, proved on an isolated copy of the instance so the
+live one was never touched: an honest cache resolves 20:14; a cache forged to
+claim 10:00 resolves to nothing and the loosening is refused.
+
+Your `shell.json` was overwritten by `omarchy-refresh-shell` during this work and
+restored from its backup — verified byte-identical, with your nightguard widget
+and your clock settings intact.
 
 ## What shipped
 
