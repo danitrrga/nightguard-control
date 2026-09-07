@@ -50,6 +50,18 @@ Four bypasses closed on purpose:
 
 An unresolvable clock refuses the loosening rather than waving it through.
 
+**A hole found after the first deploy, and closed.** The guard caches resolved
+time to `/var/lib/nightguard/.timecache`, and that file is owned by you — the same
+deliberate choice that keeps `config.yaml` hand-editable so the watchdog can
+revert it. The cache is trusted when its boot id matches and its anchor is under
+two minutes old, both of which you can satisfy. So at 02:00 you could have written
+an entry claiming 10:00 and the gate would have believed it.
+
+The curfew itself was never exposed: a poisoned cache disagrees with the system
+clock and reads as tampering, which denies. The edit-window gate skipped that
+comparison. It now makes it, so defeating the window needs the system clock moved
+too — and that costs a password.
+
 ### 2. App blocking, in two modes, that fires only during curfew
 
 You built this once and deleted it on 2026-06-23, because a clock jump at three in
@@ -113,7 +125,7 @@ It also warns if you ever end up in the `empower` group: `run0 --empower` makes
 every polkit action return YES with no prompt, which silently undoes the rule that
 makes stopping the watchdog cost an authentication. You are not in it today.
 
-### 4. Two live bugs found and fixed
+### 4. Three live bugs found and fixed
 
 - **The TUI has not matched your desktop theme since the Omarchy 4 upgrade.** The
   loader read `~/.config/omarchy/current/theme/colors.toml`; that directory does
@@ -124,6 +136,13 @@ makes stopping the watchdog cost an authentication. You are not in it today.
   raised `ModuleNotFoundError` every 60 seconds and quietly stopped reverting hand
   edits while the timer still read as active. Fixed, and a test now asserts the
   closure so a module added later is caught by shape rather than by memory.
+- **The deploy silently skipped updating the terminal UI.** It tested
+  `command -v uv` against *root's* PATH, which does not contain your
+  `~/.local/bin`, so it always missed and printed "skipping". That is how the
+  machine ended up running a signer that enforced the edit window and a terminal
+  UI that knew nothing about it — which would have put a fingerprint prompt in
+  front of a refusal, breaking the one rule that says you always see the cost
+  first. It now resolves `uv` as you, and says loudly what breaks if it cannot.
 
 ## What is NOT done, and why
 
