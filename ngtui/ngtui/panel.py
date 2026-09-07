@@ -117,26 +117,96 @@ THEME_FALLBACK = {
 }
 
 
+def _rgb(value):
+    text = str(value or "").lstrip("#")
+    if len(text) == 3:
+        text = "".join(c * 2 for c in text)
+    if len(text) < 6:
+        return None
+    try:
+        return tuple(int(text[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return None
+
+
+def _luminance(value):
+    """Relative luminance, as defined for the WCAG contrast ratio."""
+    rgb = _rgb(value)
+    if rgb is None:
+        return None
+    channels = []
+    for raw in rgb:
+        c = raw / 255
+        channels.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
+    r, g, b = channels
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast(a, b):
+    """Contrast ratio between two colours, or None if either is unreadable."""
+    la, lb = _luminance(a), _luminance(b)
+    if la is None or lb is None:
+        return None
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def _dimmer_than(candidates, foreground, background, floor=2.0):
+    """The most legible candidate that is still dimmer than the body text.
+
+    Chosen by measurement rather than by name, because the palette's names
+    describe absolute lightness, not contrast. ``light_foreground`` is genuinely
+    the lighter of the two foregrounds — which on tokyo-night and osaka-jade
+    makes it *brighter* than the body text and therefore the opposite of muted,
+    while on everforest it happens to be dimmer and on a light theme like
+    flexoki-light it is dimmer again for the opposite reason. One fixed order
+    cannot be right for all of them; measuring is right for all of them.
+    """
+    body = contrast(foreground, background)
+    if body is None:
+        return None
+    best, best_ratio = None, None
+    for value in candidates:
+        ratio = contrast(value, background)
+        if ratio is None or ratio < floor or ratio >= body:
+            continue
+        if best_ratio is None or ratio > best_ratio:
+            best, best_ratio = value, ratio
+    return best
+
+
 def theme_view(tokens):
     """Map the desktop palette onto the roles the panel paints with.
 
     Every role falls back individually: a theme that ships a partial colors.toml
     should lose one colour, not the whole palette.
+
+    Roles that are a straight rename are picked by name. ``muted`` is not one of
+    those — see ``_dimmer_than`` — so it is measured against the background and
+    the body text, which is what makes one rule serve both light and dark themes.
     """
     tokens = tokens or {}
 
     def pick(*names):
         for name in names:
             value = tokens.get(name)
-            if isinstance(value, str) and value.startswith("#"):
+            if isinstance(value, str) and value.startswith("#") and _rgb(value):
                 return value
         return None
 
+    background = pick("background", "dark_background")
+    foreground = pick("foreground", "bright_foreground")
+
+    candidates = [c for c in (pick("light_foreground"), pick("dark_foreground"),
+                              pick("muted"), pick("selection")) if c]
+    muted = _dimmer_than(candidates, foreground, background)
+
     view = {
-        "background": pick("background", "dark_background"),
+        "background": background,
         "surface": pick("lighter_background", "selection"),
-        "foreground": pick("foreground", "bright_foreground"),
-        "muted": pick("light_foreground", "muted", "dark_foreground"),
+        "foreground": foreground,
+        # Never invisible: a palette with no dimmer tone reads body text instead
+        # of something that disappears into the background.
+        "muted": muted or foreground,
         "accent": pick("accent", "blue", "cyan"),
         "ok": pick("green", "bright_green"),
         "warn": pick("yellow", "bright_yellow"),
@@ -145,8 +215,56 @@ def theme_view(tokens):
     return {k: (v or THEME_FALLBACK[k]) for k, v in view.items()}
 
 
+# Omarchy's own structural defaults, mirrored from shell/Commons/Style.qml so an
+# Omarchy 3 box (which ships no shell.toml) still renders in the family style
+# rather than falling back to something invented.
+STYLE_FALLBACK = {
+    "mode": "dark",
+    "name": "",
+    "popup_background": "#2d353b",
+    "popup_text": "#d3c6aa",
+    "popup_border": "#7fbbb3",
+    "popup_background_alpha": 1.0,
+    "control_border": "#d3c6aa",
+    "control_fill_alpha": 0.04,
+    "control_border_alpha": 0.4,
+    "control_border_width": 1,
+    "font_base": 12,
+    "spacing_scale": 1.0,
+    "spacing_scale_with_font": True,
+}
+
+
+def style_view(tokens):
+    """The structural tokens the panel is built from, each with its own fallback.
+
+    Colour alone did not make the panel look native. What carries the family
+    resemblance is the rest: a hairline border at 40% over a 4% fill instead of a
+    lighter solid card, a 2px popup border in the compositor's active-border
+    colour, and a spacing/type scale derived from one base font size.
+
+    Corner radius is deliberately not here. It mirrors Hyprland's
+    ``decoration:rounding`` -- a live compositor value, not a theme file -- so the
+    panel asks hyprctl for it and gets sharp corners on a box configured for them.
+    """
+    tokens = tokens or {}
+    out = {}
+    for key, fallback in STYLE_FALLBACK.items():
+        value = tokens.get(key)
+        if isinstance(fallback, bool):
+            out[key] = bool(value) if isinstance(value, bool) else fallback
+        elif isinstance(fallback, str):
+            out[key] = value if isinstance(value, str) and value.startswith("#") else fallback
+        else:
+            try:
+                out[key] = type(fallback)(value)
+            except (TypeError, ValueError):
+                out[key] = fallback
+    return out
+
+
 def build(verdict, tokens_left, cfg, state, now_minutes=None, warnings=None,
-          theme_tokens=None):
+          theme_tokens=None, style_tokens=None):
     """The whole panel payload. Pure; every input is passed in."""
     from ngtui.backend import WEEKLY_TOKENS
 
@@ -165,6 +283,7 @@ def build(verdict, tokens_left, cfg, state, now_minutes=None, warnings=None,
         "blocking": blocking_view(cfg),
         "warnings": list(warnings or []),
         "theme": theme_view(theme_tokens),
+        "style": style_view(style_tokens),
     }
 
 
@@ -181,6 +300,7 @@ UNAVAILABLE = {
                  "sites_enabled": False, "sites": 0},
     "warnings": ["the trust stack could not be read"],
     "theme": dict(THEME_FALLBACK),
+    "style": dict(STYLE_FALLBACK),
 }
 
 

@@ -1,22 +1,31 @@
 //! Nightguard desktop panel — a window, never a lever.
 //!
-//! Omarchy 4 replaced Waybar with quickshell, so the bar module this project used
-//! to ship has no host any more. This is the replacement, and it is deliberately a
-//! SEPARATE quickshell process rather than a plugin inside omarchy-shell: plugins
-//! run as unsandboxed code inside the long-lived shell process, and curfew state is
-//! not something to put there.
+//! A SEPARATE quickshell process, not an omarchy-shell plugin. Upstream is
+//! explicit that plugins run as unsandboxed code inside the long-lived shell
+//! process for the life of the session; a crash here would take the bar and the
+//! notifications with it.
 //!
-//! It reads. It never writes. The project's standing rule is that only the signer
-//! may change state and that any privileged exec or state-changing click handler
-//! from a bar widget is rejected by design, so there is no button here that spends
-//! a token, grants grace, or edits anything. Everything actionable points at the
-//! terminal UI, which is the one sanctioned editor.
+//! Being separate means it cannot `import qs.Commons` and reuse Omarchy's Style
+//! and Color singletons — that module URI resolves relative to whichever config
+//! root is running, so it would resolve to this directory. The tokens are
+//! therefore re-derived from the same sources Omarchy reads:
 //!
-//! Layout follows the Omarchy 4 grammar rather than the old one: a ~380px card
-//! anchored to the top-right, not the 875x600 screen-centred window v3 used for
-//! its system panels. Colours come from the live desktop theme at runtime -- the
-//! payload carries them, resolved from the same colors.toml the desktop reads, so
-//! a theme change repaints this too.
+//!   * colours and the structural style tokens come from the live theme's
+//!     colors.toml and shell.toml, resolved by `ngtui panel` and shipped in its
+//!     payload — so a theme change repaints this too;
+//!   * corner radius and the screen-edge gap come from hyprctl, exactly as
+//!     shell/Commons/Style.qml does, because both are live compositor values
+//!     rather than theme files. On a box with `decoration:rounding = 0` that
+//!     means square corners, which is the whole point.
+//!
+//! The spacing and type scales mirror Style.qml: one base font size is the rem
+//! root, every size derives from it, and the spacing scale tracks it. Surfaces
+//! follow the Omarchy idiom of a translucent fill over the shared background
+//! plus a hairline border, NOT a lighter solid card.
+//!
+//! It reads and never writes. Only the signer may change state, so there is no
+//! control here that spends a token, grants grace or edits anything; everything
+//! actionable points at the terminal UI.
 //!
 //! Run:  quickshell -p packaging/omarchy/quickshell/nightguard
 
@@ -28,14 +37,15 @@ import Quickshell.Io
 ShellRoot {
     id: root
 
-    // --- state ---------------------------------------------------------------
+    // --- payload -------------------------------------------------------------
 
     property var data: ({
         verdict: "unavailable",
-        word: "…",
+        word: "UNAVAILABLE",
         glyph: "○",
         tokens_left: 0,
         tokens_total: 0,
+        week_anchor: "",
         edit_window: { configured: false, open: false, detail: "reading…" },
         blocking: { apps_enabled: false, mode: "blocklist", games: false, apps: 0,
                     sites_enabled: false, sites: 0 },
@@ -44,36 +54,87 @@ ShellRoot {
             background: "#2d353b", surface: "#343f44", foreground: "#d3c6aa",
             muted: "#859289", accent: "#7fbbb3", ok: "#a7c080",
             warn: "#dbbc7f", alert: "#e67e80"
+        },
+        style: {
+            popup_background: "#2d353b", popup_text: "#d3c6aa",
+            popup_border: "#7fbbb3", popup_background_alpha: 1.0,
+            control_border: "#d3c6aa", control_fill_alpha: 0.04,
+            control_border_alpha: 0.4, control_border_width: 1,
+            font_base: 12, spacing_scale: 1.0, spacing_scale_with_font: true
         }
     })
 
     readonly property var palette: data.theme
+    readonly property var style: data.style
 
-    // The verdict decides the accent the whole card is keyed to, so the state is
-    // legible from across the room without reading a word of it.
+    // --- the scales, mirrored from shell/Commons/Style.qml -------------------
+
+    readonly property real fontScale: Math.max(1 / 12, style.font_base / 12)
+    readonly property real spacingScale:
+        style.spacing_scale * (style.spacing_scale_with_font ? fontScale : 1)
+
+    function space(px) {
+        var n = px * root.spacingScale;
+        return n <= 0 ? 0 : Math.max(1, Math.round(n));
+    }
+    function fontPx(mult) {
+        return Math.max(1, Math.round(style.font_base * mult));
+    }
+
+    readonly property int fCaption:   fontPx(0.833)   // 10 at base 12
+    readonly property int fBodySmall: fontPx(0.917)   // 11
+    readonly property int fBody:      fontPx(1.0)     // 12
+    readonly property int fTitle:     fontPx(1.167)   // 14
+
+    readonly property int popupPadding: space(14)
+    readonly property int panelGap:     space(14)
+    readonly property int rowGap:       space(8)
+    readonly property int labelGap:     space(4)
+    readonly property int pad:          space(8)
+
+    // Live compositor values. Both are re-read on the same cadence as the
+    // payload so a rounding or gaps change is picked up without a restart.
+    property int cornerRadius: 0
+    property int gapsOut: 5
+    readonly property int popupBorderWidth: Math.max(1, space(2))
+
+    // --- colours -------------------------------------------------------------
+
     readonly property color stateColor: {
         switch (data.verdict) {
-        case "locked":         return palette.alert;
-        case "grace_active":   return palette.warn;
-        case "outside_curfew": return palette.ok;
-        case "clock_tamper":   return palette.alert;
-        case "offline_blocked":return palette.warn;
-        default:               return palette.muted;
+        case "locked":          return palette.alert;
+        case "grace_active":    return palette.warn;
+        case "outside_curfew":  return palette.ok;
+        case "clock_tamper":    return palette.alert;
+        case "offline_blocked": return palette.warn;
+        default:                return palette.muted;
         }
     }
 
-    // --- data source ---------------------------------------------------------
+    // The Omarchy control idiom: a 4% fill of the foreground over the shared
+    // background, with a 40% hairline border. Not a lighter solid card.
+    readonly property color controlFill:
+        Qt.alpha(style.control_border, style.control_fill_alpha)
+    readonly property color controlBorder:
+        Qt.alpha(style.control_border, style.control_border_alpha)
+
+    // --- data ----------------------------------------------------------------
     // `ngtui panel` is head-less, key-less and contractually always exits 0, so a
-    // failure here shows a fail-closed payload rather than an empty panel.
+    // failure shows a fail-closed payload rather than a blank rectangle.
+    //
+    // waitForEnd matters: without it the collector's `text` can still be empty
+    // when the signal arrives, and the panel renders its placeholder forever.
 
     Process {
         id: poll
         command: ["ngtui", "panel"]
         running: true
         stdout: StdioCollector {
+            waitForEnd: true
             onStreamFinished: {
                 try {
-                    root.data = JSON.parse(this.text);
+                    var parsed = JSON.parse(this.text);
+                    if (parsed && parsed.verdict !== undefined) root.data = parsed;
                 } catch (e) {
                     // Keep the last good payload rather than blanking the panel.
                 }
@@ -81,12 +142,78 @@ ShellRoot {
         }
     }
 
+    Process {
+        id: roundingProc
+        command: ["hyprctl", "-j", "getoption", "decoration:rounding"]
+        running: true
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                try {
+                    var n = Number(JSON.parse(this.text || "{}").int);
+                    if (isFinite(n) && n >= 0) root.cornerRadius = n;
+                } catch (e) {}
+            }
+        }
+    }
+
+    Process {
+        id: gapsProc
+        command: ["hyprctl", "-j", "getoption", "general:gaps_out"]
+        running: true
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                try {
+                    var json = JSON.parse(this.text || "{}");
+                    var parts = String(json.css || "").match(/-?\d+(?:\.\d+)?/g) || [];
+                    var n = parts.length > 0 ? Number(parts[0]) : Number(json.int);
+                    // Hyprland's gap is a window-to-window distance; as a
+                    // screen-edge inset it reads as too much, so the shell halves
+                    // it. Matched here so the panel sits where its siblings do.
+                    if (isFinite(n) && n >= 0) root.gapsOut = Math.max(0, Math.round(n / 2));
+                } catch (e) {}
+            }
+        }
+    }
+
+    function refresh() {
+        poll.running = true;
+        roundingProc.running = true;
+        gapsProc.running = true;
+    }
+
+    // Theme changes repaint immediately rather than on the next poll.
+    //
+    // The watched file is `current/theme.name`, NOT anything inside
+    // `current/theme`: omarchy replaces that directory wholesale on every theme
+    // change, which silently drops a watch on any file within it. theme.name is
+    // a sibling of the directory and is rewritten on each switch, so it is the
+    // one signal that survives. `omarchy-theme-set` writes it just before it
+    // pushes the new palette to its own shell over IPC.
+    FileView {
+        path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme.name"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: themeSettle.restart()
+        onLoaded: themeSettle.restart()
+    }
+
+    // The name lands before the rest of the directory has finished staging, so
+    // a beat of settle time avoids reading a half-written palette. Same reason
+    // the shell's own Style.qml delays its hyprctl re-poll.
+    Timer {
+        id: themeSettle
+        interval: 200
+        repeat: false
+        onTriggered: root.refresh()
+    }
+
     Timer {
         interval: 5000
         running: true
         repeat: true
-        triggeredOnStart: false
-        onTriggered: poll.running = true
+        onTriggered: root.refresh()
     }
 
     // --- the panel -----------------------------------------------------------
@@ -95,76 +222,92 @@ ShellRoot {
         id: panel
 
         anchors { top: true; right: true }
-        margins { top: 8; right: 8 }
+        margins { top: root.gapsOut; right: root.gapsOut }
 
-        implicitWidth: 380
-        implicitHeight: column.implicitHeight + 28
+        // Responsive: the card wants a comfortable measure derived from the type
+        // scale, but never more than the screen can hold. Height always follows
+        // its content, so a warning appearing does not clip.
+        readonly property int desiredWidth: root.space(300)
+        readonly property int maxWidth:
+            screen ? Math.max(root.space(160), screen.width - root.gapsOut * 2) : desiredWidth
+        readonly property int maxHeight:
+            screen ? Math.max(root.space(120), screen.height - root.gapsOut * 2) : 100000
+
+        implicitWidth: Math.min(desiredWidth, maxWidth)
+        implicitHeight: Math.min(
+            card.implicitHeight, maxHeight)
         color: "transparent"
 
         Rectangle {
+            id: card
             anchors.fill: parent
-            radius: 12
-            color: root.palette.background
-            border.width: 1
-            border.color: Qt.alpha(root.palette.muted, 0.35)
+            radius: root.cornerRadius
+            color: Qt.alpha(root.style.popup_background, root.style.popup_background_alpha)
+            border.width: root.popupBorderWidth
+            border.color: root.style.popup_border
+
+            implicitHeight: column.implicitHeight
+                            + root.popupPadding * 2
+                            + root.popupBorderWidth * 2
 
             ColumnLayout {
                 id: column
                 anchors.fill: parent
-                anchors.margins: 14
-                spacing: 12
+                anchors.margins: root.popupPadding + root.popupBorderWidth
+                spacing: root.rowGap
 
-                // --- headline: the verdict ---------------------------------
+                // --- headline -------------------------------------------------
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 10
+                    spacing: root.space(8)
 
                     Rectangle {
-                        implicitWidth: 10
-                        implicitHeight: 10
-                        radius: 5
+                        implicitWidth: root.space(8)
+                        implicitHeight: root.space(8)
+                        radius: root.cornerRadius > 0 ? width / 2 : 0
                         color: root.stateColor
                         Layout.alignment: Qt.AlignVCenter
                     }
 
                     Text {
                         text: root.data.word
-                        color: root.palette.foreground
-                        font.family: "monospace"   // never a hard family: the user overrides it
-                        font.pixelSize: 15
+                        color: root.style.popup_text
+                        font.family: "monospace"   // the fontconfig alias, never a family
+                        font.pixelSize: root.fTitle
                         font.weight: Font.DemiBold
+                        elide: Text.ElideRight
                         Layout.fillWidth: true
                     }
 
                     Text {
                         text: "nightguard"
-                        color: root.palette.muted
+                        color: Qt.alpha(root.palette.muted, 0.9)
                         font.family: "monospace"
-                        font.pixelSize: 11
+                        font.pixelSize: root.fCaption
                     }
                 }
 
-                // --- weekly tokens -----------------------------------------
+                // --- weekly tokens --------------------------------------------
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 6
+                    spacing: root.labelGap
 
                     RowLayout {
                         Layout.fillWidth: true
                         Text {
                             text: "weekly tokens"
-                            color: root.palette.muted
+                            color: Qt.alpha(root.palette.muted, 0.9)
                             font.family: "monospace"
-                            font.pixelSize: 11
+                            font.pixelSize: root.fCaption
                             Layout.fillWidth: true
                         }
                         Text {
                             text: root.data.tokens_left + " / " + root.data.tokens_total
-                            color: root.palette.foreground
+                            color: root.style.popup_text
                             font.family: "monospace"
-                            font.pixelSize: 11
+                            font.pixelSize: root.fCaption
                         }
                     }
 
@@ -172,42 +315,44 @@ ShellRoot {
                     // point of the quota is that it is visibly finite.
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 4
+                        spacing: root.space(3)
                         Repeater {
                             model: root.data.tokens_total
                             Rectangle {
                                 Layout.fillWidth: true
-                                implicitHeight: 4
-                                radius: 2
+                                implicitHeight: root.space(3)
+                                radius: root.cornerRadius > 0 ? height / 2 : 0
                                 color: index < root.data.tokens_left
                                        ? root.palette.accent
-                                       : Qt.alpha(root.palette.muted, 0.3)
+                                       : Qt.alpha(root.style.control_border, 0.18)
                             }
                         }
                     }
                 }
 
-                // --- the edit window ---------------------------------------
+                // --- the edit window ------------------------------------------
 
                 Rectangle {
                     Layout.fillWidth: true
-                    implicitHeight: editRow.implicitHeight + 16
-                    radius: 8
-                    color: root.palette.surface
+                    implicitHeight: editCol.implicitHeight + root.pad * 2
+                    radius: root.cornerRadius
+                    color: root.controlFill
+                    border.width: root.style.control_border_width
+                    border.color: root.controlBorder
 
                     ColumnLayout {
-                        id: editRow
+                        id: editCol
                         anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 3
+                        anchors.margins: root.pad
+                        spacing: root.labelGap
 
                         RowLayout {
                             Layout.fillWidth: true
                             Text {
                                 text: "weakening the curfew"
-                                color: root.palette.muted
+                                color: Qt.alpha(root.palette.muted, 0.9)
                                 font.family: "monospace"
-                                font.pixelSize: 11
+                                font.pixelSize: root.fCaption
                                 Layout.fillWidth: true
                             }
                             Text {
@@ -215,29 +360,29 @@ ShellRoot {
                                 color: root.data.edit_window.open
                                        ? root.palette.ok : root.palette.alert
                                 font.family: "monospace"
-                                font.pixelSize: 11
+                                font.pixelSize: root.fCaption
                                 font.weight: Font.DemiBold
                             }
                         }
 
                         Text {
                             text: root.data.edit_window.detail
-                            color: root.palette.foreground
+                            color: root.style.popup_text
                             font.family: "monospace"
-                            font.pixelSize: 11
+                            font.pixelSize: root.fBodySmall
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
                         }
                     }
                 }
 
-                // --- what is blocked ---------------------------------------
+                // --- what is blocked ------------------------------------------
 
                 GridLayout {
                     Layout.fillWidth: true
                     columns: 2
-                    columnSpacing: 8
-                    rowSpacing: 6
+                    columnSpacing: root.rowGap
+                    rowSpacing: root.rowGap
 
                     Repeater {
                         model: [
@@ -253,28 +398,31 @@ ShellRoot {
 
                         Rectangle {
                             Layout.fillWidth: true
-                            implicitHeight: 44
-                            radius: 8
-                            color: root.palette.surface
+                            implicitHeight: cellCol.implicitHeight + root.pad * 2
+                            radius: root.cornerRadius
+                            color: root.controlFill
+                            border.width: root.style.control_border_width
+                            border.color: root.controlBorder
 
                             ColumnLayout {
+                                id: cellCol
                                 anchors.fill: parent
-                                anchors.margins: 8
-                                spacing: 2
+                                anchors.margins: root.pad
+                                spacing: root.space(2)
 
                                 Text {
                                     text: modelData.label
-                                    color: root.palette.muted
+                                    color: Qt.alpha(root.palette.muted, 0.9)
                                     font.family: "monospace"
-                                    font.pixelSize: 10
+                                    font.pixelSize: root.fCaption
                                 }
                                 Text {
                                     text: modelData.value
                                     color: modelData.on
-                                           ? root.palette.foreground
-                                           : Qt.alpha(root.palette.foreground, 0.45)
+                                           ? root.style.popup_text
+                                           : Qt.alpha(root.style.popup_text, 0.45)
                                     font.family: "monospace"
-                                    font.pixelSize: 11
+                                    font.pixelSize: root.fBodySmall
                                     elide: Text.ElideRight
                                     Layout.fillWidth: true
                                 }
@@ -283,41 +431,41 @@ ShellRoot {
                     }
                 }
 
-                // --- warnings ----------------------------------------------
-                // Only ever present when something is genuinely wrong, so an
-                // empty panel here is the good state.
+                // --- warnings --------------------------------------------------
+                // Only ever present when something is genuinely wrong, so nothing
+                // here is the good state.
 
                 Repeater {
                     model: root.data.warnings
 
                     Rectangle {
                         Layout.fillWidth: true
-                        implicitHeight: warnText.implicitHeight + 14
-                        radius: 8
-                        color: Qt.alpha(root.palette.alert, 0.15)
-                        border.width: 1
+                        implicitHeight: warnText.implicitHeight + root.pad * 2
+                        radius: root.cornerRadius
+                        color: Qt.alpha(root.palette.alert, 0.12)
+                        border.width: root.style.control_border_width
                         border.color: Qt.alpha(root.palette.alert, 0.5)
 
                         Text {
                             id: warnText
                             anchors.fill: parent
-                            anchors.margins: 7
+                            anchors.margins: root.pad
                             text: "⚠ " + modelData
                             color: root.palette.alert
                             font.family: "monospace"
-                            font.pixelSize: 11
+                            font.pixelSize: root.fBodySmall
                             wrapMode: Text.WordWrap
                         }
                     }
                 }
 
-                // --- footer -------------------------------------------------
+                // --- footer ----------------------------------------------------
 
                 Text {
                     text: "read-only · change it in ngtui"
-                    color: Qt.alpha(root.palette.muted, 0.8)
+                    color: Qt.alpha(root.palette.muted, 0.7)
                     font.family: "monospace"
-                    font.pixelSize: 10
+                    font.pixelSize: root.fCaption
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignRight
                 }

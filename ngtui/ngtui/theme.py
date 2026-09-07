@@ -79,6 +79,161 @@ def raw_tokens() -> dict:
         return {}
 
 
+def shell_path() -> str:
+    """Path to the live ``shell.toml`` (Omarchy 4's surface/style tokens)."""
+    directory = theme_dir() or os.path.expanduser(OMARCHY_THEME_DIRS[0])
+    return os.path.join(directory, "shell.toml")
+
+
+def raw_shell() -> dict:
+    """The live ``shell.toml``, or {} when absent (an Omarchy 3 box has none)."""
+    try:
+        with open(shell_path(), "rb") as fh:
+            return tomllib.load(fh)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+
+# Omarchy's own defaults, from shell/Commons/Style.qml. Used per-token when the
+# theme does not pin a value, so a partial shell.toml loses one token rather than
+# the whole style.
+STYLE_DEFAULTS = {
+    "popup_background": "#2d353b",
+    "popup_text": "#d3c6aa",
+    "popup_border": "#7fbbb3",
+    "control_border": "#d3c6aa",
+    "control_fill_alpha": 0.04,
+    "control_border_alpha": 0.4,
+    "control_border_width": 1,
+    "font_base": 12,
+    "spacing_scale": 1.0,
+    "spacing_scale_with_font": True,
+}
+
+
+def _resolve_border(value, hyprland):
+    """Resolve a border token, which may name a Hyprland-derived colour.
+
+    shell.toml writes ``border = "hyprland.active-border"`` rather than a hex
+    value, so popups stay aligned with the compositor's active-window border as
+    the theme changes. A gradient string is rejected here: the panel paints a
+    solid border and half a gradient is worse than the fallback.
+    """
+    text = str(value or "").strip()
+    if text.startswith("hyprland."):
+        text = str((hyprland or {}).get(text[len("hyprland."):], "") or "").strip()
+    if text.startswith("#") and len(text) in (4, 7, 9):
+        return text
+    return None
+
+
+NAME_PATH = "~/.local/state/omarchy/current/theme.name"
+
+
+def theme_name() -> str:
+    """The active theme's name, or "" when it cannot be read.
+
+    Lives OUTSIDE ``current/theme``, which omarchy replaces wholesale on every
+    theme change — so this path is stable and is rewritten on each switch. That
+    makes it the one reliable change signal: a watch on it survives the directory
+    swap that silently drops a watch on anything inside.
+    """
+    try:
+        with open(os.path.expanduser(NAME_PATH), encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def theme_mode(tokens=None) -> str:
+    """"light" or "dark", as the theme declares itself.
+
+    Five of the installed themes are light. The panel does not derive colours
+    from this — it takes Omarchy's own generated surface tokens, which already
+    carry the right contrast either way — but a consumer that wants to know
+    which way round the world is should not have to guess from a hex value.
+    """
+    tokens = raw_tokens() if tokens is None else tokens
+    return "light" if str((tokens or {}).get("mode", "")).strip().lower() == "light" else "dark"
+
+
+def omarchy_style() -> dict:
+    """The structural tokens Omarchy's own popups are built from.
+
+    Colour alone was not enough to make a third-party panel look native: the
+    corner radius, the border weight, the translucent control fills and the
+    spacing/type scale are what actually carry the family resemblance. Reading
+    them here rather than hardcoding means a theme change moves the panel too.
+
+    The surface colours are taken from the generated ``[popups]`` section rather
+    than derived from the palette, which is what makes light themes work without
+    a second code path: omarchy has already decided what text colour reads on
+    what background for that theme, in whichever mode, and this inherits that
+    decision instead of re-making it.
+
+    When ``shell.toml`` is absent (an Omarchy 3 box, or a half-staged theme) the
+    surface tokens fall back to the palette's own background/foreground/accent —
+    the same three omarchy generates them from — rather than to a fixed set,
+    because a fixed set is a dark theme's set and would invert a light box.
+
+    Corner radius is deliberately absent: it mirrors Hyprland's
+    ``decoration:rounding``, which is a live compositor value rather than a
+    theme file, so the panel asks hyprctl for it directly.
+    """
+    shell = raw_shell()
+    colors = raw_tokens()
+    popups = shell.get("popups") or {}
+    controls = shell.get("controls") or shell.get("style") or {}
+    hyprland = shell.get("hyprland") or {}
+    spacing = shell.get("spacing") or {}
+    font = shell.get("font") or {}
+
+    def palette(key):
+        value = str((colors or {}).get(key, "") or "").strip()
+        return value if value.startswith("#") and len(value) in (4, 7, 9) else None
+
+    # Fall back through the palette before the fixed defaults, so a missing
+    # shell.toml still tracks the theme instead of pinning it to a dark one.
+    derived = {
+        "popup_background": palette("background"),
+        "popup_text": palette("foreground"),
+        "popup_border": palette("accent"),
+        "control_border": palette("foreground"),
+    }
+
+    def hexval(section, key, fallback_key):
+        value = str(section.get(key, "") or "").strip()
+        if value.startswith("#") and len(value) in (4, 7, 9):
+            return value
+        return derived.get(fallback_key) or STYLE_DEFAULTS[fallback_key]
+
+    def number(section, key, fallback_key):
+        try:
+            return float(section[key])
+        except (KeyError, TypeError, ValueError):
+            return STYLE_DEFAULTS[fallback_key]
+
+    return {
+        "mode": theme_mode(colors),
+        "name": theme_name(),
+        "popup_background": hexval(popups, "background", "popup_background"),
+        "popup_text": hexval(popups, "text", "popup_text"),
+        "popup_border": (_resolve_border(popups.get("border"), hyprland)
+                         or derived["popup_border"] or STYLE_DEFAULTS["popup_border"]),
+        "popup_background_alpha": number(popups, "background-alpha", "spacing_scale"),
+        "control_border": (_resolve_border(controls.get("normal-border"), hyprland)
+                           or derived["control_border"] or STYLE_DEFAULTS["control_border"]),
+        "control_fill_alpha": number(controls, "normal-fill-alpha", "control_fill_alpha"),
+        "control_border_alpha": number(controls, "normal-border-alpha", "control_border_alpha"),
+        "control_border_width": int(number(controls, "normal-border-width", "control_border_width")),
+        "font_base": int(number(font, "base-size", "font_base")),
+        "spacing_scale": number(spacing, "scale", "spacing_scale"),
+        "spacing_scale_with_font": bool(
+            spacing.get("scale-with-font", STYLE_DEFAULTS["spacing_scale_with_font"])
+        ),
+    }
+
+
 def _theme_from_colors(c: dict) -> Theme:
     """Build the omarchy ``Theme`` from a parsed ``colors.toml`` dict."""
     return Theme(

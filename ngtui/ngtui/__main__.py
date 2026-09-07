@@ -109,6 +109,7 @@ def _panel(args: list[str]) -> int:
             now_minutes=b.cache_only_now_minutes(cfg),
             warnings=_live_warnings(),
             theme_tokens=_theme_tokens(),
+            style_tokens=_style_tokens(),
         )
     except Exception:  # broad on purpose — fail closed
         obj = panel.UNAVAILABLE
@@ -123,6 +124,16 @@ def _theme_tokens() -> dict:
         from ngtui import theme
 
         return theme.raw_tokens()
+    except Exception:
+        return {}
+
+
+def _style_tokens() -> dict:
+    """Omarchy's structural tokens, or {} — never a raise on the panel path."""
+    try:
+        from ngtui import theme
+
+        return theme.omarchy_style()
     except Exception:
         return {}
 
