@@ -19,6 +19,8 @@ set -euo pipefail
 OWNER=danitrrga
 REPO_CODE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODE=/usr/local/lib/nightguard
+SHARE=/usr/local/share/nightguard
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DATA=/var/lib/nightguard
 OLD_DATA=/home/danitrrga/.local/share/nightguard
 
@@ -44,7 +46,7 @@ systemctl stop nightguard-watchdog.timer 2>/dev/null || true
 
 echo "== installing code -> $CODE (root-owned, not writable by $OWNER) =="
 install -d -o root -g root -m 0755 "$CODE"
-for f in ngcommon.py guard.py nightguard_ctl.py nightguard_watchdog.py; do
+for f in ngcommon.py guard.py nightguard_ctl.py nightguard_watchdog.py appblock.py; do
     install -o root -g root -m 0644 "$REPO_CODE/$f" "$CODE/$f"
 done
 # A stale __pycache__ from the old user-owned tree must not shadow the deployed sources.
@@ -122,6 +124,14 @@ if command -v uv >/dev/null 2>&1; then
 else
     echo "   uv not found — skipping (install ngtui manually if the launcher stops working)"
 fi
+
+echo "== installing the desktop panel -> $SHARE =="
+install -d -o root -g root -m 0755 "$SHARE/quickshell/nightguard"
+install -o root -g root -m 0644 \
+    "$REPO_ROOT/packaging/omarchy/quickshell/nightguard/shell.qml" \
+    "$SHARE/quickshell/nightguard/shell.qml"
+install -o root -g root -m 0755 \
+    "$REPO_ROOT/packaging/omarchy/bin/nightguard-panel" /usr/local/bin/nightguard-panel
 
 systemctl daemon-reload
 
