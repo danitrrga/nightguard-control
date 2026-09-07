@@ -83,8 +83,14 @@ def test_confirm_copy_no_tokens_disables_commit_with_monday():
         "reason": "weekly loosen quota exhausted (3/3 used); available again Monday",
     }
     text, role, can_commit = confirm_copy(decision)
+    # The signer's reason, quoted verbatim rather than restated. There is more
+    # than one gate now (quota AND clock window), and copy that paraphrases one
+    # of them reports the other one wrongly — which is exactly what happened on
+    # 2026-09-07 21:15: a window refusal announced as an exhausted quota while
+    # the status screen showed 3 of 3 tokens left.
     assert text == (
-        "✕ Cannot commit: weekly loosen quota exhausted (3/3). Available again Monday."
+        "✕ Cannot commit: weekly loosen quota exhausted (3/3 used); "
+        "available again Monday."
     )
     assert role == "error"
     assert can_commit is False

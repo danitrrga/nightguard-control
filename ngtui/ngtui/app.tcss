@@ -145,6 +145,19 @@ Screen {
     color: $text;
 }
 
+/* The edit-window state, above the fields. It is the first thing on the screen
+   because a gate the user only meets after typing reads as a trap. */
+#edit-window-banner {
+    margin: 0 1 1 1;
+    padding: 0 1;
+    height: auto;
+    text-style: bold;
+}
+#edit-window-banner.accent     { color: $accent; }
+#edit-window-banner.warning    { color: $warning; background: $warning 10%; }
+#edit-window-banner.error      { color: $error; background: $error 10%; }
+#edit-window-banner.text-muted { color: $text-muted; text-style: none; }
+
 /* The per-field anti-impulse preview line (glyph + word + colour). */
 #edit-preview {
     margin: 1 1 0 1;

@@ -176,6 +176,27 @@ def cache_only_now_minutes(cfg: dict) -> int | None:
         guard._http_time = saved_http
 
 
+def edit_window_refusal() -> str | None:
+    """Why a loosening would be refused by the CLOCK right now, or ``None``.
+
+    Asks the signer's own ``_edit_window_refusal`` with the sanctioned window and
+    the cache-only clock, so the editor's banner and the commit gate can never
+    disagree about whether the door is open. It answers only for the window —
+    the weekly quota is a separate gate and is not consulted here.
+    """
+    cfg = sanctioned_config()
+    window = ctl.effective_edit_window(cfg, cfg)
+    if not window:
+        return None
+    return ctl._edit_window_refusal(window, cache_only_now_minutes(cfg))
+
+
+def edit_window() -> dict | None:
+    """The sanctioned ``edit_window`` block (never the proposal's own)."""
+    cfg = sanctioned_config()
+    return ctl.effective_edit_window(cfg, cfg)
+
+
 def preview_change(proposed_text: str) -> dict:
     """Direction labels + quota decision for a proposed edit.
 

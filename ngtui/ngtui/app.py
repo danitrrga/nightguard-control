@@ -77,6 +77,12 @@ class NightguardApp(App):
         screen = self.screen
         if isinstance(screen, StatusScreen):
             screen.refresh_countdown()
+        elif isinstance(screen, EditScreen):
+            # The edit-window banner is time-sensitive the same way the
+            # countdown is — a screen left open across the window boundary
+            # must not keep showing stale OPEN/CLOSED state (Codex + opencode
+            # cross-model review, 2026-09-07).
+            screen.refresh_countdown()
         if self._theme_watch.changed():
             self._apply_omarchy_theme()
 

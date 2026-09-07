@@ -47,19 +47,33 @@ from ngtui.backend import WEEKLY_TOKENS  # signer's constant (WR-03), never a lo
 # --- pure copy helpers (headless-testable, load-bearing anti-impulse text) ----
 
 
-def preview_line(direction: str, allowed: bool) -> tuple[str, str]:
+def refusal_reason(decision: dict) -> str:
+    """The signer's own words for why it refused, or a neutral fallback.
+
+    There is more than one gate now — the weekly quota AND the clock window — and
+    they refuse for different reasons at different hours. Copy that hardcodes one
+    of them reports the other one wrongly, which is how the user got told his
+    quota was exhausted while the status screen behind the dialog showed three of
+    three tokens left. Read the reason; never guess it.
+    """
+    return str((decision or {}).get("reason") or "").strip()
+
+
+def preview_line(direction: str, allowed: bool, reason: str = "") -> tuple[str, str]:
     """Per-field preview string + colour role for a classifier direction.
 
     Drives every glyph/word/colour off the classifier result, never recomputed
-    (D-06/D-07). Strings are verbatim from UI-SPEC "Anti-Impulse Edit Preview".
-    A blocked loosen (``allowed == False``) surfaces the "available again Monday"
-    line in ``$error``.
+    (D-06/D-07). A blocked loosen (``allowed == False``) surfaces the signer's
+    own refusal reason in ``$error``; ``reason`` defaults to empty so the older
+    two-argument callers keep their wording.
     """
     if direction == "tighten":
         return "▼ Tightens curfew · free", "accent"
     if direction == "loosen":
         if allowed:
             return "▲ Loosens curfew · costs 1 token", "warning"
+        if reason:
+            return f"▲ Loosens · BLOCKED — {reason}", "error"
         return (
             "▲ Loosens · BLOCKED — weekly tokens exhausted (3/3); "
             "available again Monday",
@@ -67,6 +81,64 @@ def preview_line(direction: str, allowed: bool) -> tuple[str, str]:
         )
     # noop (and any unknown) → dim "no change".
     return "· no change", "text-muted"
+
+
+def window_banner(
+    window: dict | None, refusal: str | None, tokens_left: int | None = None
+) -> tuple[str, str]:
+    """The edit-window state as one line, shown at the TOP of the editor.
+
+    A gate the user only meets after typing reads as a trap. This line is on
+    screen before the first keystroke, and when the window is shut it also says
+    what is still possible — tightening, at any hour — because that asymmetry is
+    the pact itself, not a consolation.
+
+    ``refusal`` is the signer's own ``_edit_window_refusal`` result, never a
+    second clock comparison made here — this line only ever reports the CLOCK
+    gate under that name. ``tokens_left`` covers the other gate: found in
+    cross-model review (Codex, 2026-09-07), an open window with the weekly
+    quota already spent still refuses every loosening, and the old copy said
+    "a loosening is possible now" regardless — true about the clock, false
+    about the actual outcome the user was about to hit. ``None`` (unknown/not
+    read) keeps the plain OPEN message rather than manufacturing a claim.
+    """
+    if not window or not window.get("enabled"):
+        return ("edit window: off — the clock gates nothing", "text-muted")
+    span = f"{window.get('start')}-{window.get('end')}"
+    if refusal:
+        return (
+            f"🔒 Edit window {span} · CLOSED — {refusal}. "
+            f"Tightening the curfew still works, at any hour.",
+            "error",
+        )
+    if tokens_left is not None and tokens_left <= 0:
+        return (
+            f"🔓 Edit window {span} · OPEN, but 0 weekly tokens left — "
+            f"loosening is refused until Monday. Tightening still works, free.",
+            "warning",
+        )
+    return (
+        f"🔓 Edit window {span} · OPEN — a loosening is possible now, "
+        f"and still costs a token.",
+        "accent",
+    )
+
+
+def stage_refusal(decision: dict) -> str | None:
+    """The message to show when a keystroke must NOT be staged, else ``None``.
+
+    The refusal used to live only at the confirm gate, so a change the signer had
+    already decided to refuse could still be typed in, shown as the field's new
+    value, and carried three screens further before anything said no. Those
+    keystrokes are the impulse being rehearsed — the tool exists to interrupt it,
+    not to narrate it. Refuse at the keystroke.
+    """
+    if (decision or {}).get("allowed", True):
+        return None
+    reason = refusal_reason(decision)
+    if reason:
+        return f"✕ not staged — {reason}"
+    return "✕ not staged — the signer refuses this change right now"
 
 
 def confirm_copy(decision: dict) -> tuple[str, str, bool]:
@@ -77,17 +149,17 @@ def confirm_copy(decision: dict) -> tuple[str, str, bool]:
       - free tighten → no token language, ``$accent``;
       - loosen with tokens → explicit "costs 1 of 3 weekly tokens. After commit: N
         left.", ``$warning``;
-      - loosen at 0 tokens → commit DISABLED, ``$error`` "available again Monday".
+      - refused (no tokens left, or outside the clock window) → commit DISABLED,
+        ``$error``, quoting the signer's OWN reason so the two gates are never
+        confused for one another.
     ``N left`` is ``WEEKLY_TOKENS - (effective_spent + 1)`` (the token this loosen
     would spend), never an optimistic local guess beyond what the signer charges.
     """
     if not decision.get("allowed", False):
-        return (
-            "✕ Cannot commit: weekly loosen quota exhausted (3/3). "
-            "Available again Monday.",
-            "error",
-            False,
-        )
+        reason = refusal_reason(decision)
+        if reason:
+            return (f"✕ Cannot commit: {reason}.", "error", False)
+        return ("✕ Cannot commit: this change is refused.", "error", False)
     if decision.get("costs_token", False):
         spent_after = int(decision.get("effective_spent", 0)) + 1
         left = max(0, WEEKLY_TOKENS - spent_after)
@@ -383,6 +455,8 @@ class EditScreen(Screen):
             yield Static("run nightguard_ctl.py init", classes="dim hint")
             yield Footer()
             return
+        # The door's state, above the fields, before the first keystroke.
+        yield Static("", id="edit-window-banner")
         with VerticalScroll(id="edit-fields"):
             for i, (label, dotted, kind) in enumerate(EDITABLE_FIELDS):
                 value = _read_dotted(self._base_cfg, dotted)
@@ -398,6 +472,38 @@ class EditScreen(Screen):
 
     def on_mount(self) -> None:
         self._highlight_focus()
+        self._refresh_window_banner()
+
+    def _refresh_window_banner(self) -> None:
+        """Repaint the edit-window line. Never fatal — the editor still works."""
+        try:
+            cell = self.query_one("#edit-window-banner", Static)
+        except Exception:
+            return
+        try:
+            text, role = window_banner(
+                backend.edit_window(),
+                backend.edit_window_refusal(),
+                tokens_left=backend.tokens_left(),
+            )
+        except Exception:
+            # An unreadable instance is not a licence to claim the door is open.
+            text, role = ("edit window: state unreadable — treat it as closed", "error")
+        cell.update(text)
+        cell.set_classes(role)
+
+    def refresh_countdown(self) -> None:
+        """The 1s-tick hook (mirrors ``StatusScreen.refresh_countdown``).
+
+        Found in cross-model review (Codex + opencode, 2026-09-07): the banner
+        was only ever repainted on mount and after a commit, so a screen left
+        open across the window boundary (or the last token being spent
+        elsewhere) kept showing minute-old OPEN/CLOSED state while the actual
+        gate — asked fresh on every keystroke — had already moved on. Cheap
+        (no subprocess, no network): reads the sanctioned config + local state
+        the same way the countdown reads the curfew clock.
+        """
+        self._refresh_window_banner()
 
     # --- focus navigation ---
 
@@ -421,9 +527,13 @@ class EditScreen(Screen):
     # --- staging + preview ---
 
     def _proposed_text(self) -> str:
-        """Replay staged edits over the sanctioned base text (no YAML emit)."""
+        """Replay the accepted staged edits over the sanctioned base text."""
+        return self._compose_text(self._staged)
+
+    def _compose_text(self, staged: list[tuple[str, str, str]]) -> str:
+        """Replay a staged-edit list over the sanctioned base text (no YAML emit)."""
         text = self._base_text
-        for op, dotted, value in self._staged:
+        for op, dotted, value in staged:
             if op == "set":
                 text = lineedit.set_scalar(text, dotted, value)
             elif op == "toggle":
@@ -434,8 +544,58 @@ class EditScreen(Screen):
                 text = lineedit.list_remove(text, dotted, value)
         return text
 
+    def _preview_for(self, staged: list[tuple[str, str, str]]) -> dict:
+        """The signer's decision for a HYPOTHETICAL stage list, before accepting it."""
+        return backend.preview_change(self._compose_text(staged))
+
+    def _reject_stage(self, message: str) -> None:
+        """Say why the keystroke did not land, in the signer's own words."""
+        self.app.bell()
+        cell = self.query_one("#edit-status", Static)
+        cell.update(message)
+        cell.set_classes("error")
+
+    def _clear_stage_status(self) -> None:
+        """Drop a stale rejection once a later keystroke is actually accepted.
+
+        Found in cross-model review (Codex, 2026-09-07): rejecting a stage
+        wrote its error into #edit-status, but the accepted branch never
+        touched that cell — reject a loosen, then stage a permitted tighten,
+        and the screen kept reading "not staged" about an edit that WAS
+        staged, one line above a value that had visibly changed.
+        """
+        try:
+            cell = self.query_one("#edit-status", Static)
+            cell.update("")
+            cell.set_classes("dim")
+        except Exception:
+            pass
+
     def _stage(self, op: str, dotted: str, value: str) -> None:
-        self._staged.append((op, dotted, value))
+        """Accept an edit into the staged list — only if the signer would allow it.
+
+        The decision is asked BEFORE the value is accepted, so a change refused by
+        the clock window or the weekly quota never becomes the field's displayed
+        value. Reported live on 2026-09-07 at 21:15 ("lets me edit things now,
+        should be blocked"): the signer was refusing correctly the whole time, but
+        only at the confirm gate, three keystrokes after the impulse had already
+        been typed out and echoed back as if it had taken.
+
+        Fails closed. A proposal that cannot even be previewed is not a permitted
+        one, so an exception rejects the keystroke rather than waving it through.
+        """
+        prospective = self._staged + [(op, dotted, value)]
+        try:
+            decision = self._preview_for(prospective).get("decision", {})
+        except Exception as e:
+            self._reject_stage(f"✕ not staged — cannot preview the change: {e}")
+            return
+        refusal = stage_refusal(decision)
+        if refusal:
+            self._reject_stage(refusal)
+            return
+        self._staged = prospective
+        self._clear_stage_status()
         self._refresh_preview()
         self._refresh_value_cells()
 
@@ -475,7 +635,9 @@ class EditScreen(Screen):
             shown = "tighten"
         else:
             shown = "noop"
-        text, role = preview_line(shown, allowed)
+        text, role = preview_line(
+            shown, allowed, refusal_reason(preview.get("decision", {}))
+        )
         cell = self.query_one("#edit-preview", Static)
         cell.update(text)
         cell.set_classes(role)
@@ -616,6 +778,7 @@ class EditScreen(Screen):
         self._staged.clear()
         self._refresh_value_cells()
         self._refresh_preview()
+        self._refresh_window_banner()
 
     def action_back(self) -> None:
         """``Escape`` returns to StatusScreen, gating on a discard confirm if needed.
