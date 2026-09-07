@@ -56,6 +56,7 @@ def edit_window_view(cfg, now_minutes):
     block = (cfg or {}).get("edit_window")
     if not isinstance(block, dict):
         return {"configured": False, "open": True, "start": None, "end": None,
+                "start_minutes": -1, "end_minutes": -1,
                 "detail": "no edit window configured"}
     start = _hhmm_to_minutes(block.get("start"))
     end = _hhmm_to_minutes(block.get("end"))
@@ -64,18 +65,44 @@ def edit_window_view(cfg, now_minutes):
 
     if not block.get("enabled"):
         return {"configured": True, "open": True, "start": start_text, "end": end_text,
+                "start_minutes": start if start is not None else -1,
+                "end_minutes": end if end is not None else -1,
                 "detail": "disabled — the curfew can be weakened at any hour"}
     if start is None or end is None:
-        return {"configured": True, "open": False, "start": start_text, "end": end_text,
+        return {"configured": True, "open": False, "start": -1, "end": -1,
+                "start_minutes": -1, "end_minutes": -1,
                 "detail": "malformed — weakening refused until it is a valid range"}
     if now_minutes is None:
         return {"configured": True, "open": False, "start": start_text, "end": end_text,
+                "start_minutes": start, "end_minutes": end,
                 "detail": "time unverified — weakening refused"}
     if _in_window(now_minutes, start, end):
         return {"configured": True, "open": True, "start": start_text, "end": end_text,
+                "start_minutes": start, "end_minutes": end,
                 "detail": "open until %s" % end_text}
     return {"configured": True, "open": False, "start": start_text, "end": end_text,
+            "start_minutes": start, "end_minutes": end,
             "detail": "closed — opens at %s" % start_text}
+
+
+def curfew_view(cfg):
+    """The curfew band, as minutes, for the panel's day strip.
+
+    The panel draws a 24-hour bar with the curfew shaded and the edit window
+    marked, which is the one picture that answers "when am I locked and when may
+    I change it" without reading a word. That needs the bounds as numbers, not as
+    the "HH:MM" strings the rest of the payload carries.
+    """
+    curfew = (cfg or {}).get("curfew") or {}
+    start = _hhmm_to_minutes(curfew.get("start"))
+    end = _hhmm_to_minutes(curfew.get("end"))
+    return {
+        "enabled": bool(curfew.get("enabled")),
+        "start": str(curfew.get("start") or "").strip('"'),
+        "end": str(curfew.get("end") or "").strip('"'),
+        "start_minutes": start if start is not None else -1,
+        "end_minutes": end if end is not None else -1,
+    }
 
 
 def blocking_view(cfg):
@@ -289,6 +316,10 @@ def build(verdict, tokens_left, cfg, state, now_minutes=None, warnings=None,
         "tokens_total": WEEKLY_TOKENS,
         "week_anchor": str((state or {}).get("week_anchor") or ""),
         "edit_window": edit_window_view(cfg, now_minutes),
+        "curfew": curfew_view(cfg),
+        # -1 when the clock could not be verified: the strip then draws no "now"
+        # marker rather than putting one at midnight.
+        "now_minutes": now_minutes if now_minutes is not None else -1,
         "blocking": blocking_view(cfg),
         "warnings": list(warnings or []),
         "theme": theme_view(theme_tokens),
@@ -304,7 +335,11 @@ UNAVAILABLE = {
     "tokens_total": 0,
     "week_anchor": "",
     "edit_window": {"configured": False, "open": False, "start": None, "end": None,
+                    "start_minutes": -1, "end_minutes": -1,
                     "detail": "the guard could not be reached"},
+    "curfew": {"enabled": False, "start": "", "end": "",
+               "start_minutes": -1, "end_minutes": -1},
+    "now_minutes": -1,
     "blocking": {"apps_enabled": False, "mode": "blocklist", "games": False, "apps": 0,
                  "sites_enabled": False, "sites": 0},
     "warnings": ["the trust stack could not be read"],

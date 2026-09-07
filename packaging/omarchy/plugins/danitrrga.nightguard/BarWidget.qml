@@ -1,87 +1,103 @@
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// Nightguard in the bar. Replaces the waybar "custom/nightguard" module that
-// died with Omarchy 4, and is built from the shell's own kit — BarWidget,
-// WidgetButton, PopupCard, PanelSectionHeader, Button — so it opens, closes,
-// grabs focus and themes exactly like the Bluetooth and network panels beside
-// it. Nothing here is styled by hand: every colour, size and margin comes from
-// Style and Color, which is what makes a theme change repaint it for free.
+// Nightguard in the bar: one icon, one panel.
 //
-// The binary path is absolute on purpose: the shell does not inherit the login
-// PATH, and ~/.local/bin is not on its own.
+// Shaped after a first-party widget that owns a popup (read via
+// `omarchy plugin clone omarchy.clock`), because the previous attempt invented
+// its own shape and did not work at all. What a third-party bar widget has to
+// be, and what the earlier version got wrong:
 //
-// Two data sources, deliberately:
+//   * The entry point extends BarWidget — that is what the bar host
+//     instantiates into a slot. An earlier version extended Ui/Panel and the
+//     shell refused it with "File name case mismatch", which is what a failed
+//     root-type creation looks like from the loader.
+//   * The popup lives in a SEPARATE file, pulled in with a Loader and
+//     Qt.resolvedUrl; the host injects bar, settings and anchorItem into it.
+//   * The widget must expose `opened`, `open()`, `close()` and
+//     `closeForPopoutSwitch()`. Bar.findPanelWidget routes summon/hide/toggle
+//     through exactly those names, and the popout coordinator uses them to hand
+//     focus between bar panels. A private bool of one's own means nothing to
+//     any of that — which is why clicking used to do nothing.
 //
-//   * `ngtui status --json` feeds the bar label. It is the contract that has
-//     always existed, it is cheap, and it always exits 0 — so the label can be
-//     polled every 30s without the panel being open.
-//   * `ngtui panel` feeds the popup. It carries the full state (the edit
-//     window, what is blocked, warnings) and is only fetched while the panel is
-//     visible. An older deployed ngtui has no `panel` subcommand, so a failure
-//     leaves the panel showing what `status` already gave and says so, rather
-//     than blanking.
-//
-// It reads and never writes. The project's rule is that only the signer may
-// change state, so there is no control here that spends a token, grants grace
-// or edits anything — the buttons open the terminal UI, which is the one
-// sanctioned editor.
+// It reads and never writes. Only the signer may change state, so nothing here
+// spends a token, grants grace or edits anything.
 BarWidget {
   id: root
   moduleName: "danitrrga.nightguard"
 
+  // Absolute on purpose: the shell does not inherit the login PATH, and
+  // ~/.local/bin is not on its own.
   readonly property string ngtuiPath: "/home/danitrrga/.local/bin/ngtui"
 
-  // Last good reading. Kept when a poll fails so the bar does not blink to
-  // empty over a single hiccup.
-  property string label: ""
-  property string tooltip: ""
+  // Last good readings, kept when a poll fails so the bar does not blink to
+  // empty over one hiccup.
   property string statusClass: ""
-  property bool panelOpen: false
-
-  // The rich payload. Null until the panel has been opened once.
+  property string barLabel: ""
   property var detail: null
-  property bool detailStale: false
+  property bool detailFailed: false
 
-  readonly property var tooltipParts: tooltip.split("·")
-  readonly property string headline: tooltipParts.length > 0 ? String(tooltipParts[0]).trim() : ""
-  readonly property string subtitle: tooltipParts.length > 1 ? tooltipParts.slice(1).join("·").trim() : ""
+  readonly property string verdict: detail ? String(detail.verdict) : statusClass
+  readonly property int tokensLeft: detail ? Number(detail.tokens_left) : -1
+  readonly property int tokensTotal: detail ? Number(detail.tokens_total) : 0
+  readonly property bool curfewActive: verdict !== "" && verdict.indexOf("outside") === -1
 
-  readonly property color foreground: bar ? bar.foreground : Color.foreground
-  readonly property color dim: Qt.darker(foreground, 1.4)
-  readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-
-  // Highlight only when nightguard says something other than "outside_curfew".
-  // The class name comes from ngtui, not from this widget.
-  readonly property bool curfewActive: statusClass !== "" && statusClass.indexOf("outside") === -1
-
-  // The verdict's colour. Read before the word is, so the state is legible at a
-  // glance; the roles come from the palette so every theme keeps its own hues.
-  readonly property color stateColor: {
-    if (!root.detail) return root.curfewActive && root.bar ? root.bar.urgent : root.foreground
-    switch (root.detail.verdict) {
-    case "locked":          return Color.urgent
-    case "clock_tamper":    return Color.urgent
-    case "grace_active":    return Color.accent
-    case "outside_curfew":  return root.foreground
-    case "offline_blocked": return Color.accent
-    default:                return root.dim
+  // The icon carries the state; the pips under it carry what is left. A bar
+  // entry is an icon on the shell's optical grid, not a line of text — the old
+  // "○ 3" was neither. Nerd Font glyphs, resolved through the `monospace` alias
+  // the shell binds to; Omarchy's private brand font is not borrowed.
+  readonly property string glyph: {
+    switch (root.verdict) {
+    case "locked":          return "󰌾"   // closed padlock
+    case "grace_active":    return "󰔟"   // running timer
+    case "clock_tamper":    return "󰀪"   // alert
+    case "offline_blocked": return "󰅛"   // cloud off
+    case "outside_curfew":  return "󰌿"   // open padlock
+    default:                return "󰦝"   // shield: state not known yet
     }
   }
 
+  // --- the panel contract ---------------------------------------------------
+
+  readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
+  readonly property bool popoutSwitchClosing: panelLoader.item
+    ? panelLoader.item.popoutSwitchClosing === true : false
+
+  function open() { if (panelLoader.item) panelLoader.item.open() }
+  function close() { if (panelLoader.item) panelLoader.item.close() }
+  function togglePanel() { if (panelLoader.item) panelLoader.item.toggle() }
+  function closeForPopoutSwitch() {
+    if (panelLoader.item) panelLoader.item.closeForPopoutSwitch()
+  }
+
+  function injectPanel() {
+    var target = panelLoader.item
+    if (!target) return
+    if ("bar" in target) target.bar = root.bar
+    if ("settings" in target) target.settings = root.settings
+    if ("anchorItem" in target) target.anchorItem = button
+    if ("hostWidget" in target) target.hostWidget = root
+  }
+
+  onBarChanged: injectPanel()
+  onSettingsChanged: injectPanel()
+
+  // --- data -----------------------------------------------------------------
+  // Two sources on purpose. `status` is cheap, has always existed and always
+  // exits 0, so the icon can poll it every 30s with the panel shut. `panel`
+  // carries the whole state and is only fetched while the panel is open.
+
   function refresh() {
     if (!statusProc.running) statusProc.running = true
-    if (root.panelOpen && !detailProc.running) detailProc.running = true
+    if (root.opened && !detailProc.running) detailProc.running = true
   }
 
   function openTui() {
     if (root.bar) root.bar.run("omarchy-launch-or-focus-tui ngtui")
-  }
-
-  function openMenu() {
-    if (root.bar) root.bar.run("ngtui-menu")
+    root.close()
   }
 
   Process {
@@ -94,12 +110,10 @@ BarWidget {
         try {
           parsed = JSON.parse(text || "")
         } catch (e) {
-          // Unreadable output: the previous reading stands.
-          return
+          return  // unreadable: the previous reading stands
         }
         if (!parsed || typeof parsed !== "object") return
-        root.label = String(parsed.text || "")
-        root.tooltip = String(parsed.tooltip || "")
+        root.barLabel = String(parsed.text || "")
         root.statusClass = String(parsed.class || "")
       }
     }
@@ -115,34 +129,23 @@ BarWidget {
         try {
           parsed = JSON.parse(text || "")
         } catch (e) {
-          // An ngtui too old to know `panel` prints nothing parseable here.
-          // Say so in the panel rather than showing an empty one.
-          root.detailStale = true
+          root.detailFailed = true
           return
         }
         if (!parsed || parsed.verdict === undefined) {
-          root.detailStale = true
+          root.detailFailed = true
           return
         }
         root.detail = parsed
-        root.detailStale = false
+        root.detailFailed = false
       }
     }
   }
 
   // A query that never returns would freeze the widget: a Process still running
   // cannot be relaunched. Cut off whichever one overruns.
-  Timer {
-    interval: 10000
-    running: statusProc.running
-    onTriggered: statusProc.running = false
-  }
-
-  Timer {
-    interval: 10000
-    running: detailProc.running
-    onTriggered: detailProc.running = false
-  }
+  Timer { interval: 10000; running: statusProc.running; onTriggered: statusProc.running = false }
+  Timer { interval: 10000; running: detailProc.running; onTriggered: detailProc.running = false }
 
   Timer {
     interval: 30000
@@ -152,341 +155,83 @@ BarWidget {
     onTriggered: root.refresh()
   }
 
-  // While the panel is open the countdown and the edit window are worth
-  // following closely; while it is shut, the 30s bar poll is plenty.
+  // While the panel is open the hour matters, so follow it closely; while shut,
+  // the 30s icon poll is plenty.
   Timer {
     interval: 5000
-    running: root.panelOpen
+    running: root.opened
     repeat: true
     onTriggered: if (!detailProc.running) detailProc.running = true
   }
 
-  onPanelOpenChanged: if (panelOpen && !detailProc.running) detailProc.running = true
+  onOpenedChanged: if (opened && !detailProc.running) detailProc.running = true
 
-  visible: label !== ""
+  // --- the widget slot ------------------------------------------------------
+
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  WidgetButton {
+  Loader {
+    id: panelLoader
+    active: true
+    source: Qt.resolvedUrl("NightguardPanel.qml")
+    visible: false
+    onLoaded: {
+      root.injectPanel()
+      Qt.callLater(root.injectPanel)
+    }
+  }
+
+  // Lets the panel be opened without a mouse, which is also the only way to
+  // exercise it from a test script.
+  IpcHandler {
+    target: "danitrrga.nightguard"
+
+    function refresh(): void { root.broadcast("refresh") }
+    function open(): void { root.open() }
+    function close(): void { root.close() }
+    function show(): void { root.open() }
+    function hide(): void { root.close() }
+    function toggle(): void { root.togglePanel() }
+  }
+
+  BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.label
-    fontSize: Style.font.caption
-    horizontalMargin: 6
-    // No tooltip: the panel is the detail view.
-    tooltipText: ""
+    text: root.glyph
+    active: root.curfewActive || root.tokensLeft === 0
+    tooltipText: root.detail
+      ? root.detail.word + " · " + root.tokensLeft + "/" + root.tokensTotal + " fichas"
+      : "Nightguard"
 
     onPressed: function(b) {
-      if (b === Qt.RightButton) root.openMenu()
-      else if (b === Qt.MiddleButton) root.refresh()
+      if (b === Qt.MiddleButton) root.refresh()
+      else if (b === Qt.RightButton) root.openTui()
       else {
         root.refresh()
-        root.panelOpen = !root.panelOpen
-      }
-    }
-  }
-
-  // A labelled meter: name on the left, value on the right, a bar under them and
-  // an optional caption below. The recurring row of every Omarchy panel that
-  // shows a quantity, so the shape is defined once and reused.
-  component Meter: Column {
-    id: meter
-
-    property string title: ""
-    property string value: ""
-    property string caption: ""
-    property real fraction: 0
-    property color fillColor: Color.accent
-
-    width: parent ? parent.width : implicitWidth
-    spacing: Style.space(4)
-
-    Item {
-      width: parent.width
-      implicitHeight: Math.max(meterTitle.implicitHeight, meterValue.implicitHeight)
-
-      Text {
-        id: meterTitle
-        textFormat: Text.PlainText
-        anchors.left: parent.left
-        anchors.right: meterValue.left
-        anchors.rightMargin: Style.space(8)
-        anchors.verticalCenter: parent.verticalCenter
-        text: meter.title
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.body
-        elide: Text.ElideRight
-      }
-
-      Text {
-        id: meterValue
-        textFormat: Text.PlainText
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        text: meter.value
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        root.togglePanel()
       }
     }
 
-    Rectangle {
-      width: parent.width
-      height: Style.space(4)
-      radius: Style.cornerRadius > 0 ? height / 2 : 0
-      color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-
-      Rectangle {
-        width: Math.max(0, Math.min(1, meter.fraction)) * parent.width
-        height: parent.height
-        radius: parent.radius
-        color: meter.fillColor
-
-        Behavior on width {
-          NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-        }
-      }
-    }
-
-    Text {
-      textFormat: Text.PlainText
-      visible: meter.caption !== ""
-      width: parent.width
-      text: meter.caption
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      elide: Text.ElideRight
-    }
-  }
-
-  // A plain label/value row for facts that are not quantities.
-  component InfoRow: Item {
-    property string title: ""
-    property string value: ""
-    property bool muted: false
-
-    width: parent ? parent.width : implicitWidth
-    implicitHeight: Math.max(rowTitle.implicitHeight, rowValue.implicitHeight)
-
-    Text {
-      id: rowTitle
-      textFormat: Text.PlainText
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-      text: parent.title
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-    }
-
-    Text {
-      id: rowValue
-      textFormat: Text.PlainText
-      anchors.right: parent.right
-      anchors.left: rowTitle.right
-      anchors.leftMargin: Style.space(8)
-      anchors.verticalCenter: parent.verticalCenter
-      horizontalAlignment: Text.AlignRight
-      text: parent.value
-      color: parent.muted ? root.dim : root.foreground
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-      elide: Text.ElideRight
-    }
-  }
-
-  PopupCard {
-    id: popup
-    anchorItem: button
-    bar: root.bar
-    owner: root
-    open: root.panelOpen
-    contentWidth: popup.fittedContentWidth(Style.space(300))
-    contentHeight: popup.fittedContentHeight(column.implicitHeight)
-
-    onOpenChanged: if (!open) root.panelOpen = false
-
-    Column {
-      id: column
-      anchors.fill: parent
-      spacing: Style.space(12)
-
-      // --- hero ---------------------------------------------------------
-
-      PanelHero {
-        title: "Nightguard"
-        meta: root.detail ? root.detail.word : (root.headline !== "" ? root.headline : root.label)
-        detail: root.detail && root.detail.style && root.detail.style.name
-                ? root.detail.style.name : ""
-        foreground: root.foreground
-        fontFamily: root.fontFamily
-
-        iconComponent: Rectangle {
-          implicitWidth: Style.space(10)
-          implicitHeight: Style.space(10)
-          radius: Style.cornerRadius > 0 ? width / 2 : 0
-          color: root.stateColor
-        }
-      }
-
-      PanelSeparator { foreground: root.foreground }
-
-      // --- weekly tokens -------------------------------------------------
-
-      PanelSectionHeader {
-        text: "FICHAS"
-        foreground: root.foreground
-        fontFamily: root.fontFamily
-      }
-
-      Meter {
-        visible: root.detail !== null && root.detail.tokens_total > 0
-        title: "Semanales"
-        value: root.detail ? (root.detail.tokens_left + " / " + root.detail.tokens_total) : ""
-        fraction: root.detail && root.detail.tokens_total > 0
-                  ? root.detail.tokens_left / root.detail.tokens_total : 0
-        fillColor: root.detail && root.detail.tokens_left === 0 ? Color.urgent : Color.accent
-        caption: root.detail && root.detail.week_anchor
-                 ? "Semana desde " + root.detail.week_anchor : ""
-      }
-
-      // --- the edit window ------------------------------------------------
-
-      PanelSectionHeader {
-        visible: root.detail !== null
-        text: "VENTANA DE EDICIÓN"
-        foreground: root.foreground
-        fontFamily: root.fontFamily
-      }
-
-      InfoRow {
-        visible: root.detail !== null
-        title: "Debilitar el toque de queda"
-        value: root.detail
-               ? (root.detail.edit_window.open ? "ABIERTA" : "CERRADA") : ""
-      }
-
-      Text {
-        textFormat: Text.PlainText
-        visible: root.detail !== null
-        width: column.width
-        text: root.detail ? root.detail.edit_window.detail : ""
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
-      }
-
-      // --- what is blocked -------------------------------------------------
-
-      PanelSectionHeader {
-        visible: root.detail !== null
-        text: "BLOQUEO"
-        foreground: root.foreground
-        fontFamily: root.fontFamily
-      }
-
-      InfoRow {
-        visible: root.detail !== null
-        title: "Aplicaciones"
-        value: root.detail
-               ? (root.detail.blocking.apps + " · " + root.detail.blocking.mode) : ""
-        muted: root.detail ? !root.detail.blocking.apps_enabled : true
-      }
-
-      InfoRow {
-        visible: root.detail !== null
-        title: "Sitios"
-        value: root.detail ? (root.detail.blocking.sites + " bloqueados") : ""
-        muted: root.detail ? !root.detail.blocking.sites_enabled : true
-      }
-
-      InfoRow {
-        visible: root.detail !== null
-        title: "Juegos"
-        value: root.detail
-               ? (root.detail.blocking.games ? "detectados solos" : "sin bloquear") : ""
-        muted: root.detail ? !root.detail.blocking.games : true
-      }
-
-      // --- warnings ---------------------------------------------------------
-      // Only ever present when something is genuinely wrong, so nothing here is
-      // the good state.
+    // Remaining tokens as pips beneath the glyph. The quota's whole point is
+    // that it is visibly finite, and a count you have to hover for is not.
+    Row {
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.bottom: parent.bottom
+      anchors.bottomMargin: Math.max(1, Style.space(2))
+      spacing: 1
+      visible: root.tokensTotal > 0 && !root.vertical
 
       Repeater {
-        model: root.detail ? root.detail.warnings : []
-
-        Text {
-          textFormat: Text.PlainText
-          width: column.width
-          text: "⚠ " + modelData
-          color: Color.urgent
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WordWrap
-        }
-      }
-
-      // Shown only when the deployed ngtui is older than this widget. Better a
-      // named limitation than a panel that is quietly missing three sections.
-      Text {
-        textFormat: Text.PlainText
-        visible: root.detailStale && root.detail === null
-        width: column.width
-        text: "Detalle no disponible: el ngtui instalado no conoce «panel». "
-              + "Ejecuta el despliegue para actualizarlo."
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
-      }
-
-      PanelSeparator { foreground: root.foreground }
-
-      // --- actions ----------------------------------------------------------
-      // Every one of these opens something. None of them changes state: the
-      // signer is the only thing that may, and it is reached through the TUI.
-
-      Row {
-        spacing: Style.space(8)
-
-        Button {
-          text: "Abrir"
-          tooltipText: "Abrir la interfaz completa de nightguard"
-          bordered: true
-          foreground: root.foreground
-          fontFamily: root.fontFamily
-          fontSize: Style.font.caption
-          onClicked: {
-            root.panelOpen = false
-            root.openTui()
-          }
-        }
-
-        Button {
-          text: "Menu"
-          tooltipText: "Menu de nightguard"
-          bordered: true
-          foreground: root.foreground
-          fontFamily: root.fontFamily
-          fontSize: Style.font.caption
-          onClicked: {
-            root.panelOpen = false
-            root.openMenu()
-          }
-        }
-
-        Button {
-          text: "Actualizar"
-          tooltipText: "Volver a leer el estado"
-          bordered: true
-          foreground: root.foreground
-          fontFamily: root.fontFamily
-          fontSize: Style.font.caption
-          onClicked: root.refresh()
+        model: root.tokensTotal
+        Rectangle {
+          required property int index
+          width: 3
+          height: 2
+          color: index < root.tokensLeft
+                 ? button.foreground
+                 : Qt.rgba(button.foreground.r, button.foreground.g, button.foreground.b, 0.25)
         }
       }
     }

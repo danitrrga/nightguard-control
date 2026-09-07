@@ -4,7 +4,7 @@
   "name": "Nightguard",
   "version": "1.0.0",
   "author": "danitrrga",
-  "description": "Estado de nightguard con panel de detalle",
+  "description": "Estado del curfew, ventana de edicion y bloqueo, en un panel nativo de Omarchy",
   "kinds": [
     "bar-widget"
   ],
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "Nightguard",
-    "description": "Estado del toque de queda y fichas restantes",
+    "description": "Un icono y un panel: el dia de un vistazo, fichas restantes y que queda bloqueado",
     "category": "Info",
     "allowMultiple": false
   }
