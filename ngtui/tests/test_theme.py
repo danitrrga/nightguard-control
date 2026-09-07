@@ -129,3 +129,85 @@ def test_theme_watch_detects_mtime_change(tmp_path):
     assert watch.changed() is True
     # The change is consumed exactly once.
     assert watch.changed() is False
+
+
+# --- Omarchy 4 moved the staged theme out of ~/.config -------------------------
+
+def test_theme_dir_prefers_the_omarchy_4_location(tmp_path, monkeypatch):
+    """A box running both layouts must read the newer one."""
+    from ngtui import theme as theme_mod
+
+    v4 = tmp_path / "state" / "omarchy" / "current" / "theme"
+    v3 = tmp_path / "config" / "omarchy" / "current" / "theme"
+    v4.mkdir(parents=True)
+    v3.mkdir(parents=True)
+    monkeypatch.setattr(
+        theme_mod, "OMARCHY_THEME_DIRS", (str(v4), str(v3))
+    )
+    assert theme_mod.theme_dir() == str(v4)
+
+
+def test_theme_dir_falls_back_to_the_omarchy_3_location(tmp_path, monkeypatch):
+    from ngtui import theme as theme_mod
+
+    v4 = tmp_path / "state" / "omarchy" / "current" / "theme"
+    v3 = tmp_path / "config" / "omarchy" / "current" / "theme"
+    v3.mkdir(parents=True)
+    monkeypatch.setattr(theme_mod, "OMARCHY_THEME_DIRS", (str(v4), str(v3)))
+    assert theme_mod.theme_dir() == str(v3)
+
+
+def test_theme_dir_is_none_when_omarchy_is_absent(tmp_path, monkeypatch):
+    from ngtui import theme as theme_mod
+
+    monkeypatch.setattr(
+        theme_mod, "OMARCHY_THEME_DIRS", (str(tmp_path / "nope"), str(tmp_path / "also-nope"))
+    )
+    assert theme_mod.theme_dir() is None
+
+
+def test_the_default_loader_resolves_without_a_name_error(monkeypatch, tmp_path):
+    """Regression: the module-level path constants were replaced by functions, and
+    a shadowed local kept a reference to the deleted constant. Every test passed
+    an explicit path, so the no-argument call — the one the running app makes —
+    was the only broken caller."""
+    from ngtui import theme as theme_mod
+
+    directory = tmp_path / "theme"
+    directory.mkdir()
+    (directory / "colors.toml").write_text(
+        'background = "#2d353b"\n'
+        'foreground = "#d3c6aa"\n'
+        'accent = "#7fbbb3"\n'
+        'red = "#e67e80"\n'
+        'green = "#a7c080"\n'
+        'yellow = "#dbbc7f"\n'
+        'blue = "#7fbbb3"\n'
+        'magenta = "#d699b6"\n'
+        'cyan = "#83c092"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(theme_mod, "OMARCHY_THEME_DIRS", (str(directory),))
+    assert theme_mod.load_omarchy_theme().name == "omarchy"
+
+
+def test_the_watch_follows_a_directory_move(tmp_path, monkeypatch):
+    """omarchy replaces current/theme wholesale, and an upgrade can move the tree
+    between layouts under a running TUI. Re-resolving on each stat is what makes
+    the poll survive that; a path frozen at construction would not."""
+    from ngtui.theme import ThemeWatch
+    from ngtui import theme as theme_mod
+
+    old_dir = tmp_path / "old" / "theme"
+    new_dir = tmp_path / "new" / "theme"
+    old_dir.mkdir(parents=True)
+    monkeypatch.setattr(theme_mod, "OMARCHY_THEME_DIRS", (str(new_dir), str(old_dir)))
+    (old_dir / "colors.toml").write_text("background = '#000000'", encoding="utf-8")
+
+    watch = ThemeWatch()
+    assert watch.path == str(old_dir / "colors.toml")
+
+    new_dir.mkdir(parents=True)
+    (new_dir / "colors.toml").write_text("background = '#111111'", encoding="utf-8")
+    assert watch.path == str(new_dir / "colors.toml")
+    assert watch.changed() is True

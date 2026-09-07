@@ -28,13 +28,40 @@ import tomllib
 
 from textual.theme import Theme
 
-# Live omarchy theme files. omarchy atomically dir-swaps ``current/theme`` on every
-# theme change, so the new ``colors.toml`` carries a fresh mtime — an mtime poll on
-# this exact path catches the swap (RESEARCH "Detecting a theme change").
-OMARCHY_COLORS = os.path.expanduser("~/.config/omarchy/current/theme/colors.toml")
-OMARCHY_ALACRITTY = os.path.expanduser(
-    "~/.config/omarchy/current/theme/alacritty.toml"
+# Live omarchy theme directories, newest layout first. Omarchy 4 moved the staged
+# theme out of ~/.config into ~/.local/state; on a v4 box the old path does not
+# exist at all, so a loader pinned to it silently falls through to Textual's
+# default theme and the TUI stops matching the desktop. Both are probed so the
+# same build works either side of that move.
+OMARCHY_THEME_DIRS = (
+    "~/.local/state/omarchy/current/theme",  # Omarchy 4
+    "~/.config/omarchy/current/theme",       # Omarchy 3 and earlier
 )
+
+
+def theme_dir() -> str | None:
+    """The live theme directory, or None when omarchy is not installed.
+
+    Resolved on every call rather than cached at import: omarchy replaces
+    ``current/theme`` wholesale on a theme change, and an upgrade can move the
+    whole tree between the two locations under a running TUI.
+    """
+    for candidate in OMARCHY_THEME_DIRS:
+        expanded = os.path.expanduser(candidate)
+        if os.path.isdir(expanded):
+            return expanded
+    return None
+
+
+def colors_path() -> str:
+    """Path to the live ``colors.toml`` (the newest layout when none exists)."""
+    directory = theme_dir() or os.path.expanduser(OMARCHY_THEME_DIRS[0])
+    return os.path.join(directory, "colors.toml")
+
+
+def alacritty_path() -> str:
+    directory = theme_dir() or os.path.expanduser(OMARCHY_THEME_DIRS[0])
+    return os.path.join(directory, "alacritty.toml")
 
 
 def _theme_from_colors(c: dict) -> Theme:
@@ -87,9 +114,9 @@ def load_omarchy_theme(path: str | None = None) -> Theme:
     When ``colors.toml`` is absent, falls back to ``alacritty.toml`` in the same
     directory (Pitfall 6). Both formats are TOML.
     """
-    colors_path = path if path is not None else OMARCHY_COLORS
+    resolved = path if path is not None else colors_path()
     try:
-        with open(colors_path, "rb") as fh:
+        with open(resolved, "rb") as fh:
             return _theme_from_colors(tomllib.load(fh))
     except (FileNotFoundError, IsADirectoryError, tomllib.TOMLDecodeError, KeyError):
         # Missing OR malformed (partial write during an atomic dir-swap, Pitfall 6)
@@ -99,12 +126,12 @@ def load_omarchy_theme(path: str | None = None) -> Theme:
     # Fall back to alacritty.toml next to the (missing) colors.toml. A malformed
     # alacritty.toml raises TOMLDecodeError here; let it propagate so the app-level
     # handler keeps Textual's default theme rather than crashing (T-10-07).
-    alacritty_path = (
-        OMARCHY_ALACRITTY
+    fallback = (
+        alacritty_path()
         if path is None
-        else os.path.join(os.path.dirname(colors_path), "alacritty.toml")
+        else os.path.join(os.path.dirname(resolved), "alacritty.toml")
     )
-    with open(alacritty_path, "rb") as fh:
+    with open(fallback, "rb") as fh:
         return _theme_from_alacritty(tomllib.load(fh))
 
 
@@ -118,8 +145,16 @@ class ThemeWatch:
     """
 
     def __init__(self, path: str | None = None) -> None:
-        self.path = path if path is not None else OMARCHY_COLORS
+        self._fixed_path = path
         self._mtime = self._stat()
+
+    @property
+    def path(self) -> str:
+        """Re-resolved on every read, so a theme change that also moves the
+        directory (an omarchy 3 to 4 upgrade under a running TUI) is still seen.
+        An mtime poll by path is what makes that safe: unlike an inotify watch on
+        the inner file, re-stat'ing follows the directory omarchy swapped in."""
+        return self._fixed_path if self._fixed_path is not None else colors_path()
 
     def _stat(self) -> float:
         try:
