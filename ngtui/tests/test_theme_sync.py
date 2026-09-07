@@ -219,3 +219,33 @@ def test_the_style_view_keeps_every_key_the_panel_reads():
     live = panel.style_view(theme.omarchy_style())
     assert set(live) == set(panel.STYLE_FALLBACK)
     assert set(panel.UNAVAILABLE["style"]) == set(panel.STYLE_FALLBACK)
+
+
+def test_a_light_theme_is_reported_as_light(tmp_path, monkeypatch):
+    """Regression: every string token was validated as a hex colour, so "light"
+    failed the check and fell back to "dark" — on every light theme, silently."""
+    directory = tmp_path / "theme"
+    directory.mkdir()
+    (directory / "colors.toml").write_text(
+        'mode = "light"\nbackground = "#FFFCF0"\nforeground = "#100F0F"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(theme, "OMARCHY_THEME_DIRS", (str(directory),))
+    assert panel.style_view(theme.omarchy_style())["mode"] == "light"
+
+
+def test_the_theme_name_survives_the_style_view(tmp_path, monkeypatch):
+    directory = tmp_path / "theme"
+    directory.mkdir()
+    (directory / "colors.toml").write_text('background = "#000000"\n', encoding="utf-8")
+    monkeypatch.setattr(theme, "OMARCHY_THEME_DIRS", (str(directory),))
+    monkeypatch.setattr(theme, "theme_name", lambda: "gruvbox")
+    assert panel.style_view(theme.omarchy_style())["name"] == "gruvbox"
+
+
+@_HAVE_THEMES
+@pytest.mark.parametrize("name,path", _THEMES, ids=[n for n, _ in _THEMES])
+def test_the_declared_mode_survives_every_installed_theme(name, path):
+    """Read straight off disk, so a light theme cannot be reported as dark."""
+    declared = _load(path).get("mode", "dark")
+    assert panel.style_view({"mode": theme.theme_mode(_load(path))})["mode"] == declared

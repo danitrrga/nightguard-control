@@ -235,6 +235,11 @@ STYLE_FALLBACK = {
 }
 
 
+# Style tokens that are plain text rather than colours. Everything else in
+# STYLE_FALLBACK that is a string is a hex value and is validated as one.
+_STYLE_TEXT_KEYS = frozenset({"mode", "name"})
+
+
 def style_view(tokens):
     """The structural tokens the panel is built from, each with its own fallback.
 
@@ -253,6 +258,10 @@ def style_view(tokens):
         value = tokens.get(key)
         if isinstance(fallback, bool):
             out[key] = bool(value) if isinstance(value, bool) else fallback
+        elif key in _STYLE_TEXT_KEYS:
+            # Plain strings, not colours. Validating these as hex silently
+            # dropped every light theme's "light" back to the "dark" default.
+            out[key] = value if isinstance(value, str) and value.strip() else fallback
         elif isinstance(fallback, str):
             out[key] = value if isinstance(value, str) and value.startswith("#") else fallback
         else:
