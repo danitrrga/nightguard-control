@@ -170,6 +170,83 @@ def _schedule_mask(value):
     return _locked_mask(sm, em)
 
 
+def _in_window(now_min, start_min, end_min):
+    """True when ``now_min`` falls in [start, end), wrapping past midnight.
+
+    A window whose start equals its end is zero minutes wide, not twenty-four
+    hours wide — the safe reading for a permission window.
+    """
+    if start_min == end_min:
+        return False
+    if start_min < end_min:
+        return start_min <= now_min < end_min
+    return now_min >= start_min or now_min < end_min
+
+
+def _edit_locked_mask(start_min, end_min):
+    """The minutes in which editing is FORBIDDEN, as a 1440-slot mask.
+
+    ``_locked_mask`` models the curfew, where the window is the locked part. The
+    edit window has the opposite polarity: the window is the part that is *open*.
+    Inverting here lets ``_mask_direction`` judge both with the same locked-set
+    model, so widening the edit window reads as a loosening exactly the way
+    shortening the curfew does.
+    """
+    return [not m for m in _locked_mask(start_min, end_min)]
+
+
+def _read_edit_window(doc):
+    """The ``edit_window`` block as a plain dict, or None when absent."""
+    block = _read_field(doc, ["edit_window"])
+    if not isinstance(block, dict):
+        return None
+    return {
+        "enabled": block.get("enabled"),
+        "start": block.get("start"),
+        "end": block.get("end"),
+    }
+
+
+def effective_edit_window(old_doc, new_doc):
+    """The edit window that governs THIS commit: the sanctioned one.
+
+    Deliberately ignores ``new_doc``. Resolving the window from the proposal
+    would let a single commit widen the window and then be judged by the widened
+    version — the change would authorise itself. The user is bound by the window
+    he signed while his judgement was good, and relaxing it is itself a
+    loosening that must pass the old window first.
+    """
+    return _read_edit_window(old_doc)
+
+
+def _classify_edit_window(old_doc, new_doc):
+    """Direction for the ``edit_window`` block as a whole.
+
+    One classifier entry rather than three (enabled/start/end) because every
+    editable field is a new bypass vector, and the three are only ever meaningful
+    together. Presence is part of the comparison: deleting the block is the
+    cheapest imaginable bypass, so it must cost the same as disabling it.
+    """
+    old, new = _read_edit_window(old_doc), _read_edit_window(new_doc)
+    if old is None and new is None:
+        return NOOP
+    if old is None:
+        return TIGHTEN          # adding the restriction
+    if new is None:
+        return LOOSEN           # removing it entirely
+    dirs = [_classify_field("bool", old.get("enabled"), new.get("enabled"))]
+    bounds = [_parse_hhmm(old.get("start")), _parse_hhmm(old.get("end")),
+              _parse_hhmm(new.get("start")), _parse_hhmm(new.get("end"))]
+    if None not in bounds:
+        os_, oe, ns, ne = bounds
+        dirs.append(_mask_direction(_edit_locked_mask(os_, oe), _edit_locked_mask(ns, ne)))
+    if LOOSEN in dirs:
+        return LOOSEN
+    if TIGHTEN in dirs:
+        return TIGHTEN
+    return NOOP
+
+
 def _classify_field(kind, old, new):
     if old is None or new is None:
         return NOOP
@@ -215,6 +292,7 @@ def classify_change(old_doc, new_doc):
         out.append(("curfew.window", _mask_direction(_locked_mask(os_, oe), _locked_mask(ns, ne))))
     else:
         out.append(("curfew.window", NOOP))
+    out.append(("edit_window", _classify_edit_window(old_doc, new_doc)))
     for day in WEEKDAYS:
         keys = ["curfew", "schedule", day]
         out.append(("curfew.schedule." + day,
@@ -238,8 +316,72 @@ def _current_week_monday(tzname):
     return monday.isoformat()
 
 
-def quota_decide(dirs, state, tzname):
-    """Mirror quota.rs decide(): lazy week reset, then the commit rule."""
+def verified_now_minutes(sanctioned_doc):
+    """Minute-of-day in the SANCTIONED config's timezone, from verified true time.
+
+    Two sources are deliberately NOT used. The system clock is not consulted
+    directly: ``guard.true_unix()`` resolves time over SNTP with a
+    monotonic-anchored cache, so moving the wall clock cannot fake the hour. And
+    the timezone comes from the signed config rather than /etc/localtime or $TZ,
+    because ``sudo -l`` on this box grants a passwordless
+    ``timedatectl set-timezone`` — reading the system zone would turn that entry
+    into a one-command shift of the edit window.
+
+    Returns None when true time cannot be resolved, which the caller treats as a
+    refusal rather than a pass.
+    """
+    try:
+        import guard
+    except Exception:
+        return None
+    try:
+        ts, _source = guard.true_unix()
+        if ts is None:
+            return None
+        local = guard.localize(sanctioned_doc or {}, ts)
+        return local.hour * 60 + local.minute
+    except Exception:
+        return None
+
+
+def _edit_window_refusal(edit_window, now_minutes):
+    """Why this loosening is refused right now, or None if the clock allows it.
+
+    Only ever consulted for loosening changes: tightening the pact is allowed at
+    any hour, which is the same asymmetry that makes only loosening cost a token.
+    """
+    if not edit_window or not edit_window.get("enabled"):
+        return None
+    start = _parse_hhmm(edit_window.get("start"))
+    end = _parse_hhmm(edit_window.get("end"))
+    if start is None or end is None:
+        return ("the edit window is malformed (start=%r end=%r); refusing to loosen "
+                "until it is a valid HH:MM range" % (edit_window.get("start"), edit_window.get("end")))
+    if now_minutes is None:
+        # Fail closed, matching the guard's block_when_offline posture. An
+        # unverifiable clock is exactly the state an attacker would engineer.
+        return ("cannot verify the time; loosening is refused until the clock is confirmed "
+                "(the edit window is %s-%s)" % (edit_window.get("start"), edit_window.get("end")))
+    if not _in_window(now_minutes, start, end):
+        return ("outside the edit window (%s-%s); loosening is refused until then"
+                % (edit_window.get("start"), edit_window.get("end")))
+    return None
+
+
+def quota_decide(dirs, state, tzname, edit_window=None, now_minutes=None):
+    """Mirror quota.rs decide(): lazy week reset, then the commit rule.
+
+    ``edit_window`` and ``now_minutes`` add the clock gate. They default to None
+    so a three-argument call keeps its old meaning — ``tokens_left()`` passes
+    empty dirs and only wants the lazy-reset counter, and the ungated form is
+    what a config without an ``edit_window`` block gets.
+
+    ``now_minutes`` is the minute-of-day in the SIGNED config's timezone, and the
+    caller is responsible for deriving it from verified time. It is passed in
+    rather than read here because the two callers need different clocks: the root
+    signer resolves live true time, while the pre-auth preview must never issue a
+    synchronous network query.
+    """
     cur_monday = _current_week_monday(tzname)
     anchor = state.get("week_anchor") or ""
     should_reset = (anchor == "" or anchor < cur_monday)  # ISO dates compare lexically
@@ -251,6 +393,11 @@ def quota_decide(dirs, state, tzname):
     if not is_loosening(dirs):
         return dict(allowed=True, reason=None, costs_token=False, is_noop=False,
                     effective_spent=effective_spent, week_anchor=week_anchor)
+    refusal = _edit_window_refusal(edit_window, now_minutes)
+    if refusal is not None:
+        return dict(allowed=False, is_noop=False, costs_token=False,
+                    effective_spent=effective_spent, week_anchor=week_anchor,
+                    reason=refusal)
     if effective_spent < WEEKLY_TOKENS:
         return dict(allowed=True, reason=None, costs_token=True, is_noop=False,
                     effective_spent=effective_spent, week_anchor=week_anchor)
@@ -309,6 +456,21 @@ def cmd_commit(args):
     prev = ng.load_state()
 
     if args.rebaseline:
+        # The re-baseline shortcut writes a new sanctioned config with NO
+        # classification and NO token charge, and it is reachable through the
+        # sudoers wildcard (`nightguard_ctl.py commit *`). Left ungated it is a
+        # complete bypass of the edit window: any config, any hour, free. It is
+        # therefore held to the window as if it were the broadest possible
+        # loosening, because that is exactly what it can install.
+        try:
+            sanctioned_doc = ng.yaml_load(ng.file_bytes(ng.SANCTIONED).decode("utf-8"))
+        except OSError:
+            sanctioned_doc = {}
+        window = effective_edit_window(sanctioned_doc, sanctioned_doc)
+        refusal = _edit_window_refusal(window, verified_now_minutes(sanctioned_doc))
+        if refusal is not None:
+            print("REFUSED (re-baseline): %s" % refusal, file=sys.stderr)
+            return 1
         new_hmac = _write_commit(key, canonical, prev,
                                  prev.get("weekly_spent", 0), prev.get("week_anchor", ""),
                                  prev.get("ledger", []),
@@ -324,7 +486,9 @@ def cmd_commit(args):
     new_doc = ng.yaml_load(canonical.decode("utf-8"))
     tzname = new_doc.get("timezone") or old_doc.get("timezone") or "Europe/Amsterdam"
     dirs = classify_change(old_doc, new_doc)
-    decision = quota_decide(dirs, prev, tzname)
+    window = effective_edit_window(old_doc, new_doc)
+    decision = quota_decide(dirs, prev, tzname, edit_window=window,
+                            now_minutes=verified_now_minutes(old_doc))
     loosened = [lbl for lbl, d in dirs if d == LOOSEN]
     direction = "loosen" if is_loosening(dirs) else ("noop" if decision["is_noop"] else "tighten")
 
@@ -382,6 +546,70 @@ def cmd_show(args):
     return 0
 
 
+# The window the migration installs when a config predates this feature. 05:30 is
+# the curfew's end (the hour the house reopens); 14:00 is early enough that an
+# evening impulse cannot reach it. Both are editable afterwards, at a token's cost.
+EDIT_WINDOW_DEFAULT_START = "05:30"
+EDIT_WINDOW_DEFAULT_END = "14:00"
+
+EDIT_WINDOW_BLOCK = """
+# When the curfew may be WEAKENED. Outside this window a loosening commit is
+# refused before the weekly token is even considered; tightening is always
+# allowed, at any hour. This exists because a weekly quota limits how often the
+# pact is weakened but not when, and the hour the user's judgement is worst is
+# exactly when he reaches for the token.
+edit_window:
+  enabled: true
+  start: "%s"
+  end: "%s"
+""" % (EDIT_WINDOW_DEFAULT_START, EDIT_WINDOW_DEFAULT_END)
+
+
+def cmd_ensure_edit_window(args):
+    """Append the edit_window block to the live + sanctioned config, then re-sign.
+
+    A one-time migration for a config written before the window existed. Without
+    it the gate is inert: ``effective_edit_window`` reads the sanctioned config,
+    and a config with no block is ungated by design (back-compat).
+
+    Idempotent — it is a no-op once the block is present, so re-running the
+    deploy does not keep rewriting or re-signing. It writes both files so the
+    watchdog does not immediately revert the live copy to a sanctioned snapshot
+    that lacks the block.
+
+    Root only, and it re-signs, so it is deliberately NOT in the sudoers file:
+    it runs from deploy.sh, which the user authorises with a password.
+    """
+    key = ng.read_key()
+    if key is None:
+        print("ERROR: cannot read .guardkey — run as root. Refusing (wrote nothing).",
+              file=sys.stderr)
+        return 2
+    try:
+        live = ng.file_bytes(ng.CONFIG).decode("utf-8")
+    except OSError:
+        print("ERROR: no config.yaml to migrate", file=sys.stderr)
+        return 2
+    if _read_edit_window(ng.yaml_load(live)) is not None:
+        print("edit_window already present; nothing to do.")
+        return 0
+
+    canonical = canonicalize((live.rstrip("\n") + "\n" + EDIT_WINDOW_BLOCK).encode("utf-8"))
+    if _read_edit_window(ng.yaml_load(canonical.decode("utf-8"))) is None:
+        print("ERROR: the appended block did not parse back; refusing to write.",
+              file=sys.stderr)
+        return 2
+    prev = ng.load_state()
+    new_hmac = _write_commit(key, canonical, prev,
+                             prev.get("weekly_spent", 0), prev.get("week_anchor", ""),
+                             prev.get("ledger", []),
+                             "migrate", "added edit_window %s-%s (no token)"
+                             % (EDIT_WINDOW_DEFAULT_START, EDIT_WINDOW_DEFAULT_END))
+    print("added edit_window %s-%s: config_hmac=%s"
+          % (EDIT_WINDOW_DEFAULT_START, EDIT_WINDOW_DEFAULT_END, new_hmac))
+    return 0
+
+
 def cmd_init(args):
     import json
     if ng.read_key() is not None:
@@ -406,6 +634,7 @@ def main():
     p = argparse.ArgumentParser(prog="nightguard_ctl", description="Nightguard control CLI (root signer).")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("init")
+    sub.add_parser("ensure-edit-window")
     sub.add_parser("verify")
     sub.add_parser("show")
     c = sub.add_parser("commit")
@@ -413,7 +642,8 @@ def main():
     c.add_argument("--rebaseline", action="store_true",
                    help="no-token sanctioned reset (admin) instead of a quota'd commit")
     args = p.parse_args()
-    return {"init": cmd_init, "verify": cmd_verify, "show": cmd_show, "commit": cmd_commit}[args.cmd](args)
+    return {"init": cmd_init, "verify": cmd_verify, "show": cmd_show, "commit": cmd_commit,
+            "ensure-edit-window": cmd_ensure_edit_window}[args.cmd](args)
 
 
 if __name__ == "__main__":

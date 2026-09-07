@@ -147,6 +147,35 @@ def cache_only_verdict(cfg: dict, state: dict) -> str:
         guard._http_time = saved_http
 
 
+def cache_only_now_minutes(cfg: dict) -> int | None:
+    """Verified minute-of-day WITHOUT a synchronous network query.
+
+    ``preview_change`` runs on every keystroke-level refresh of the edit screen,
+    and the signer's ``verified_now_minutes`` falls through a cold ``.timecache``
+    to a 2s SNTP then a 2s HTTP probe — a ~4s freeze of the TUI on every
+    keypress. Both are swapped for instant-raising stubs here, exactly as
+    ``cache_only_verdict`` does, so a cold cache yields None and the preview
+    shows the fail-closed refusal instead of hanging.
+
+    A warm cache resolves the real hour, so the preview the user reads before
+    authenticating matches what the root signer will decide. The stubs are
+    restored in a ``finally`` so the later live ``commit()`` is unaffected.
+    """
+    saved_sntp = guard._sntp
+    saved_http = guard._http_time
+
+    def _no_network(*_a, **_k):
+        raise OSError("cache_only_now_minutes: synchronous network query suppressed")
+
+    guard._sntp = _no_network
+    guard._http_time = _no_network
+    try:
+        return ctl.verified_now_minutes(cfg)
+    finally:
+        guard._sntp = saved_sntp
+        guard._http_time = saved_http
+
+
 def preview_change(proposed_text: str) -> dict:
     """Direction labels + quota decision for a proposed edit.
 
@@ -159,7 +188,15 @@ def preview_change(proposed_text: str) -> dict:
     dirs = ctl.classify_change(old_doc, new_doc)
     loosening = ctl.is_loosening(dirs)
     tzname = new_doc.get("timezone") or old_doc.get("timezone") or _DEFAULT_TZ
-    decision = ctl.quota_decide(dirs, ng.load_state(), tzname)
+    # The window in force comes from the sanctioned config, and so does the
+    # timezone the hour is read in — a proposal that widens the window or shifts
+    # the zone must not be judged by its own new values.
+    window = ctl.effective_edit_window(old_doc, new_doc)
+    decision = ctl.quota_decide(
+        dirs, ng.load_state(), tzname,
+        edit_window=window,
+        now_minutes=cache_only_now_minutes(old_doc) if window else None,
+    )
     return {"dirs": dirs, "loosening": loosening, "decision": decision}
 
 

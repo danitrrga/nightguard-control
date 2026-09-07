@@ -152,6 +152,9 @@ EDITABLE_FIELDS: list[tuple[str, str, str]] = [
     ("blocking.browser_extension.extension_id", "blocking.browser_extension.extension_id", _STR),
     ("blocking.native_apps.enabled", "blocking.native_apps.enabled", _BOOL),
     ("blocking.native_apps.blacklist", "blocking.native_apps.blacklist", _LIST),
+    ("edit_window.enabled", "edit_window.enabled", _BOOL),
+    ("edit_window.start", "edit_window.start", _TIME),
+    ("edit_window.end", "edit_window.end", _TIME),
 ]
 
 
