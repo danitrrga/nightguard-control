@@ -18,10 +18,14 @@ import qs.Ui
 //   * The popup lives in a SEPARATE file, pulled in with a Loader and
 //     Qt.resolvedUrl; the host injects bar, settings and anchorItem into it.
 //   * The widget must expose `opened`, `open()`, `close()` and
-//     `closeForPopoutSwitch()`. Bar.findPanelWidget routes summon/hide/toggle
-//     through exactly those names, and the popout coordinator uses them to hand
-//     focus between bar panels. A private bool of one's own means nothing to
-//     any of that — which is why clicking used to do nothing.
+//     `closeForPopoutSwitch()`. This is THE bug, and it was measured rather
+//     than guessed: PopupCard.close() calls `owner.close()` when the owner has
+//     one and otherwise ASSIGNS `open = false`, which destroys the binding to
+//     the widget's own state. After the first outside click the popup could
+//     never reopen. Bar.findPanelWidget also skips any widget missing those
+//     names, and the popout coordinator uses them to evict the open panel when
+//     another bar icon is clicked — which is where the freeze came from, two
+//     compositor focus grabs left fighting.
 //
 // It reads and never writes. Only the signer may change state, so nothing here
 // spends a token, grants grace or edits anything.

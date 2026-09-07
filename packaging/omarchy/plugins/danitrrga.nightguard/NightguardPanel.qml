@@ -241,9 +241,13 @@ Panel {
 
         Column {
           id: column
-          // NOT anchors.fill. The popup's height comes from this column's
-          // implicitHeight, so anchoring would make width depend on height and
-          // height on width — the binding loop that froze the earlier version.
+          // `width:` rather than anchors.fill, because a Flickable's content
+          // item has no meaningful height to fill. This is NOT about a binding
+          // loop: an earlier commit here claimed it was, and that was wrong.
+          // Both external reviews and a control run of this suite agree —
+          // anchoring a Column while the popup reads its implicitHeight is the
+          // first-party idiom and loops nothing, since a Column's implicitHeight
+          // comes from its children and never from its own height.
           width: panelFlick.width
           spacing: Style.space(12)
 
