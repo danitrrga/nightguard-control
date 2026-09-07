@@ -144,6 +144,7 @@ _STEAM = appblock.Process(
 
 
 def test_a_blocked_app_is_signalled_during_the_curfew(monkeypatch, kills):
+    monkeypatch.setattr(appblock, "ensure_jail", lambda path=None: False)
     _stub_world(monkeypatch, "locked", [_STEAM])
     parts = wd._enforce_apps(_cfg(native=_native()), {})
     assert kills == [(100, wd.signal.SIGTERM)]
@@ -194,6 +195,7 @@ def test_an_implausibly_large_kill_set_is_refused(monkeypatch, kills):
 
 def test_a_kill_set_at_the_cap_is_still_carried_out(monkeypatch, kills):
     """The valve must not be so tight that ordinary enforcement trips it."""
+    monkeypatch.setattr(appblock, "ensure_jail", lambda path=None: False)
     horde = [
         appblock.Process(1000 + i, "/opt/app%d/app" % i,
                          "0::/user.slice/u/app.slice/app-%d.scope" % i)
@@ -205,13 +207,19 @@ def test_a_kill_set_at_the_cap_is_still_carried_out(monkeypatch, kills):
 
 
 def test_a_process_that_exits_first_is_not_an_error(monkeypatch):
-    """/proc entries go stale between the scan and the signal."""
+    """/proc entries go stale between the scan and the signal.
+
+    Pinned on the SIGTERM fallback: on a box with no jail this is the path that
+    runs, and a stale PID there must not read as a failure.
+    """
     def _gone(pid, sig):
         raise ProcessLookupError(pid)
 
+    monkeypatch.setattr(appblock, "ensure_jail", lambda path=None: False)
     monkeypatch.setattr(wd.os, "kill", _gone)
     _stub_world(monkeypatch, "locked", [_STEAM])
-    assert wd._enforce_apps(_cfg(native=_native()), {}) == []
+    parts = wd._enforce_apps(_cfg(native=_native()), {})
+    assert not any("could not end" in p for p in parts)
 
 
 def test_a_permission_error_is_reported_not_swallowed(monkeypatch):
@@ -220,6 +228,7 @@ def test_a_permission_error_is_reported_not_swallowed(monkeypatch):
     def _denied(pid, sig):
         raise PermissionError("not root")
 
+    monkeypatch.setattr(appblock, "ensure_jail", lambda path=None: False)
     monkeypatch.setattr(wd.os, "kill", _denied)
     _stub_world(monkeypatch, "locked", [_STEAM])
     parts = wd._enforce_apps(_cfg(native=_native()), {})
@@ -227,6 +236,7 @@ def test_a_permission_error_is_reported_not_swallowed(monkeypatch):
 
 
 def test_the_compositor_survives_allowlist_mode_through_the_actuator(monkeypatch, kills):
+    monkeypatch.setattr(appblock, "ensure_jail", lambda path=None: False)
     """The floor is enforced in the decision, but this asserts it end to end from
     the watchdog's own entry point, which is what actually runs as root."""
     desktop = [
@@ -250,3 +260,92 @@ def test_the_game_catalogue_is_only_built_when_games_are_blocked(monkeypatch, ki
 
     wd._enforce_apps(_cfg(native=_native(block_games=True)), {})
     assert len(calls) == 1
+
+
+# --- the jail ----------------------------------------------------------------
+# Proven on this machine 2026-09-07: root creates a cgroup outside the subtree
+# systemd delegates to uid 1000, the owner cannot migrate a process back out
+# ("write error: Permission denied"), cannot unfreeze it and cannot rmdir it, and
+# cgroup.kill ends the tree. These tests hold the wiring to that shape.
+
+@pytest.fixture
+def jail(tmp_path, monkeypatch):
+    """A fake cgroup directory, so the wiring is testable without root."""
+    path = tmp_path / "nightguard"
+    path.mkdir()
+    (path / "cgroup.procs").write_text("", encoding="utf-8")
+    (path / "cgroup.kill").write_text("", encoding="utf-8")
+    monkeypatch.setattr(appblock, "JAIL", str(path))
+    return path
+
+
+def test_a_blocked_app_is_jailed_and_the_tree_killed(monkeypatch, jail, kills):
+    _stub_world(monkeypatch, "locked", [_STEAM])
+    parts = wd._enforce_apps(_cfg(native=_native()), {})
+
+    assert (jail / "cgroup.procs").read_text().strip() == "100"
+    assert (jail / "cgroup.kill").read_text().strip() == "1"
+    assert kills == [], "the jail replaces the signal loop, it does not add to it"
+    assert any("jailed" in p for p in parts)
+
+
+def test_the_jail_is_never_used_outside_the_curfew(monkeypatch, jail, kills):
+    """Same gate as everything else: a clock jump at 3pm jails nothing."""
+    _stub_world(monkeypatch, "clock_tamper", [_STEAM])
+    assert wd._enforce_apps(_cfg(native=_native()), {}) == []
+    assert (jail / "cgroup.procs").read_text() == ""
+    assert (jail / "cgroup.kill").read_text() == ""
+
+
+def test_the_kill_is_not_written_when_nothing_was_jailed(monkeypatch, jail):
+    """Writing 1 to cgroup.kill on a jail holding leftovers from a previous tick
+    would end processes this tick never decided to end."""
+    def _gone(pid, path=None):
+        raise ProcessLookupError(pid)
+
+    monkeypatch.setattr(appblock, "jail_and_kill",
+                        lambda pids, path=None: ([], [(p, "gone") for p in pids]))
+    _stub_world(monkeypatch, "locked", [_STEAM])
+    wd._enforce_apps(_cfg(native=_native()), {})
+    assert (jail / "cgroup.kill").read_text() == ""
+
+
+def test_a_stale_pid_is_not_reported_as_a_jail_failure(jail, monkeypatch):
+    """A process that exits between the scan and the write is the outcome the
+    tick wanted, not an error to log."""
+    real_open = open
+
+    def fake_open(path, *a, **k):
+        if str(path).endswith("cgroup.procs"):
+            raise ProcessLookupError(999)
+        return real_open(path, *a, **k)
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    jailed, failed = appblock.jail_and_kill([999], str(jail))
+    assert jailed == [] and failed == []
+
+
+def test_the_fallback_says_so_instead_of_pretending(monkeypatch, kills):
+    """A tick that cannot build the jail must not log as though the strong path
+    ran -- the whole difference is whether the owner can undo it."""
+    monkeypatch.setattr(appblock, "ensure_jail", lambda path=None: False)
+    _stub_world(monkeypatch, "locked", [_STEAM])
+    parts = wd._enforce_apps(_cfg(native=_native()), {})
+
+    assert any("WEAK MODE" in p for p in parts)
+    assert kills == [(100, wd.signal.SIGTERM)], "the fallback still ends the app"
+
+
+def test_the_jail_lives_outside_the_delegated_subtree():
+    """The containment rule only bites across a boundary the owner does not own.
+    A jail under user@1000.service is one he can write his way out of."""
+    assert "user.slice" not in appblock.JAIL
+    assert "user@" not in appblock.JAIL
+    assert appblock.JAIL.startswith("/sys/fs/cgroup/")
+
+
+def test_ensure_jail_reports_failure_rather_than_raising(tmp_path, monkeypatch):
+    """A non-root tick must degrade, not crash the whole watchdog run."""
+    monkeypatch.setattr(appblock.os, "mkdir",
+                        lambda *_a, **_k: (_ for _ in ()).throw(PermissionError("not root")))
+    assert appblock.ensure_jail(str(tmp_path / "nope")) is False

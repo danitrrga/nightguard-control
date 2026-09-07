@@ -157,10 +157,15 @@ def _enforce_apps(cfg, state):
     signals. Keeping it this thin is deliberate: it is the part that cannot be
     verified without root, so it must be small enough to review by eye.
 
-    SIGTERM, not SIGKILL. The research favours a root-owned jail cgroup with
-    cgroup.kill, which is genuinely un-escapable and fork-race-proof; that needs a
-    live root experiment this build has not been able to run, so the conservative
-    signal ships first.
+    Enforcement is a root-owned jail cgroup, proven on this machine: the owner
+    cannot migrate a process back out of it, cannot unfreeze it and cannot remove
+    it, and cgroup.kill ends the tree in one write while dealing with concurrent
+    forks. A PID signal loop loses a process that forks between the scan and the
+    signal; this does not.
+
+    SIGTERM remains as the fallback for a box where the jail cannot be created --
+    a non-root tick, or a kernel without cgroup.kill. It is weaker, and the log
+    says so rather than implying the strong path ran.
     """
     native = (cfg.get("blocking") or {}).get("native_apps") or {}
     if not native.get("enabled"):
@@ -183,16 +188,31 @@ def _enforce_apps(cfg, state):
                 "config or classifier is wrong, killed nothing"
                 % (len(victims), MAX_KILLS_PER_TICK)]
 
+    names = {p.pid: (os.path.basename(p.exe) or "?") for p in victims}
+    parts = []
+
+    if appblock.ensure_jail():
+        jailed, failed = appblock.jail_and_kill([p.pid for p in victims])
+        if jailed:
+            parts.append("ENDED during curfew (jailed): "
+                         + ", ".join("%s(%d)" % (names.get(pid, "?"), pid) for pid in jailed))
+        if failed:
+            parts.append("could not jail: "
+                         + ", ".join("%s: %s" % (who, why) for who, why in failed))
+        return parts
+
+    # Fallback: no jail available (not root, or no cgroup.kill). Say so — a
+    # silent downgrade would read as the strong path having run.
+    parts.append("WEAK MODE: no jail cgroup, falling back to SIGTERM")
     ended, refused = [], []
     for proc in victims:
         try:
             os.kill(proc.pid, signal.SIGTERM)
-            ended.append("%s(%d)" % (os.path.basename(proc.exe) or "?", proc.pid))
+            ended.append("%s(%d)" % (names.get(proc.pid, "?"), proc.pid))
         except ProcessLookupError:
             pass  # already gone between the scan and the signal
         except OSError as exc:
-            refused.append("%s(%d): %s" % (os.path.basename(proc.exe) or "?", proc.pid, exc))
-    parts = []
+            refused.append("%s(%d): %s" % (names.get(proc.pid, "?"), proc.pid, exc))
     if ended:
         parts.append("ENDED during curfew: " + ", ".join(ended))
     if refused:

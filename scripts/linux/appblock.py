@@ -30,6 +30,7 @@ Three facts about this machine shape the rest:
 """
 from __future__ import annotations
 
+import errno
 import os
 import re
 
@@ -397,6 +398,74 @@ def build_catalog(home):
         os.path.join(home, ".local", "share", "applications"),
     ])
     return catalog
+
+
+# --- the jail ----------------------------------------------------------------
+# Proven on this machine, 2026-09-07: root creates a cgroup outside the subtree
+# systemd delegates to uid 1000, moves a process into it, and the owner then
+# cannot move it back out ("write error: Permission denied"), cannot unfreeze it,
+# and cannot remove the directory. cgroup.kill then ends the whole tree.
+#
+# That is strictly better than signalling PIDs one by one. The kernel documents
+# cgroup.kill as "protected against migrations" and as dealing with concurrent
+# forks, which a kill loop cannot: a process that forks between the scan and the
+# signal survives a loop and does not survive this.
+
+JAIL = "/sys/fs/cgroup/nightguard"
+
+
+def ensure_jail(path=None):
+    """Create the jail if absent. Root only; returns True when usable.
+
+    Deliberately a plain cgroup directly under the root cgroup, NOT anything
+    under user.slice: systemd delegates user@1000.service to the owner, and a
+    jail inside that subtree is one he can write his way out of. The kernel's
+    delegation containment rule is what does the work here, and it only applies
+    across a boundary he does not own.
+    """
+    # Resolved per call, not bound as a default: a default argument captures the
+    # module constant at definition time, so a caller (or a test) that replaces
+    # JAIL afterwards would be silently ignored.
+    path = path or JAIL
+    try:
+        if not os.path.isdir(path):
+            os.mkdir(path)
+        return os.path.exists(os.path.join(path, "cgroup.procs"))
+    except OSError:
+        return False
+
+
+def jail_and_kill(pids, path=None):
+    """Move the given processes into the jail and kill the tree.
+
+    Returns (jailed, failed). A process that exits between the scan and the write
+    is not a failure -- /proc entries go stale constantly and the whole point of
+    the tick is that it runs again in a minute.
+    """
+    path = path or JAIL
+    jailed, failed = [], []
+    procs = os.path.join(path, "cgroup.procs")
+    for pid in pids:
+        try:
+            with open(procs, "w") as fh:
+                fh.write("%d\n" % pid)
+            jailed.append(pid)
+        except ProcessLookupError:
+            pass
+        except OSError as exc:
+            # ESRCH arrives as OSError here on some kernels: the process is gone,
+            # which is the outcome we wanted anyway.
+            if getattr(exc, "errno", None) == errno.ESRCH:
+                continue
+            failed.append((pid, str(exc)))
+    if not jailed:
+        return jailed, failed
+    try:
+        with open(os.path.join(path, "cgroup.kill"), "w") as fh:
+            fh.write("1\n")
+    except OSError as exc:
+        failed.append(("cgroup.kill", str(exc)))
+    return jailed, failed
 
 
 # --- reading the live process table ------------------------------------------
