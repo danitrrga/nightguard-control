@@ -52,6 +52,17 @@ FIELD_TABLE = [
     ("blocking.browser_extension.enabled", ["blocking", "browser_extension", "enabled"], "bool"),
     ("blocking.native_apps.enabled", ["blocking", "native_apps", "enabled"], "bool"),
     ("blocking.native_apps.blacklist", ["blocking", "native_apps", "blacklist"], "list_remove"),
+    # Allowlist mode permits only what is named, so it is strictly stricter than
+    # blocklist mode: switching to it tightens, switching away loosens.
+    ("blocking.native_apps.mode", ["blocking", "native_apps", "mode"], "mode"),
+    # Adding an app to the allowlist permits MORE, so the polarity is the mirror
+    # of the blacklist's.
+    ("blocking.native_apps.allowlist", ["blocking", "native_apps", "allowlist"], "list_add"),
+    ("blocking.native_apps.block_games", ["blocking", "native_apps", "block_games"], "bool"),
+    # Removing a blocked site during curfew is a loosening, exactly like removing
+    # an app from the blacklist.
+    ("blocking.browser_extension.blocked_urls",
+     ["blocking", "browser_extension", "blocked_urls"], "list_remove"),
     ("timezone", ["timezone"], "any"),
 ]
 
@@ -271,6 +282,18 @@ def _classify_field(kind, old, new):
     if kind == "schedule":
         om, nm = _schedule_mask(old), _schedule_mask(new)
         return _mask_direction(om, nm) if (om is not None and nm is not None) else NOOP
+    if kind == "mode":
+        o, n = str(old).strip().lower(), str(new).strip().lower()
+        if o == n:
+            return NOOP
+        # Anything that is not the strict mode is treated as the permissive one,
+        # so a typo cannot be classified as a free tightening.
+        o_strict, n_strict = (o == "allowlist"), (n == "allowlist")
+        if o_strict and not n_strict:
+            return LOOSEN
+        if n_strict and not o_strict:
+            return TIGHTEN
+        return NOOP
     if kind == "any":
         return LOOSEN
     return NOOP
@@ -565,20 +588,72 @@ edit_window:
 """ % (EDIT_WINDOW_DEFAULT_START, EDIT_WINDOW_DEFAULT_END)
 
 
-def cmd_ensure_edit_window(args):
-    """Append the edit_window block to the live + sanctioned config, then re-sign.
+# New keys for the app blocker, added to blocks that already exist. Values are the
+# conservative ones: blocklist mode (allowlist would kill the desktop on a config
+# the user has not reviewed) and an empty site list, so the migration changes no
+# behaviour by itself. The user turns each on from the TUI afterwards, at the
+# usual cost.
+NATIVE_APPS_KEYS = [
+    "    # blocklist: end only the apps named below. allowlist: end everything",
+    "    # EXCEPT those named — stricter, and it will close your terminals.",
+    "    mode: blocklist",
+    "    # Auto-detect newly installed games (Steam, Heroic, any .desktop entry",
+    "    # declaring Categories=Game) so a new install is covered without an edit.",
+    "    block_games: false",
+    "    allowlist:",
+    "      - zen-bin",
+    "      - foot",
+]
 
-    A one-time migration for a config written before the window existed. Without
-    it the gate is inert: ``effective_edit_window`` reads the sanctioned config,
-    and a config with no block is ungated by design (back-compat).
+BROWSER_KEYS = [
+    "    # Sites blocked during curfew, via the root-owned managed browser policy.",
+    "    # Webapps (Discord, the calendar, the todo list) share ONE chromium",
+    "    # process, so they cannot be separated by ending a process — only by URL.",
+    "    blocked_urls: []",
+]
 
-    Idempotent — it is a no-op once the block is present, so re-running the
-    deploy does not keep rewriting or re-signing. It writes both files so the
-    watchdog does not immediately revert the live copy to a sanctioned snapshot
-    that lacks the block.
 
-    Root only, and it re-signs, so it is deliberately NOT in the sudoers file:
-    it runs from deploy.sh, which the user authorises with a password.
+def _append_to_block(text, parent_line, new_lines):
+    """Insert lines at the end of an existing YAML block, preserving layout.
+
+    Line-oriented on purpose. The config is human-written, carries comments, and
+    is read by a deliberately minimal parser shared with the guard; a real YAML
+    round-trip would reformat it and change the bytes the HMAC signs for no
+    reason. Returns the text unchanged if the parent block is not found.
+    """
+    lines = text.split("\n")
+    try:
+        start = lines.index(parent_line)
+    except ValueError:
+        return text
+    indent = len(parent_line) - len(parent_line.lstrip())
+    end = start + 1
+    while end < len(lines):
+        line = lines[end]
+        if line.strip() and (len(line) - len(line.lstrip())) <= indent:
+            break
+        end += 1
+    # Step back over trailing blank lines so the insert lands inside the block.
+    while end > start + 1 and not lines[end - 1].strip():
+        end -= 1
+    return "\n".join(lines[:end] + new_lines + lines[end:])
+
+
+def cmd_ensure_config(args):
+    """Bring an older config up to the current schema, then re-sign it once.
+
+    Three migrations, each independently idempotent: the edit_window block, the
+    app blocker's new keys, and the browser policy's site list. Without them the
+    new features ship inert -- the gate reads its window from the SANCTIONED
+    config, so a config with no block is ungated by design for back-compat.
+
+    Both the live and sanctioned copies are written, because writing only the
+    live one would have the watchdog revert it within 60 seconds.
+
+    Root only, and it re-signs without classifying, so it is deliberately NOT in
+    the sudoers file: it runs from deploy.sh, which the user authorises with a
+    password. Every key it adds is at its most conservative value, so the
+    migration itself changes no behaviour.
     """
     key = ng.read_key()
     if key is None:
@@ -590,23 +665,58 @@ def cmd_ensure_edit_window(args):
     except OSError:
         print("ERROR: no config.yaml to migrate", file=sys.stderr)
         return 2
-    if _read_edit_window(ng.yaml_load(live)) is not None:
-        print("edit_window already present; nothing to do.")
+
+    doc = ng.yaml_load(live)
+    updated, added = live, []
+
+    if _read_edit_window(doc) is None:
+        updated = updated.rstrip("\n") + "\n" + EDIT_WINDOW_BLOCK
+        added.append("edit_window %s-%s" % (EDIT_WINDOW_DEFAULT_START, EDIT_WINDOW_DEFAULT_END))
+
+    native = _read_field(doc, ["blocking", "native_apps"]) or {}
+    if isinstance(native, dict) and "mode" not in native:
+        updated = _append_to_block(updated, "  native_apps:", NATIVE_APPS_KEYS)
+        added.append("native_apps.mode/allowlist/block_games")
+
+    browser = _read_field(doc, ["blocking", "browser_extension"]) or {}
+    if isinstance(browser, dict) and "blocked_urls" not in browser:
+        updated = _append_to_block(updated, "  browser_extension:", BROWSER_KEYS)
+        added.append("browser_extension.blocked_urls")
+
+    if not added:
+        print("config already current; nothing to do.")
         return 0
 
-    canonical = canonicalize((live.rstrip("\n") + "\n" + EDIT_WINDOW_BLOCK).encode("utf-8"))
-    if _read_edit_window(ng.yaml_load(canonical.decode("utf-8"))) is None:
-        print("ERROR: the appended block did not parse back; refusing to write.",
-              file=sys.stderr)
+    canonical = canonicalize(updated.encode("utf-8"))
+    reparsed = ng.yaml_load(canonical.decode("utf-8"))
+
+    # Refuse rather than write a config the guard's own parser reads differently
+    # from what was intended. A silently mis-parsed config is worse than an
+    # un-migrated one: the guard would act on it.
+    problems = []
+    if _read_edit_window(reparsed) is None:
+        problems.append("edit_window did not parse back")
+    if (_read_field(reparsed, ["blocking", "native_apps", "mode"]) or "") != "blocklist":
+        problems.append("native_apps.mode did not parse back")
+    for keys, before in ((["curfew", "start"], _read_field(doc, ["curfew", "start"])),
+                         (["curfew", "end"], _read_field(doc, ["curfew", "end"])),
+                         (["blocking", "browser_extension", "extension_id"],
+                          _read_field(doc, ["blocking", "browser_extension", "extension_id"])),
+                         (["blocking", "native_apps", "blacklist"],
+                          _read_field(doc, ["blocking", "native_apps", "blacklist"]))):
+        if _read_field(reparsed, keys) != before:
+            problems.append("%s changed value" % ".".join(keys))
+    if problems:
+        print("ERROR: migration would corrupt the config (%s); wrote nothing."
+              % "; ".join(problems), file=sys.stderr)
         return 2
+
     prev = ng.load_state()
     new_hmac = _write_commit(key, canonical, prev,
                              prev.get("weekly_spent", 0), prev.get("week_anchor", ""),
                              prev.get("ledger", []),
-                             "migrate", "added edit_window %s-%s (no token)"
-                             % (EDIT_WINDOW_DEFAULT_START, EDIT_WINDOW_DEFAULT_END))
-    print("added edit_window %s-%s: config_hmac=%s"
-          % (EDIT_WINDOW_DEFAULT_START, EDIT_WINDOW_DEFAULT_END, new_hmac))
+                             "migrate", "added %s (no token)" % ", ".join(added))
+    print("migrated (%s): config_hmac=%s" % (", ".join(added), new_hmac))
     return 0
 
 
@@ -634,7 +744,7 @@ def main():
     p = argparse.ArgumentParser(prog="nightguard_ctl", description="Nightguard control CLI (root signer).")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("init")
-    sub.add_parser("ensure-edit-window")
+    sub.add_parser("ensure-config")
     sub.add_parser("verify")
     sub.add_parser("show")
     c = sub.add_parser("commit")
@@ -643,7 +753,7 @@ def main():
                    help="no-token sanctioned reset (admin) instead of a quota'd commit")
     args = p.parse_args()
     return {"init": cmd_init, "verify": cmd_verify, "show": cmd_show, "commit": cmd_commit,
-            "ensure-edit-window": cmd_ensure_edit_window}[args.cmd](args)
+            "ensure-config": cmd_ensure_config}[args.cmd](args)
 
 
 if __name__ == "__main__":

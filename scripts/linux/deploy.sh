@@ -129,8 +129,8 @@ systemctl daemon-reload
 # reads the window from the SANCTIONED config, so a config without the block is
 # ungated and the feature would ship inert. Idempotent: a no-op once present, so
 # repeated deploys neither rewrite nor re-sign.
-echo "== edit window: ensuring the config carries it =="
-NIGHTGUARD_DIR="$DATA" /usr/bin/python3 "$CODE/nightguard_ctl.py" ensure-edit-window
+echo "== config schema: adding anything this build needs =="
+NIGHTGUARD_DIR="$DATA" /usr/bin/python3 "$CODE/nightguard_ctl.py" ensure-config
 
 echo "== dry run: one watchdog tick against the deployed stack =="
 NIGHTGUARD_DIR="$DATA" /usr/bin/python3 "$CODE/nightguard_watchdog.py"
