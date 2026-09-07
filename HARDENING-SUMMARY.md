@@ -14,11 +14,8 @@ It installs the code, runs an idempotent config migration that adds the new
 fields, installs the panel, and re-enables the watchdog timer. It re-signs once
 during the migration, so `ngtui` will show a fresh config hash afterwards.
 
-Then check the panel:
-
-```
-quickshell -p packaging/omarchy/quickshell/nightguard
-```
+The deploy also installs the bar widget. Click the nightguard icon in the bar's
+right-hand cluster to see it.
 
 ## What shipped
 
@@ -85,21 +82,27 @@ already owns and restores, and which is lifted again outside the curfew. The
 Claude Code is a 215 MB compiled binary, not a node script. It is matched by its
 install path, so blocking it does not take the MCP servers with it.
 
-### 3. A read-only desktop panel
+### 3. A read-only bar widget
 
 Omarchy 4 replaced Waybar with quickshell, and `waybar` is not installed here at
 all — so the bar module this project shipped has had no host since the upgrade,
 and the refresh signal the TUI sends after every commit has been reaching nobody.
 
-The replacement is a standalone quickshell process: a 380px card anchored
-top-right, in the Omarchy 4 grammar rather than the 875×600 screen-centred window
-v3 used. Colours resolve at runtime from the same `colors.toml` the desktop reads.
-The font binds to the `monospace` alias, not a family, because you override the
-system font. Omarchy's private brand glyphs are not used.
+The replacement extends the bar widget you already had, so it opens on click and
+behaves like the network and bluetooth panels beside it. A first attempt built a
+standalone floating window instead; that was wrong and has been deleted. Being
+integrated means living in the bar, and only a shell plugin can do that.
 
-It has **no buttons**. Only the signer may change state, so this is a window and
-everything actionable points at the terminal UI. It shows counts, not names —
-it sits where anyone walking past can read it.
+It is built entirely from the shell's own kit — `PanelHero`,
+`PanelSectionHeader`, `PanelSeparator`, `Button` — so every colour, size and
+margin comes from `Style` and `Color`. Nothing is styled by hand, which is what
+makes a theme change repaint it for free and the corner radius follow whatever
+Hyprland is set to.
+
+It executes nothing privileged and changes no state. Only the signer may, and it
+is reached through the terminal UI; a test asserts the file never mentions sudo,
+pkexec, the signer or a commit. It shows counts, not names — it sits where anyone
+walking past can read it.
 
 It also warns if you ever end up in the `empower` group: `run0 --empower` makes
 every polkit action return YES with no prompt, which silently undoes the rule that
@@ -125,12 +128,14 @@ makes stopping the watchdog cost an authentication. You are not in it today.
   root-owned jail cgroup with `cgroup.kill` — genuinely un-escapable by your user
   and fork-race-proof — but creating that cgroup needs a live root experiment this
   session could not run.
-- **Nobody has looked at the panel.** The QML loads and instantiates cleanly under
-  the live compositor, with no errors. Screenshot capture was unavailable here
-  (`grim` hangs on its own in this context), so no pixels were inspected.
-- **The panel is not wired into the omarchy installer.** That script is built
-  around the Waybar module and its idempotency tests; rewriting it was not
-  verifiable here. Run the panel by hand or bind it.
+- **Nobody has looked at the open panel.** The plugin validates, hot-reloads into
+  the running shell and produces no QML errors — but its popup only exists once
+  clicked, and screenshot capture does not work from an agent context here
+  (`grim` hangs on its own). Click it and check.
+- **Theme sync is verified by measurement, not by eye.** All 22 installed themes
+  were run through the colour mapping and asserted for contrast in both light and
+  dark. That proves the values are right; it does not prove the layout looks
+  right.
 - **App blocking and game blocking ship OFF.** The migration sets blocklist mode,
   games off, no blocked sites — it changes no behaviour by itself. Turning each on
   is your decision, made from the TUI at the usual cost. `blocking.native_apps.enabled`
