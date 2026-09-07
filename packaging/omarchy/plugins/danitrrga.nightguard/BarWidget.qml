@@ -276,8 +276,12 @@ BarWidget {
         model: root.tokensTotal
         Rectangle {
           required property int index
-          width: 3
-          height: 2
+          // Style.space(n), not a raw literal — every other measurement in this
+          // plugin scales with the shell's density/font-scale setting, and a
+          // fixed-pixel pip pair would be the one thing here that doesn't
+          // (found in the cross-model UI audit, 2026-09-07).
+          width: Style.space(3)
+          height: Style.space(2)
           color: index < root.tokensLeft
                  ? button.foreground
                  : Qt.rgba(button.foreground.r, button.foreground.g, button.foreground.b, 0.25)

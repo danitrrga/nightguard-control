@@ -314,7 +314,15 @@ Panel {
       onCloseRequested: root.close()
       onActivateRequested: root.refresh()
       onTabRequested: function(direction) { root.switchPanel(direction) }
-      onTextKey: function(t) { if (t === "r" || t === "R") root.refresh() }
+      // Enter/Space only ever reach refresh() — this panel has no per-button
+      // focus, so "Abrir ngtui" (its whole reason to exist) had no keyboard
+      // path at all. A mnemonic, matching the clock panel's 't'/'T' pattern,
+      // rather than building a cursor/onMoveRequested pair for two buttons
+      // (found in the cross-model UI audit, 2026-09-07).
+      onTextKey: function(t) {
+        if (t === "r" || t === "R") root.refresh()
+        else if (t === "o" || t === "O") root.openTui()
+      }
 
       Flickable {
         id: panelFlick
