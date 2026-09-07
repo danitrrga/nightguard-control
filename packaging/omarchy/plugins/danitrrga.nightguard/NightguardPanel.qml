@@ -59,6 +59,16 @@ Panel {
 
   function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
   function refresh() { if (hostWidget) hostWidget.refresh() }
+
+  // Where the first action button sits on screen while the panel is open.
+  // Published so a test can put a real pointer on it: driving the same function
+  // over IPC proves the function works, not that the button is reachable, and
+  // "the buttons do nothing" was a claim about reachability.
+  function actionButtonRect() {
+    if (!opened || !tuiButton) return null
+    var p = tuiButton.mapToGlobal(0, 0)
+    return { x: p.x, y: p.y, w: tuiButton.width, h: tuiButton.height }
+  }
   function openTui() { if (hostWidget) hostWidget.openTui() }
 
   // A missing or non-numeric minute reads as "absent" rather than as undefined,
@@ -605,6 +615,7 @@ Panel {
             spacing: Style.space(8)
 
             Button {
+              id: tuiButton
               text: "Abrir ngtui"
               tooltipText: "La interfaz completa — lo único que puede cambiar algo"
               bordered: true

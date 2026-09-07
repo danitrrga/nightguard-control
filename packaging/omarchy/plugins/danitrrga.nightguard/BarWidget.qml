@@ -225,7 +225,14 @@ BarWidget {
         barInjected: panelLoader.item ? panelLoader.item.bar === root.bar : false,
         buttonWidth: button.implicitWidth,
         buttonHeight: button.implicitHeight,
-        slotVisible: root.visible
+        slotVisible: root.visible,
+        // Where the icon actually is on screen. Without this a test can only
+        // drive the widget through IPC, which walks past the very thing that
+        // was reported broken: whether a real click on those pixels lands.
+        screenX: button.mapToGlobal(0, 0).x,
+        screenY: button.mapToGlobal(0, 0).y,
+        actionButton: panelLoader.item && panelLoader.item.actionButtonRect
+                      ? panelLoader.item.actionButtonRect() : null
       })
     }
 

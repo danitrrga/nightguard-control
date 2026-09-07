@@ -187,7 +187,85 @@ omarchy-shell "$PLUGIN_ID" close >/dev/null 2>&1; sleep 1
     && ok "state says closed after close" || bad "state stayed opened — the binding is dead"
 
 echo
-echo "== 10. the shell is still healthy =="
+echo "== 10. a REAL pointer click on the icon =="
+# Everything above drives the widget through IPC, which walks past the one thing
+# that was actually reported broken: whether a click on those pixels lands. The
+# bar's hit-testing has its own gates -- a zero-sized or invisible slot has no
+# target at all -- and IPC sails past every one of them.
+#
+# dotool writes to /dev/uinput; an ACL grants this user rw. Skipped rather than
+# failed where that is not true, since it is an environment property.
+if command -v dotool >/dev/null 2>&1 && [[ -w /dev/uinput ]]; then
+    saved=$(hyprctl cursorpos 2>/dev/null)
+    # The LOGICAL size, not the panel's raw resolution. mapToGlobal and the
+    # pointer both work in logical pixels, so a scaled display (this one is
+    # 1920x1200 at 1.25, i.e. 1536x960 logical) puts every click a quarter of
+    # the way off if the physical numbers are used.
+    read -r sw sh < <(hyprctl -j monitors 2>/dev/null | python3 -c "
+import json,sys
+m = json.load(sys.stdin)[0]
+s = m.get('scale', 1) or 1
+print(round(m['width']/s), round(m['height']/s))")
+
+    click_at() {
+        printf "mouseto %s %s\n" \
+            "$(python3 -c "print($1/$sw)")" "$(python3 -c "print($2/$sh)")" | timeout 5 dotool
+        sleep 0.5
+        echo "click left" | timeout 5 dotool
+        sleep 1.5
+    }
+    opened_now() { omarchy-shell "$PLUGIN_ID" state 2>/dev/null \
+        | python3 -c "import json,sys; print(json.load(sys.stdin)['opened'])"; }
+
+    omarchy-shell "$PLUGIN_ID" close >/dev/null 2>&1; sleep 1
+    ix=$(omarchy-shell "$PLUGIN_ID" state 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(int(d['screenX']+d['buttonWidth']/2))")
+    iy=$(omarchy-shell "$PLUGIN_ID" state 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(int(d['screenY']+d['buttonHeight']/2))")
+
+    click_at "$ix" "$iy"
+    [[ $(opened_now) == "True" ]] && ok "a real click on the icon opened the panel" \
+        || bad "a real click on the icon did NOTHING — the hit target is broken"
+    [[ $(hyprctl layers 2>/dev/null | grep -c omarchy-keyboard-panel) -ge 1 ]] \
+        && ok "and a surface really is on screen" || bad "no surface after a real click"
+
+    echo
+    echo "== 11. a REAL pointer click on a button inside the panel =="
+    rect=$(omarchy-shell "$PLUGIN_ID" state 2>/dev/null | python3 -c "
+import json,sys
+a = json.load(sys.stdin).get('actionButton')
+print('%d %d' % (a['x'] + a['w']/2, a['y'] + a['h']/2)) if a else print('')")
+    if [[ -n $rect ]]; then
+        ok "the panel reports where its action button is ($rect)"
+        click_at $rect
+        [[ $(opened_now) == "False" ]] \
+            && ok "the button's handler ran (it closes the panel)" \
+            || bad "the panel stayed open — the click never reached the button"
+        # The launcher is launch-OR-FOCUS, so counting windows before and after
+        # says nothing when one is already up: it focuses that one and the count
+        # is unchanged. The property that matters is that a terminal UI exists
+        # after the click, however it got there.
+        sleep 1
+        after=$(hyprctl -j clients 2>/dev/null | python3 -c "import json,sys; print(len([c for c in json.load(sys.stdin) if c.get('class')=='org.omarchy.ngtui']))")
+        [[ $after -ge 1 ]] \
+            && ok "and the terminal UI is up ($after window(s))" \
+            || bad "no terminal UI — the button did not reach the launcher"
+        info "note: this leaves an ngtui window open; close it with q"
+    else
+        bad "the panel did not report its button position (is it open?)"
+    fi
+
+    omarchy-shell "$PLUGIN_ID" close >/dev/null 2>&1
+    # Put the pointer back where it was.
+    if [[ -n $saved ]]; then
+        printf "mouseto %s %s\n" \
+            "$(python3 -c "print(${saved%%,*}/$sw)")" \
+            "$(python3 -c "print(${saved##*, }/$sh)")" | timeout 5 dotool
+    fi
+else
+    info "dotool or /dev/uinput unavailable — real-click checks skipped"
+fi
+
+echo
+echo "== 12. the shell is still healthy =="
 pgrep -x quickshell >/dev/null && ok "shell still running" || bad "the shell DIED"
 
 echo
