@@ -64,6 +64,21 @@ def alacritty_path() -> str:
     return os.path.join(directory, "alacritty.toml")
 
 
+def raw_tokens() -> dict:
+    """The live theme's colour tokens, straight from ``colors.toml``.
+
+    Separate from ``load_omarchy_theme`` because the desktop panel needs the
+    values without Textual: the panel path is head-less and must not pay a UI
+    framework's import cost to learn what colour the accent is. Returns {} when
+    the theme cannot be read, so the caller can fall back rather than crash.
+    """
+    try:
+        with open(colors_path(), "rb") as fh:
+            return tomllib.load(fh)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+
 def _theme_from_colors(c: dict) -> Theme:
     """Build the omarchy ``Theme`` from a parsed ``colors.toml`` dict."""
     return Theme(

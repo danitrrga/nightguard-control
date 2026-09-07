@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Launch the Nightguard desktop panel (read-only).
+#
+# A separate quickshell process, not an omarchy-shell plugin. Plugins run as
+# unsandboxed code inside the long-lived shell process, and curfew state does not
+# belong there -- a crash or a bad edit would take the whole desktop shell with it.
+#
+# --no-duplicate so a second launch focuses nothing and exits rather than stacking
+# two panels on top of each other.
+set -euo pipefail
+
+CONFIG_DIR="${NIGHTGUARD_PANEL_DIR:-/usr/local/share/nightguard/quickshell/nightguard}"
+
+if [[ ! -f "$CONFIG_DIR/shell.qml" ]]; then
+    echo "nightguard-panel: no panel config at $CONFIG_DIR" >&2
+    echo "Set NIGHTGUARD_PANEL_DIR, or run it from the repo:" >&2
+    echo "  quickshell -p packaging/omarchy/quickshell/nightguard" >&2
+    exit 1
+fi
+
+exec quickshell --no-duplicate -p "$CONFIG_DIR"

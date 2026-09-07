@@ -28,6 +28,8 @@ def main() -> None:
     argv = sys.argv[1:]
     if argv and argv[0] == "status":
         sys.exit(_status(argv[1:]))  # head-less; emits JSON, exits 0
+    if argv and argv[0] == "panel":
+        sys.exit(_panel(argv[1:]))   # head-less; emits JSON, exits 0
     _run_tui()  # bare `ngtui`
 
 
@@ -75,6 +77,75 @@ def _status(args: list[str]) -> int:
 
     sys.stdout.write(json.dumps(obj, separators=(",", ":")) + "\n")
     return 0  # ALWAYS exit 0 (SC-3)
+
+
+def _panel(args: list[str]) -> int:
+    """Emit the desktop panel payload as one JSON line; ALWAYS return 0.
+
+    Same fail-closed contract as ``status``: the backend import is inside the
+    try, the except is broad, and any failure emits the fixed UNAVAILABLE object
+    rather than a partial one. The panel polls this, so a raise here would leave
+    a blank rectangle on the desktop where the curfew state should be.
+
+    The verdict and the clock both come from the non-blocking cache-only seams,
+    never the live network path -- a cold cache must not stall a repaint.
+    """
+    import json
+
+    from ngtui import panel
+
+    obj = panel.UNAVAILABLE
+    try:
+        import ngtui.backend as b  # CAN raise RuntimeError at import (bad STACK_DIR)
+
+        state = b.read_state()
+        cfg = b.sanctioned_config()
+        verdict = b.cache_only_verdict(cfg, state)
+        obj = panel.build(
+            verdict,
+            b.tokens_left(),
+            cfg,
+            state,
+            now_minutes=b.cache_only_now_minutes(cfg),
+            warnings=_live_warnings(),
+            theme_tokens=_theme_tokens(),
+        )
+    except Exception:  # broad on purpose — fail closed
+        obj = panel.UNAVAILABLE
+
+    sys.stdout.write(json.dumps(obj, separators=(",", ":")) + "\n")
+    return 0
+
+
+def _theme_tokens() -> dict:
+    """The desktop palette, or {} — never a raise on the panel path."""
+    try:
+        from ngtui import theme
+
+        return theme.raw_tokens()
+    except Exception:
+        return {}
+
+
+def _live_warnings() -> list[str]:
+    """Machine-state warnings worth surfacing next to the curfew state.
+
+    Never raises: a warning that crashes the panel is worse than an absent one.
+    """
+    from ngtui import panel
+
+    warnings = []
+    try:
+        import grp
+
+        entry = grp.getgrnam("empower")
+        line = "empower:x:%d:%s" % (entry.gr_gid, ",".join(entry.gr_mem))
+        message = panel.empower_warning(line)
+        if message:
+            warnings.append(message)
+    except Exception:
+        pass
+    return warnings
 
 
 if __name__ == "__main__":
