@@ -59,7 +59,8 @@ Hard constraints carried into every sketch:
 |---|------|----------------|--------|------|
 | 001 | tui-direction | What shape lets you see the cycle rather than read it off a list, and where does blocking live on it? | **E · tile grid** — chosen, with "less terminal" as the note | layout, tui, textual, omarchy-quattro, blocking |
 | 002 | tiles-less-terminal | The tile grid is right — what exactly makes it still read as a terminal, and which lever removes it? | **E1 and E3 both survived** | layout, tui, textual, omarchy-quattro, blocking, refinement |
-| 003 | ascii-modern | E1 and E3 are both close — what does the ASCII-Magic reference actually change about them? | — | layout, tui, textual, industrial-brutalist-ui, ascii-magic, blocking, refinement |
+| 003 | ascii-modern | E1 and E3 are both close — what does the ASCII-Magic reference actually change about them? | **aesthetic accepted** — frame, greyscale ramp hero, chips, one accent dot | layout, tui, textual, industrial-brutalist-ui, ascii-magic, blocking, refinement |
+| 004 | native-dashboard | If this is a generation change, the interaction has to change too — pointer-first, and the four frozen keys become controls | — | interaction, pointer, tui, textual, omarchy-quattro, blocking, editing, tokens |
 
 ## What the stack can actually draw
 
@@ -112,3 +113,45 @@ One hero only, which is the family's rule. Everything else in the interface is
 surface and hairline: meters are a `Static` with a `background` colour rather than
 run of block glyphs, on/off is a reverse-video tag, and section labels have no
 chrome at all.
+
+## The interaction model, read out of Omarchy 4
+
+Taken from `/usr/share/omarchy/shell/Ui/{Button,Toggle,ToggleSwitch,PanelSlider}.qml`
+and `plugins/panels/*/Panel.qml`, not from a guess about how it probably works:
+
+- **One cursor shared by keyboard and mouse.** A control is "hot" when the pointer is
+  over it *or* the panel's keyboard cursor is on it, and it emits `hovered(bool)` so
+  mouse-enter **moves** the keyboard cursor. The two can never disagree. This is the
+  single pattern that makes an Omarchy panel feel native, and it is the one the TUI was
+  missing entirely.
+- Paint priority pressed > focus > hover/cursor > selected > active > idle, each with
+  its own fill and border alpha from the theme's `[controls]` block.
+- The whole row is the click target; a switch is presentation only and holds no state.
+- Reserve the largest border any state can paint, so hovering never relayouts a
+  neighbour.
+- Right-click is a secondary action on the same target. Sliders take the wheel, with a
+  sub-notch accumulator so a trackpad works.
+- 100–120 ms colour transition, 400 ms tooltip delay, `Return`/`Enter`/`Space` activate.
+- Switch shape follows the theme: pill when Hyprland's corners are rounded, square when
+  sharp. Sharp here.
+- A panel is a list of named sections, and the cursor model knows which are visible and
+  whether each is a single row or a list.
+
+All of it maps onto Textual 8.2.7 (`transition`, `Widget.tooltip`, `Enter`/`Leave`,
+`Click.button`/`chain`, mouse scroll, plus `Switch`/`Checkbox`/`Select`/`SelectionList`/
+`OptionList`/`Collapsible`/`Input`/`Toast`/`DataTable`). **The one thing that does not
+map**: a terminal cannot change the pointer's shape, so there is no pointing-hand cursor
+and the hover fill has to carry the whole affordance on its own.
+
+## Editing the four frozen keys — the cost rule
+
+The site list, the blocklist/allowlist mode, game blocking and the allowlist become
+controls. Cost as set: **one token per list touched, per commit**, gated by the clock
+window like any other weakening.
+
+One consequence is live in sketch 004 as a toolbar switch rather than a decision made
+quietly: applied uniformly, *adding* `discord.com` to the site list is a tightening yet
+still costs a token and is still refused outside the window — so you cannot make the
+pact stricter at midnight, which contradicts the rule the guard already applies
+everywhere else. The alternative charges and gates a list edit only when it actually
+loosens. Both are switchable in the sketch; the decision is open.

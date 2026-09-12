@@ -1,0 +1,1146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sketch 004 — native dashboard</title>
+<link rel="stylesheet" href="../themes/default.css">
+<style>
+  body {
+    margin: 0; background: #07080a; color: var(--fg);
+    font-family: "CaskaydiaCove Nerd Font", ui-monospace, monospace;
+    padding: 52px 0 84px;
+  }
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: #101215; border-bottom: 1px solid var(--hairline);
+    padding: 7px 14px; display: flex; gap: 6px; align-items: center;
+    font-size: 12px; flex-wrap: wrap;
+  }
+  .variant-tab {
+    background: transparent; color: var(--dim);
+    border: 1px solid var(--border-normal); border-radius: 0;
+    padding: 4px 10px; cursor: pointer; font: inherit;
+    transition: color .12s ease-out, border-color .12s ease-out;
+  }
+  .variant-tab:hover { color: var(--fg); border-color: var(--border-hover); }
+  .variant-tab.active { color: var(--fg); border-color: var(--fg); }
+  #variant-nav .navsep { width: 1px; height: 20px; background: var(--hairline); margin: 0 6px; }
+  #variant-nav .navlabel { color: var(--dimmer); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
+
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .variant { display: none; }
+  .variant.active { display: block; }
+  .cap { width: calc(var(--cols) * 1ch); margin: 0 auto; }
+  .cap h2 { font-size: 15px; margin: 0 0 2px; font-weight: 700; }
+  .cap p { font-size: 12px; line-height: 1.55; color: var(--dim); margin: 0 0 6px; max-width: 100ch; }
+  .cap .axis { color: var(--focus); }
+  .cap code { color: var(--sage); font-size: 11.5px; }
+  .win { border: 1px solid var(--sage); border-radius: 0; width: max-content; margin: 0 auto; }
+
+  /* ---------- grid primitives ---------- */
+  .term { position: relative; }
+  .row { height: 1lh; display: flex; align-items: baseline; white-space: pre; }
+  .row.h3 { height: 3lh; }
+  .sp { height: 1lh; }
+  .fill { flex: 1 1 auto; }
+  .dim { color: var(--dim); } .dimmer { color: var(--dimmer); }
+  .b { font-weight: 700; }
+  .acc { color: var(--accent); } .urg { color: var(--urgent); } .foc { color: var(--focus); }
+  .label { color: var(--dimmer); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+
+  .frame { display: flex; align-items: stretch; }
+  .vedge { width: 1ch; white-space: pre; color: var(--dimmer); opacity: .45;
+           display: flex; flex-direction: column; flex: 0 0 auto; }
+  .vedge span { height: 1lh; }
+  .inner { flex: 1 1 auto; padding: 0 calc(2 * 1ch); box-sizing: border-box; }
+  .hedge { height: 1lh; white-space: pre; color: var(--dimmer); opacity: .45; }
+  .kl { color: var(--dimmer); opacity: .38; white-space: pre; }
+
+  .k { color: var(--dim); flex: 0 0 auto; }
+  .w10 { width: 10ch; } .w12 { width: 12ch; } .w14 { width: 14ch; } .w18 { width: 18ch; } .w22 { width: 22ch; }
+
+  /* ============================================================
+     THE CONTROL ROW — the whole point of this round.
+     One highlight, driven by BOTH pointer hover and keyboard cursor, exactly
+     as Omarchy's kit does it (Button.qml: `hot = containsMouse || hasCursor`,
+     and `hovered(bool)` moves the panel's own cursor). Paint priority matches
+     the kit: pressed > focus > hover/cursor > selected > idle, with the alphas
+     from the theme's [controls] block.
+     Border width never changes between states, so hovering never reflows a
+     neighbour — the kit reserves the largest border for the same reason. */
+  .ctl {
+    display: flex; align-items: baseline; white-space: pre;
+    height: 1lh; box-sizing: border-box;
+    border-left: 1px solid transparent;
+    padding-left: calc(1 * 1ch);
+    background: transparent;
+    cursor: pointer;
+    transition: background 120ms ease-out, border-color 120ms ease-out;
+  }
+  .ctl.hot        { background: var(--fill-hover);    border-left-color: var(--border-hover); }
+  .ctl.sel        { background: var(--fill-selected); border-left-color: var(--border-selected); }
+  .ctl.sel.hot    { background: var(--fill-hover);    border-left-color: var(--border-hover); }
+  .ctl.pressed    { background: var(--fill-pressed);  border-left-color: var(--border-focus); }
+  .ctl.staged     { border-left-color: var(--focus); }
+  .ctl.refused    { cursor: not-allowed; }
+  .ctl.refused .val { color: var(--dimmer); }
+
+  /* switch: ToggleSwitch.qml is a pill on rounded themes, square on sharp.
+     Hyprland rounding is 0 here, so: square. Two cells, filled = on. */
+  .sw { flex: 0 0 auto; }
+  .sw i { display: inline-block; width: 2ch; height: 1lh; vertical-align: bottom; font-style: normal; }
+  .sw .on  { background: var(--fg); }
+  .sw .off { background: var(--fill-selected); }
+  .sw .knobon  { background: var(--fg); }
+  .sw .knoboff { background: var(--fill-selected); }
+
+  /* segmented control = ButtonGroup.qml: adjacent buttons, the chosen one
+     carrying the selected fill */
+  .segctl { display: inline-flex; }
+  .segctl span { padding: 0 1ch; }
+  .segctl .on { background: var(--fg); color: var(--bg); font-weight: 700; }
+  .segctl .off { color: var(--dim); }
+
+  .tag { padding: 0 1ch; }
+  .tag.on  { background: var(--fg); color: var(--bg); font-weight: 700; }
+  .tag.bad { background: var(--urgent); color: var(--bg); font-weight: 700; }
+  .tag.off { color: var(--dimmer); }
+
+  .chip { white-space: pre; color: var(--dim); cursor: pointer;
+          transition: color 120ms ease-out; }
+  .chip .edge { color: var(--border-normal); transition: color 120ms ease-out; }
+  .chip:hover { color: var(--fg); } .chip:hover .edge { color: var(--fg); }
+  .chip.primary { color: var(--bg); background: var(--fg); font-weight: 700; }
+  .chip.primary .edge { color: var(--bg); }
+  .chip.disabled { color: var(--dimmer); cursor: not-allowed; }
+  .chip.disabled .edge { color: var(--border-normal); }
+  .chip.disabled:hover { color: var(--dimmer); }
+
+  .digits { white-space: pre; line-height: var(--cell-ratio); margin: 0; }
+  .digits.bold { font-weight: 700; }
+  .ramp { white-space: pre; cursor: crosshair; }
+  .ramp span { transition: none; }
+
+  .seg { display: flex; height: 1lh; align-items: stretch; }
+  .seg > i { display: block; font-style: normal; }
+
+  .cbox { flex: 0 0 auto; }
+
+  /* tooltip: PanelToolTip / Button.qml ToolTip — 400ms delay, themed from
+     [tooltip] in shell.toml, plain text, square */
+  #tip {
+    position: fixed; z-index: 10000; pointer-events: none; display: none;
+    background: var(--bg); color: var(--fg);
+    border: 1px solid var(--hairline); border-radius: 0;
+    padding: 2px 8px; font-size: 12px; white-space: pre;
+    font-family: "CaskaydiaCove Nerd Font", ui-monospace, monospace;
+  }
+
+  #sketch-tools, #state-bar {
+    position: fixed; bottom: 12px; z-index: 9999;
+    font-family: system-ui, sans-serif; font-size: 12px;
+    background: rgba(0,0,0,.8); color: #fff; padding: 8px 12px;
+    border-radius: 8px; opacity: .38; transition: opacity .2s ease-out;
+    display: flex; gap: 8px; align-items: center;
+  }
+  #sketch-tools { right: 12px; } #state-bar { left: 12px; }
+  #sketch-tools:hover, #state-bar:hover { opacity: 1; }
+  #sketch-tools select, #sketch-tools button, #state-bar button {
+    font: inherit; background: #1b1d20; color: #cfd3d6;
+    border: 1px solid #3a4045; border-radius: 4px; padding: 3px 8px; cursor: pointer;
+  }
+  #state-bar button:hover, #sketch-tools button:hover { background: #2a2e32; color: #fff; }
+  #state-bar button.on { background: #3a4b45; color: #fff; border-color: #5d726a; }
+  .lbl { color: #9aa0a6; }
+  #rowcount { color: #9aa0a6; font-variant-numeric: tabular-nums; }
+  #rowcount.over { color: #ff8a8a; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="navlabel">Sketch 004 · native dashboard</span>
+  <span class="navsep"></span>
+  <button class="variant-tab active" data-v="dash">Dashboard</button>
+  <button class="variant-tab" data-v="list">Editing a list</button>
+  <button class="variant-tab" data-v="commit">Staged &amp; commit</button>
+  <span class="navsep"></span>
+  <span class="navlabel" style="color:var(--focus)">hover and click — it is live</span>
+</div>
+
+<div class="stage">
+
+  <section class="variant active" id="variant-dash">
+    <div class="cap">
+      <h2>Dashboard — one cursor, pointer or keyboard</h2>
+      <p>Every row is a control, and the highlight is driven by <b>both</b> the pointer and
+      the keyboard cursor, the way Omarchy's own panels do it
+      (<code>hot = containsMouse || hasCursor</code>, and the hover signal moves the panel's
+      cursor so the two never disagree). Move the mouse over the rows; then use
+      <b>j / k</b> or the arrows without touching the mouse — the same highlight moves.
+      <b>Click a switch row</b> to stage it, <b>click a list row</b> to open its editor.
+      Hover the day ramp to read any hour. Paint priority, fill alphas, the 120 ms colour
+      transition and the 400 ms tooltip delay are the kit's, not invented.
+      <span class="axis">Border width never changes between states, so hovering never
+      nudges a neighbouring row — the kit reserves the largest border for exactly that
+      reason.</span></p>
+    </div>
+    <div class="win"><div class="term" id="term-dash"></div></div>
+  </section>
+
+  <section class="variant" id="variant-list">
+    <div class="cap">
+      <h2>Editing a list — the four keys that could not be reached</h2>
+      <p>The site list, the blocklist/allowlist mode, game blocking and the allowlist are
+      classified by the signer already but were absent from the only sanctioned editor, so
+      they were frozen. Here they are controls. A list editor is a
+      <code>SelectionList</code> (click to strike an entry) plus an add field, and every
+      pending change carries <b>its own direction</b> — struck entries loosen, added ones
+      tighten — with the cost stated before anything is authorised.
+      <span class="axis">Cost rule: one token per list touched, per commit. Two lists in one
+      commit is two tokens.</span> Use the chips at the top to switch between the four
+      lists; the entries are the real ones from the running config, and the games list is
+      what the catalogue actually detected on this machine.</p>
+    </div>
+    <div class="win"><div class="term" id="term-list"></div></div>
+  </section>
+
+  <section class="variant" id="variant-commit">
+    <div class="cap">
+      <h2>Staged &amp; commit — the cost before the fingerprint</h2>
+      <p>The tray holds everything staged, grouped by what it costs, with the running
+      total against what is left. The commit control is <b>refused with its reason
+      visible</b> rather than silently dead — hover it. Switch the state to
+      <code>locked</code> in the bottom-left to see the whole tray go unauthorisable
+      because the clock window is shut, which is the rule that has to be legible
+      <i>before</i> any authentication, never after.</p>
+    </div>
+    <div class="win"><div class="term" id="term-commit"></div></div>
+  </section>
+
+</div>
+
+<div id="tip"></div>
+
+<div id="state-bar">
+  <span class="lbl">State</span>
+  <button data-s="window" class="on">window open</button>
+  <button data-s="open">open, window shut</button>
+  <button data-s="locked">locked</button>
+  <button data-s="grace">grace</button>
+  <button data-s="weak">weak mode</button>
+</div>
+
+<div id="sketch-tools">
+  <span class="lbl">cost rule</span>
+  <button id="rule-toggle" title="which list edits cost a token">every list edit</button>
+  <span class="lbl">rows</span><span id="rowcount">—</span>
+  <select id="theme-switcher"><option value="default">dos-moos (live)</option></select>
+  <button id="grid-toggle">135×46</button>
+</div>
+
+<script>
+/* ============================================================================
+   Live data from the running stack, plus a staging model — because this round
+   is about interaction, the mockup has to actually hold state.
+   ========================================================================== */
+const DATA = {
+  theme: "dos-moos", tz: "Europe/Amsterdam",
+  curfew: { start: "21:30", end: "05:30" },
+  window: { start: "05:30", end: "14:00" },
+  tokens: { of: 3, left: 3, resets: "Mon 09-14" },
+  hmac: { config: "555b5d2b…81bb", state: "904d5e26…7039" },
+  watchdog: { last: "21:52:33", every: 60 },
+  policy: { restored: "21:28", targets: 5 },
+  jail: "/sys/fs/cgroup/nightguard"
+};
+
+/* The live config, and a staged copy the controls mutate. */
+const LIVE = {
+  apps_enabled: true,
+  mode: "blocklist",
+  blacklist: ["steam", "discord"],
+  allowlist: ["zen-bin", "foot"],
+  block_games: false,
+  sites_enabled: true,
+  blocked_urls: []
+};
+let STAGED = JSON.parse(JSON.stringify(LIVE));
+
+/* What the machine knows that the config does not — this is what stops the UI
+   being a config file with a cursor. */
+const KNOWN = {
+  matching: { steam: "/usr/lib/steam/steam" },
+  dead: { discord: "a chromium webapp — shares one process with the calendar, the todo list and the portal" },
+  games: [
+    ["Counter-Strike 2", "steam · appmanifest_730"],
+    ["Yu-Gi-Oh! Master Duel", "steam · appmanifest_1449850"],
+    ["Rocket League", "heroic · ~/Games/Heroic/rocketleague"]
+  ],
+  siteSuggestions: ["discord.com", "youtube.com", "x.com", "reddit.com"]
+};
+
+const STATES = {
+  window: { verdict: "OPEN",   role: "acc", glyph: "", now: "09:14", left: "12:16:00",
+            meta: "OPEN · MAY WEAKEN UNTIL 14:00", caption: "the clock window is open", windowOpen: true },
+  open:   { verdict: "OPEN",   role: "acc", glyph: "", now: "17:40", left: "03:50:00",
+            meta: "OPEN · CURFEW STARTS 21:30", caption: "house open, window shut", windowOpen: false },
+  locked: { verdict: "LOCKED", role: "urg", glyph: "", now: "21:52", left: "07:38:00",
+            meta: "CURFEW · 7H 38M REMAINING", caption: "curfew until 05:30", windowOpen: false },
+  grace:  { verdict: "GRACE",  role: "foc", glyph: "", now: "22:40", left: "00:18:32",
+            meta: "GRACE · 18M 32S REMAINING", caption: "daily bypass running", windowOpen: false },
+  weak:   { verdict: "LOCKED", role: "urg", glyph: "", now: "22:04", left: "07:26:00",
+            meta: "CURFEW · 7H 26M REMAINING", caption: "curfew until 05:30", windowOpen: false }
+};
+let STATE = "window";
+const st = () => STATES[STATE];
+const windowOpen = () => st().windowOpen;
+const isWeak = () => STATE === "weak";
+
+/* ---- the cursor: ONE model, moved by pointer hover AND by the keyboard ---- */
+let CURSOR = { id: null };
+let PRESSED = null;
+let VIEW = "dash";
+let LISTKEY = "blocked_urls";       // which list the editor is showing
+
+/* ---------------------------------------------------------------- helpers */
+const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x !== undefined) n.textContent = x; return n; };
+const sp = (c, x) => el("span", c, x);
+const rowOf = (...k) => { const r = el("div", "row"); k.forEach(n => r.appendChild(typeof n === "string" ? document.createTextNode(n) : n)); return r; };
+const blank = n => { const f = document.createDocumentFragment(); for (let i = 0; i < (n || 1); i++) f.appendChild(el("div", "sp")); return f; };
+const minOf = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const inArc = (m, a, b) => (a <= b ? (m >= a && m < b) : (m >= a || m < b));
+const hedge = (n, ch) => { const r = el("div", "hedge"); r.textContent = (ch || "▔").repeat(n); return r; };
+const hhmm = m => String(Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(Math.floor(m % 60)).padStart(2, "0");
+
+/* tooltip, 400 ms like the kit */
+const tip = document.getElementById("tip");
+let tipTimer = null;
+function bindTip(node, text) {
+  if (!text) return node;
+  node.addEventListener("mousemove", e => {
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(() => {
+      tip.textContent = typeof text === "function" ? text(e, node) : text;
+      tip.style.display = "block";
+      tip.style.left = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8) + "px";
+      tip.style.top = (e.clientY + 16) + "px";
+    }, 400);
+  });
+  node.addEventListener("mouseleave", () => { clearTimeout(tipTimer); tip.style.display = "none"; });
+  return node;
+}
+
+/* ============================================================================
+   THE CONTROL ROW. Every interactive thing on the screen goes through here, so
+   the hover/cursor/selected/pressed priority is defined once — the same reason
+   the kit has exactly one Button.qml for "every clickable thing".
+   ========================================================================== */
+const REG = [];                       // cursor order, rebuilt on every paint
+function ctl(id, opts, build) {
+  const o = opts || {};
+  const r = el("div", "ctl");
+  r.dataset.id = id;
+  if (CURSOR.id === id) r.classList.add("hot");
+  if (o.selected) r.classList.add("sel");
+  if (o.staged) r.classList.add("staged");
+  if (PRESSED === id) r.classList.add("pressed");
+  if (o.refused) r.classList.add("refused");
+  build(r);
+  /* hover moves the shared cursor — the kit's `hovered(bool)` signal */
+  r.addEventListener("mouseenter", () => { CURSOR.id = id; paint(); });
+  r.addEventListener("mousedown", () => { PRESSED = id; paint(); });
+  r.addEventListener("mouseup", () => { PRESSED = null; paint(); });
+  if (o.onClick) {
+    r.addEventListener("click", e => {
+      if (o.refused) return;
+      o.onClick(e.button === 2);
+    });
+    r.addEventListener("contextmenu", e => { e.preventDefault(); if (!o.refused && o.onRightClick) o.onRightClick(); });
+  }
+  if (o.tip) bindTip(r, o.tip);
+  REG.push({ id, onClick: o.refused ? null : o.onClick });
+  return r;
+}
+
+/* square switch — ToggleSwitch is a pill on rounded themes and square on
+   sharp, and this desktop's rounding is 0 */
+function sw(on) {
+  const s = el("span", "sw");
+  const a = el("i", on ? "on" : "off"); a.textContent = "  ";
+  const b = el("i", on ? "knobon" : "knoboff"); b.textContent = "  ";
+  b.style.background = on ? "var(--fg)" : "var(--border-normal)";
+  a.style.background = on ? "var(--fill-selected)" : "var(--fill-selected)";
+  const wrap = el("span", "sw");
+  if (on) { wrap.appendChild(a); wrap.appendChild(b); }
+  else { wrap.appendChild(b); wrap.appendChild(a); }
+  return wrap;
+}
+/* segmented control — ButtonGroup.qml */
+function segctl(options, value) {
+  const g = el("span", "segctl");
+  options.forEach(o => g.appendChild(sp(o === value ? "on" : "off", o)));
+  return g;
+}
+function checkbox(on) { return sp(on ? "cbox b" : "cbox dimmer", on ? "▣" : "▢"); }
+
+/* ------------------------------------------------------- the ASCII hero */
+const RAMP = " .:-=+*#%@";
+function dayDensity(m) {
+  const cs = minOf(DATA.curfew.start), ce = minOf(DATA.curfew.end);
+  if (inArc(m, cs, ce)) return 9;
+  const h = ((cs - m + 1440) % 1440) / 60;
+  if (h < 1) return 8; if (h < 2) return 7; if (h < 3) return 6;
+  if (h < 4) return 5; if (h < 6) return 4; if (h < 8) return 3;
+  if (h < 11) return 2; return 1;
+}
+/* Hovering any column reads out that hour — free affordance the old screen
+   could not have had, because it had no picture of the day at all. */
+function rampRow(widthCh, nowMin) {
+  const r = el("div", "row ramp");
+  const nowCell = Math.floor((nowMin / 1440) * widthCh);
+  const cs = minOf(DATA.curfew.start), ce = minOf(DATA.curfew.end);
+  const ws = minOf(DATA.window.start), we = minOf(DATA.window.end);
+  let run = null;
+  const flush = () => {
+    if (!run) return;
+    const s = sp("", run.txt);
+    s.style.color = run.locked ? "var(--fg)" : "var(--dim)";
+    s.style.opacity = run.locked ? ".92" : String(0.30 + run.d * 0.055);
+    r.appendChild(s); run = null;
+  };
+  for (let i = 0; i < widthCh; i++) {
+    const m = ((i + 0.5) / widthCh) * 1440;
+    if (i === nowCell) { flush();
+      const c = sp("b", "█"); c.style.color = "var(--fg)"; r.appendChild(c); continue; }
+    const d = dayDensity(m), locked = inArc(m, cs, ce);
+    if (run && run.d === d) run.txt += RAMP[d];
+    else { flush(); run = { d, locked, txt: RAMP[d] }; }
+  }
+  flush();
+  bindTip(r, (e, node) => {
+    const rect = node.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(0.9999, (e.clientX - rect.left) / rect.width));
+    const m = frac * 1440;
+    const lock = inArc(m, cs, ce), win = inArc(m, ws, we);
+    return `${hhmm(m)}   ${lock ? "curfew — locked" : "open"}\n` +
+           `        ${win ? "a loosening is allowed here" : "a loosening is refused here"}`;
+  });
+  return r;
+}
+function permissionRow(widthCh) {
+  const ws = minOf(DATA.window.start), we = minOf(DATA.window.end);
+  const r = el("div", "row");
+  let run = null;
+  const flush = () => { if (run) { const s = sp(run.on ? "dim" : "", run.txt);
+    if (run.on) s.style.opacity = ".8"; r.appendChild(s); run = null; } };
+  for (let i = 0; i < widthCh; i++) {
+    const on = inArc(((i + 0.5) / widthCh) * 1440, ws, we);
+    if (run && run.on === on) run.txt += on ? "▔" : " ";
+    else { flush(); run = { on, txt: on ? "▔" : " " }; }
+  }
+  flush(); return r;
+}
+function axisRow(widthCh, every) {
+  const r = el("div", "row dimmer");
+  let s = "";
+  for (let h = 0; h <= 24; h += (every || 2)) {
+    const col = Math.round((h / 24) * widthCh), lab = String(h % 24).padStart(2, "0");
+    while (s.length < col) s += " ";
+    s = s.slice(0, Math.max(0, col - 1)) + lab;
+  }
+  r.appendChild(document.createTextNode(s.slice(0, widthCh)));
+  return r;
+}
+
+/* ------------------------------------------------------- Digits (textual 8.2.7) */
+const DIG3 = [["   ","   ","   "],["╭─╮","│ │","╰─╯"],["╶╮"," │","╶┴╴"],["╶─╮","┌─┘","╰─╴"],["╶─╮"," ─┤","╶─╯"],["╷ ╷","╰─┤","  ╵"],["╭─╴","╰─╮","╶─╯"],["╭─╴","├─╮","╰─╯"],["╶─┐","  │","  ╵"],["╭─╮","├─┤","╰─╯"],["╭─╮","╰─┤","╶─╯"]];
+function digitsNode(txt, cls) {
+  const lines = ["", "", ""];
+  for (const ch of txt) {
+    if (ch === ":") { lines[0] += " "; lines[1] += ":"; lines[2] += " "; continue; }
+    const i = " 0123456789".indexOf(ch);
+    const g = i > 0 ? DIG3[i] : DIG3[0];
+    for (let r = 0; r < 3; r++) lines[r] += g[r];
+  }
+  const p = el("pre", "digits" + (cls ? " " + cls : ""));
+  p.textContent = lines.join("\n");
+  return p;
+}
+
+/* ============================================================================
+   THE COST MODEL. One token per LIST touched, per commit — the rule Daniel set.
+   Non-list keys keep the signer's existing polarity: tightening is free,
+   loosening costs one.
+   ========================================================================== */
+/* Two candidate cost rules, switchable from the toolbar because the choice has
+   a consequence worth feeling rather than arguing about.
+
+   "every"  — Daniel's rule as stated: one token per list touched, per commit,
+              whichever direction it moves. Simple, and it makes the lists as
+              expensive to fiddle with as the curfew itself.
+              The cost: adding discord.com to the site list is a TIGHTENING, and
+              under this rule it still costs a token and is still refused
+              outside the clock window. So at 22:00, realising you should block
+              a site, you cannot make the pact stricter.
+
+   "loosen" — a list edit costs a token and needs the window only when it
+              actually loosens (removing from a blocklist, adding to an
+              allowlist). Pure additions to a blocklist stay free and allowed at
+              any hour, which is the rule the guard already applies to every
+              other tightening.
+              The cost: a midnight "I'll just take steam off the list, and put
+              it back tomorrow" is two separate commits, and only the first one
+              is charged — so the loophole is smaller than it looks, but it is
+              not zero. */
+let COST_RULE = "every";
+
+const LIST_KEYS = ["blacklist", "allowlist", "blocked_urls"];
+const LIST_LABEL = {
+  blacklist: "app blocklist", allowlist: "app allowlist", blocked_urls: "site list"
+};
+function listTouched(key) {
+  return JSON.stringify(LIVE[key]) !== JSON.stringify(STAGED[key]);
+}
+function stagedChanges() {
+  const out = [];
+  LIST_KEYS.forEach(k => {
+    if (!listTouched(k)) return;
+    const removed = LIVE[k].filter(x => !STAGED[k].includes(x));
+    const added = STAGED[k].filter(x => !LIVE[k].includes(x));
+    const loosens = (k === "allowlist" ? added.length > 0 : removed.length > 0);
+    out.push({ key: k, label: LIST_LABEL[k],
+      cost: (COST_RULE === "every" || loosens) ? 1 : 0, kind: "list",
+      detail: [
+        added.length ? `+${added.join(", ")}` : null,
+        removed.length ? `−${removed.join(", ")}` : null
+      ].filter(Boolean).join("   "),
+      loosens });
+  });
+  if (LIVE.mode !== STAGED.mode) {
+    const loosens = STAGED.mode === "blocklist";
+    out.push({ key: "mode", label: "app mode", cost: loosens ? 1 : 0, kind: "scalar",
+      detail: `${LIVE.mode} → ${STAGED.mode}`, loosens });
+  }
+  if (LIVE.block_games !== STAGED.block_games) {
+    const loosens = !STAGED.block_games;
+    out.push({ key: "block_games", label: "game blocking", cost: loosens ? 1 : 0, kind: "scalar",
+      detail: `${LIVE.block_games ? "on" : "off"} → ${STAGED.block_games ? "on" : "off"}`, loosens });
+  }
+  if (LIVE.apps_enabled !== STAGED.apps_enabled) {
+    const loosens = !STAGED.apps_enabled;
+    out.push({ key: "apps_enabled", label: "app blocking", cost: loosens ? 1 : 0, kind: "scalar",
+      detail: `${LIVE.apps_enabled ? "on" : "off"} → ${STAGED.apps_enabled ? "on" : "off"}`, loosens });
+  }
+  if (LIVE.sites_enabled !== STAGED.sites_enabled) {
+    const loosens = !STAGED.sites_enabled;
+    out.push({ key: "sites_enabled", label: "site blocking", cost: loosens ? 1 : 0, kind: "scalar",
+      detail: `${LIVE.sites_enabled ? "on" : "off"} → ${STAGED.sites_enabled ? "on" : "off"}`, loosens });
+  }
+  return out;
+}
+const totalCost = () => stagedChanges().reduce((a, c) => a + c.cost, 0);
+const anyLoosening = () => stagedChanges().some(c => c.loosens);
+/* Why the commit is refused, in the signer's own terms — stated BEFORE any
+   authentication, which is the rule the whole product rests on. */
+function commitRefusal() {
+  const ch = stagedChanges();
+  if (!ch.length) return "nothing staged";
+  const gated = COST_RULE === "every"
+    ? (anyLoosening() || ch.some(c => c.kind === "list"))
+    : anyLoosening();
+  if (!windowOpen() && gated)
+    return `refused — a change to a list or a loosening is only accepted between ${DATA.window.start} and ${DATA.window.end}`;
+  if (totalCost() > DATA.tokens.left)
+    return `refused — costs ${totalCost()} tokens, ${DATA.tokens.left} left this week`;
+  return null;
+}
+
+/* ------------------------------------------------------- chrome */
+function chip(label, mode, onClick, tipText) {
+  const c = el("span", "chip" + (mode ? " " + mode : ""));
+  const filled = mode === "primary";
+  c.appendChild(sp("edge", filled ? " " : "▏"));
+  c.appendChild(sp("", " " + label + " "));
+  c.appendChild(sp("edge", filled ? " " : "▕"));
+  if (onClick && !String(mode || "").includes("disabled")) c.addEventListener("click", onClick);
+  if (tipText) bindTip(c, tipText);
+  return c;
+}
+function chipRow(items) {
+  const r = el("div", "row");
+  items.forEach((it, i) => { if (i) r.appendChild(sp("", "  ")); r.appendChild(chip(...it)); });
+  return r;
+}
+function framed(rows, build) {
+  const f = el("div", "frame");
+  const L = el("div", "vedge"), R = el("div", "vedge");
+  for (let i = 0; i < rows; i++) { L.appendChild(sp("", "▏")); R.appendChild(sp("", "▕")); }
+  const inner = el("div", "inner");
+  build(inner);
+  f.appendChild(L); f.appendChild(inner); f.appendChild(R);
+  return f;
+}
+function header(inner, IW) {
+  const s = st();
+  const h = el("div", "row");
+  h.appendChild(sp("b", "󰂲 NIGHTGUARD"));
+  h.appendChild(sp("", "  "));
+  h.appendChild(sp("acc b", "●"));
+  h.appendChild(el("span", "fill"));
+  if (isWeak()) { h.appendChild(sp("tag bad", "WEAK MODE")); h.appendChild(sp("", "  ")); }
+  h.appendChild(sp("dimmer", `${DATA.theme} · ${DATA.tz} · ${s.now}`));
+  inner.appendChild(h);
+  inner.appendChild(hedge(IW));
+}
+function heroBlock(inner, IW) {
+  const s = st();
+  inner.appendChild(blank(1));
+  inner.appendChild(rowOf(sp("label", "The day"), el("span", "fill"), sp("dimmer", s.caption)));
+  inner.appendChild(blank(1));
+  inner.appendChild(rampRow(IW, minOf(s.now)));
+  inner.appendChild(permissionRow(IW));
+  inner.appendChild(axisRow(IW, 2));
+  inner.appendChild(blank(1));
+}
+
+/* ============================================================ VIEW: dashboard */
+function renderDash(root) {
+  const s = st(), IW = 127;
+  root.appendChild(framed(46, inner => {
+    inner.appendChild(blank(1));
+    header(inner, IW);
+    heroBlock(inner, IW);
+
+    /* state + week, two columns, no boxes */
+    const band = el("div", "row"); band.style.height = "7lh"; band.style.alignItems = "stretch";
+    const L = el("div"); L.style.width = "62ch"; L.style.flex = "0 0 auto";
+    L.appendChild(rowOf(sp("label", "State")));
+    L.appendChild(rowOf(sp(s.role + " b", s.glyph + "  " + s.verdict), sp("", "   "),
+      sp("dimmer", `curfew ${DATA.curfew.start}–${DATA.curfew.end}`)));
+    const d = el("div", "row h3"); d.appendChild(digitsNode(s.left, s.role)); L.appendChild(d);
+    L.appendChild(rowOf(sp("label", s.meta)));
+    const V = el("div", "kl"); V.style.width = "1ch"; V.style.whiteSpace = "pre";
+    for (let i = 0; i < 7; i++) V.appendChild(rowOf("│"));
+    const R = el("div"); R.style.flex = "1 1 auto"; R.style.paddingLeft = "2ch";
+    R.appendChild(rowOf(sp("label", "This week")));
+    const t = el("div", "row");
+    t.appendChild(sp("k w12", "tokens"));
+    const segw = el("span", "seg"); segw.style.display = "inline-flex";
+    for (let i = 0; i < DATA.tokens.of; i++) {
+      if (i) { const g = el("i"); g.style.width = "1ch"; g.textContent = " "; segw.appendChild(g); }
+      const b = el("i"); b.style.width = "6ch"; b.textContent = "      ";
+      const spent = i >= DATA.tokens.left, staging = !spent && i < DATA.tokens.left && i >= DATA.tokens.left - totalCost();
+      b.style.background = spent ? "var(--fill-selected)" : staging ? "var(--focus)" : "var(--fg)";
+      segw.appendChild(b);
+    }
+    t.appendChild(segw);
+    t.appendChild(sp("dim", `   ${DATA.tokens.left} of ${DATA.tokens.of}` +
+      (totalCost() ? `  ·  ${totalCost()} staged` : "")));
+    R.appendChild(t);
+    R.appendChild(rowOf(sp("k w12", "resets"), sp("dimmer", DATA.tokens.resets)));
+    R.appendChild(rowOf(sp("k w12", "may weaken"),
+      sp(windowOpen() ? "acc" : "urg", `${DATA.window.start}–${DATA.window.end}`),
+      sp("dimmer", windowOpen() ? "   open now" : "   shut now")));
+    R.appendChild(rowOf(sp("k w12", "grace"),
+      sp("dim", STATE === "grace" ? "running · 18m 32s" : "unavailable today")));
+    band.appendChild(L); band.appendChild(V); band.appendChild(R);
+    inner.appendChild(band);
+    inner.appendChild(el("div", "kl row", "─".repeat(IW)));
+
+    /* ---- BLOCKING: every row a control ---- */
+    inner.appendChild(rowOf(sp("label", "Blocking"), el("span", "fill"),
+      sp("dimmer", windowOpen() ? "click a row to stage a change" : "read-only until the window opens")));
+    inner.appendChild(blank(1));
+
+    const refused = !windowOpen();
+    const refusalTip = `a change here is only accepted between ${DATA.window.start} and ${DATA.window.end}\nthis is checked before any fingerprint, never after`;
+
+    /* app blocking on/off + mode, one row */
+    inner.appendChild(ctl("apps", {
+      staged: LIVE.apps_enabled !== STAGED.apps_enabled,
+      refused,
+      tip: refused ? refusalTip : "turn app blocking off entirely — a loosening, costs 1 token",
+      onClick: () => { STAGED.apps_enabled = !STAGED.apps_enabled; paint(); }
+    }, r => {
+      r.appendChild(sw(STAGED.apps_enabled));
+      r.appendChild(sp("", "  "));
+      r.appendChild(sp("k w18", "app blocking"));
+      r.appendChild(sp("val dim", STAGED.apps_enabled ? "on" : "off"));
+      r.appendChild(el("span", "fill"));
+      r.appendChild(sp("dimmer", "ends the named apps while the curfew holds   "));
+    }));
+
+    inner.appendChild(ctl("mode", {
+      staged: LIVE.mode !== STAGED.mode, refused,
+      tip: refused ? refusalTip :
+        "blocklist ends only the apps named.\nallowlist ends everything except them — stricter, and free.\ngoing back to blocklist is a loosening and costs 1 token.",
+      onClick: () => { STAGED.mode = STAGED.mode === "blocklist" ? "allowlist" : "blocklist"; paint(); }
+    }, r => {
+      r.appendChild(sp("", "     "));
+      r.appendChild(sp("k w18", "mode"));
+      r.appendChild(segctl(["blocklist", "allowlist"], STAGED.mode));
+      r.appendChild(el("span", "fill"));
+      r.appendChild(sp("dimmer", STAGED.mode === "allowlist"
+        ? "everything unnamed ends — terminals are protected by a floor   "
+        : "stricter option available   "));
+    }));
+
+    /* the two app lists */
+    [["blacklist", "blocked apps"], ["allowlist", "always allowed"]].forEach(([key, label]) => {
+      const touched = listTouched(key);
+      inner.appendChild(ctl("list-" + key, {
+        staged: touched, refused,
+        selected: false,
+        tip: refused ? refusalTip : `open the ${LIST_LABEL[key]} · costs 1 token per commit that touches it`,
+        onClick: () => { LISTKEY = key; switchView("list"); }
+      }, r => {
+        r.appendChild(sp("", "     "));
+        r.appendChild(sp("k w18", label));
+        r.appendChild(sp("val dim", STAGED[key].join(", ") || "—"));
+        r.appendChild(el("span", "fill"));
+        if (key === "blacklist" && STAGED.blacklist.includes("discord"))
+          r.appendChild(sp("urg", "discord matches nothing  "));
+        r.appendChild(sp("dimmer", `${STAGED[key].length} entries  ▸  `));
+      }));
+    });
+
+    /* games — not a bare boolean: it names what it would cover */
+    inner.appendChild(ctl("games", {
+      staged: LIVE.block_games !== STAGED.block_games, refused,
+      tip: refused ? refusalTip :
+        "auto-detected from Steam appmanifests, Heroic's installed files and any\n" +
+        "desktop entry declaring Categories=Game, matched by install path.\n\n" +
+        KNOWN.games.map(g => "  " + g[0] + "   " + g[1]).join("\n") +
+        "\n\nturning it ON is a tightening and is free.",
+      onClick: () => { STAGED.block_games = !STAGED.block_games; paint(); }
+    }, r => {
+      r.appendChild(sw(STAGED.block_games));
+      r.appendChild(sp("", "  "));
+      r.appendChild(sp("k w18", "game blocking"));
+      r.appendChild(sp("val dim", STAGED.block_games ? `on · ${KNOWN.games.length} covered` : "off"));
+      r.appendChild(el("span", "fill"));
+      r.appendChild(sp(STAGED.block_games ? "dimmer" : "urg",
+        STAGED.block_games ? "3 titles detected   " : "3 titles installed, covered by nothing   "));
+    }));
+
+    /* sites */
+    inner.appendChild(ctl("sites", {
+      staged: LIVE.sites_enabled !== STAGED.sites_enabled, refused,
+      tip: refused ? refusalTip : "the managed browser policy the watchdog restores every tick",
+      onClick: () => { STAGED.sites_enabled = !STAGED.sites_enabled; paint(); }
+    }, r => {
+      r.appendChild(sw(STAGED.sites_enabled));
+      r.appendChild(sp("", "  "));
+      r.appendChild(sp("k w18", "site blocking"));
+      r.appendChild(sp("val dim", STAGED.sites_enabled ? "on" : "off"));
+      r.appendChild(el("span", "fill"));
+      r.appendChild(sp("dimmer", `policy restored ${DATA.policy.restored} · ${DATA.policy.targets} browsers   `));
+    }));
+
+    inner.appendChild(ctl("list-blocked_urls", {
+      staged: listTouched("blocked_urls"), refused,
+      tip: refused ? refusalTip : "open the site list · costs 1 token per commit that touches it",
+      onClick: () => { LISTKEY = "blocked_urls"; switchView("list"); }
+    }, r => {
+      r.appendChild(sp("", "     "));
+      r.appendChild(sp("k w18", "blocked sites"));
+      r.appendChild(sp("val " + (STAGED.blocked_urls.length ? "dim" : "urg"),
+        STAGED.blocked_urls.join(", ") || "none — the list is empty"));
+      r.appendChild(el("span", "fill"));
+      r.appendChild(sp("dimmer", `${STAGED.blocked_urls.length} entries  ▸  `));
+    }));
+
+    inner.appendChild(ctl("jail", {
+      tip: isWeak()
+        ? "the jail cgroup could not be built, so the tick fell back to SIGTERM.\nanything that forks between the scan and the signal survives."
+        : "apps are moved into a root-owned cgroup you cannot escape,\nand the tree is killed in one write.",
+      onClick: null
+    }, r => {
+      r.appendChild(sp("", "     "));
+      r.appendChild(sp("k w18", "enforcement"));
+      r.appendChild(sp("tag " + (isWeak() ? "bad" : "on"), isWeak() ? "WEAK" : "STRONG"));
+      r.appendChild(sp("", "  "));
+      r.appendChild(sp("dim", isWeak() ? "SIGTERM fallback" : DATA.jail));
+      r.appendChild(el("span", "fill"));
+      r.appendChild(sp("dimmer", `watchdog ${DATA.watchdog.last}   `));
+    }));
+
+    /* staged tray, only when there is something in it */
+    inner.appendChild(blank(1));
+    const changes = stagedChanges();
+    if (changes.length) {
+      inner.appendChild(hedge(IW, "▔"));
+      const tr = el("div", "row");
+      tr.appendChild(sp("label", "Staged"));
+      tr.appendChild(sp("", "  "));
+      tr.appendChild(sp("dim", changes.map(c => c.label).join(" · ")));
+      tr.appendChild(el("span", "fill"));
+      tr.appendChild(sp(totalCost() > DATA.tokens.left ? "urg b" : "foc b",
+        `${totalCost()} token${totalCost() === 1 ? "" : "s"}`));
+      inner.appendChild(tr);
+    } else {
+      inner.appendChild(hedge(IW, "▔"));
+      inner.appendChild(rowOf(sp("dimmer", "nothing staged")));
+    }
+
+    /* action strip */
+    const refusal = commitRefusal();
+    inner.appendChild(chipRow([
+      [changes.length ? `commit  ${totalCost()} token${totalCost() === 1 ? "" : "s"}` : "commit",
+        refusal ? "disabled" : "primary",
+        refusal ? null : () => switchView("commit"),
+        refusal || "runs the signer under sudo — the prompt appears inline"],
+      ["staged", changes.length ? "" : "disabled", changes.length ? () => switchView("commit") : null],
+      ["discard", changes.length ? "" : "disabled",
+        changes.length ? () => { STAGED = JSON.parse(JSON.stringify(LIVE)); paint(); } : null],
+      ["ledger", "", null], ["quit", "", null]
+    ]));
+  }));
+}
+
+/* ============================================================ VIEW: list editor */
+function renderList(root) {
+  const IW = 127, key = LISTKEY;
+  const live = LIVE[key], staged = STAGED[key];
+  const removed = live.filter(x => !staged.includes(x));
+  const added = staged.filter(x => !live.includes(x));
+  const refused = !windowOpen();
+
+  root.appendChild(framed(46, inner => {
+    inner.appendChild(blank(1));
+    header(inner, IW);
+    inner.appendChild(blank(1));
+
+    /* which list — a chip strip, the reference's control strip */
+    const strip = el("div", "row");
+    strip.appendChild(sp("label", "Editing"));
+    strip.appendChild(sp("", "   "));
+    [["blacklist", "blocked apps"], ["allowlist", "always allowed"],
+     ["blocked_urls", "blocked sites"]].forEach(([k, lab], i) => {
+      if (i) strip.appendChild(sp("", "  "));
+      strip.appendChild(chip(lab, k === key ? "on" : "", () => { LISTKEY = k; paint(); }));
+    });
+    strip.appendChild(el("span", "fill"));
+    strip.appendChild(sp(refused ? "urg" : "dim",
+      refused ? `window shut — reopens ${DATA.window.start}` : `window open until ${DATA.window.end}`));
+    inner.appendChild(strip);
+    inner.appendChild(hedge(IW));
+    inner.appendChild(blank(1));
+
+    inner.appendChild(rowOf(sp("label", LIST_LABEL[key]), el("span", "fill"),
+      sp("dimmer", "click an entry to strike it · struck entries return on discard")));
+    inner.appendChild(blank(1));
+
+    /* the entries, each a control */
+    const all = [...live, ...added];
+    all.forEach(entry => {
+      const kept = staged.includes(entry);
+      const isNew = added.includes(entry);
+      const dead = KNOWN.dead[entry];
+      const match = KNOWN.matching[entry];
+      inner.appendChild(ctl("entry-" + key + "-" + entry, {
+        staged: !kept || isNew,
+        refused,
+        tip: refused ? `this list can only be changed between ${DATA.window.start} and ${DATA.window.end}`
+          : dead ? `${entry} — ${dead}\n\nblock it as a site instead: the site list reaches it, an app kill does not.`
+          : match ? `${entry} — matches ${match}\nidentity is read from the kernel's own exe path, never from comm, which is forgeable.`
+          : isNew ? `${entry} — staged addition` : `${entry} — click to strike`,
+        onClick: () => {
+          if (isNew) STAGED[key] = staged.filter(x => x !== entry);
+          else if (kept) STAGED[key] = staged.filter(x => x !== entry);
+          else STAGED[key] = live.filter(x => staged.includes(x) || x === entry).concat(added);
+          paint();
+        }
+      }, r => {
+        r.appendChild(checkbox(kept));
+        r.appendChild(sp("", "  "));
+        const name = sp(kept ? "" : "dimmer", entry.padEnd(26));
+        if (!kept) name.style.textDecoration = "line-through";
+        r.appendChild(name);
+        if (isNew) { r.appendChild(sp("acc b", "ADDED   ")); }
+        else if (!kept) { r.appendChild(sp("foc b", "STRUCK  ")); }
+        else r.appendChild(sp("", "        "));
+        if (dead) r.appendChild(sp("urg", "matches nothing on this machine"));
+        else if (match) r.appendChild(sp("dimmer", "matches " + match));
+        else r.appendChild(sp("dimmer", key === "blocked_urls" ? "blocked by the managed browser policy" : ""));
+        r.appendChild(el("span", "fill"));
+        r.appendChild(sp("dimmer", (kept ? "" : (key === "allowlist" ? "tightens  " : "loosens  "))));
+      }));
+    });
+    if (!all.length) inner.appendChild(rowOf(sp("dimmer", "     the list is empty")));
+
+    inner.appendChild(blank(1));
+    inner.appendChild(el("div", "kl row", "─".repeat(IW)));
+
+    /* add — a field plus what the machine already knows to suggest */
+    inner.appendChild(rowOf(sp("label", "Add")));
+    inner.appendChild(blank(1));
+    const field = el("div", "ctl");
+    field.style.width = "44ch";
+    field.classList.add(CURSOR.id === "addfield" ? "hot" : "x");
+    field.classList.remove("x");
+    field.appendChild(sp("dimmer", "▏"));
+    field.appendChild(sp("dim", key === "blocked_urls" ? " example.com" : " process or install path"));
+    field.appendChild(el("span", "fill"));
+    field.appendChild(sp("dimmer", "▕"));
+    field.addEventListener("mouseenter", () => { CURSOR.id = "addfield"; paint(); });
+    inner.appendChild(field);
+    inner.appendChild(blank(1));
+
+    if (key === "blocked_urls") {
+      inner.appendChild(rowOf(sp("dimmer", "     suggested — the entries your app blocklist cannot reach:")));
+      const sug = el("div", "row");
+      sug.appendChild(sp("", "     "));
+      KNOWN.siteSuggestions.forEach((s, i) => {
+        if (i) sug.appendChild(sp("", "  "));
+        sug.appendChild(chip(s, staged.includes(s) ? "on" : "",
+          refused ? null : () => {
+            if (!staged.includes(s)) STAGED.blocked_urls = [...staged, s];
+            else STAGED.blocked_urls = staged.filter(x => x !== s);
+            paint();
+          }, `add ${s} to the site list`));
+      });
+      inner.appendChild(sug);
+    } else if (key === "blacklist") {
+      inner.appendChild(rowOf(sp("dimmer", "     suggested — installed titles the catalogue found:")));
+      const sug = el("div", "row");
+      sug.appendChild(sp("", "     "));
+      KNOWN.games.forEach((g, i) => {
+        if (i) sug.appendChild(sp("", "  "));
+        sug.appendChild(chip(g[0], "", null, `${g[0]}\n${g[1]}\n\nturning game blocking on covers this without naming it.`));
+      });
+      inner.appendChild(sug);
+    } else {
+      inner.appendChild(rowOf(sp("dimmer", "     a floor protects the compositor, the shell, the portals, pipewire,")));
+      inner.appendChild(rowOf(sp("dimmer", "     the keyring and every terminal — config cannot shrink it.")));
+    }
+
+    /* cost of this list, stated plainly */
+    inner.appendChild(blank(1));
+    inner.appendChild(hedge(IW, "▔"));
+    const touched = listTouched(key);
+    const cr = el("div", "row");
+    cr.appendChild(sp("dim", touched ? `this list is changed — ` : "this list is unchanged — "));
+    cr.appendChild(sp(touched ? "foc b" : "dimmer",
+      touched ? "1 token" : "0 tokens"));
+    cr.appendChild(sp("dimmer", COST_RULE === "every"
+    ? "   one token per list touched, per commit — either direction"
+    : "   one token only when the edit loosens; pure tightening is free"));
+    cr.appendChild(el("span", "fill"));
+    cr.appendChild(sp(totalCost() > DATA.tokens.left ? "urg b" : "dim",
+      `${totalCost()} staged in total · ${DATA.tokens.left} left`));
+    inner.appendChild(cr);
+    inner.appendChild(blank(1));
+
+    const refusal = commitRefusal();
+    inner.appendChild(chipRow([
+      ["back", "", () => switchView("dash")],
+      [changes_label(), refusal ? "disabled" : "primary",
+        refusal ? null : () => switchView("commit"), refusal || "review before authorising"],
+      ["discard this list", touched ? "" : "disabled",
+        touched ? () => { STAGED[key] = JSON.parse(JSON.stringify(LIVE[key])); paint(); } : null],
+      ["quit", "", null]
+    ]));
+  }));
+}
+const changes_label = () => {
+  const c = totalCost();
+  return c ? `commit  ${c} token${c === 1 ? "" : "s"}` : "commit";
+};
+
+/* ============================================================ VIEW: commit */
+function renderCommit(root) {
+  const IW = 127, changes = stagedChanges(), refusal = commitRefusal();
+  root.appendChild(framed(46, inner => {
+    inner.appendChild(blank(1));
+    header(inner, IW);
+    inner.appendChild(blank(1));
+    inner.appendChild(rowOf(sp("label", "Staged changes"), el("span", "fill"),
+      sp("dimmer", "every cost is shown before anything is authorised")));
+    inner.appendChild(hedge(IW));
+    inner.appendChild(blank(1));
+
+    if (!changes.length) {
+      inner.appendChild(rowOf(sp("dim", "     nothing staged.")));
+      inner.appendChild(blank(1));
+      inner.appendChild(rowOf(sp("dimmer", "     change something on the dashboard and it appears here with its cost.")));
+    }
+
+    const costing = changes.filter(c => c.cost > 0);
+    const free = changes.filter(c => c.cost === 0);
+
+    if (costing.length) {
+      inner.appendChild(rowOf(sp("label", "Costs a token")));
+      inner.appendChild(blank(1));
+      costing.forEach(c => {
+        inner.appendChild(ctl("staged-" + c.key, {
+          staged: true,
+          tip: c.kind === "list"
+            ? (COST_RULE === "every"
+                ? "one token per list touched, per commit — adding costs the same as removing"
+                : "one token because this edit loosens; a pure addition to a blocklist is free")
+            : "a loosening costs one token; the tightening direction is free",
+          onClick: () => {
+            if (c.kind === "list") { STAGED[c.key] = JSON.parse(JSON.stringify(LIVE[c.key])); }
+            else STAGED[c.key] = LIVE[c.key];
+            paint();
+          }
+        }, r => {
+          r.appendChild(sp("foc b", "●"));
+          r.appendChild(sp("", "  "));
+          r.appendChild(sp("k w22", c.label));
+          r.appendChild(sp("dim", c.detail));
+          r.appendChild(el("span", "fill"));
+          r.appendChild(sp(c.loosens ? "urg" : "dim", c.loosens ? "loosens  " : "tightens  "));
+          r.appendChild(sp("foc b", `${c.cost} token  `));
+          r.appendChild(sp("dimmer", "click to drop  "));
+        }));
+      });
+      inner.appendChild(blank(1));
+    }
+    if (free.length) {
+      inner.appendChild(rowOf(sp("label", "Free — tightening is always allowed")));
+      inner.appendChild(blank(1));
+      free.forEach(c => {
+        inner.appendChild(ctl("staged-" + c.key, {
+          tip: "tightening the pact is free and allowed at any hour",
+          onClick: () => { STAGED[c.key] = LIVE[c.key]; paint(); }
+        }, r => {
+          r.appendChild(sp("acc b", "●"));
+          r.appendChild(sp("", "  "));
+          r.appendChild(sp("k w22", c.label));
+          r.appendChild(sp("dim", c.detail));
+          r.appendChild(el("span", "fill"));
+          r.appendChild(sp("dim", "tightens  "));
+          r.appendChild(sp("dimmer", "free   click to drop  "));
+        }));
+      });
+      inner.appendChild(blank(1));
+    }
+
+    inner.appendChild(el("div", "kl row", "─".repeat(IW)));
+    inner.appendChild(blank(1));
+
+    /* the total, and the week it comes out of */
+    const tr = el("div", "row");
+    tr.appendChild(sp("k w22", "total"));
+    tr.appendChild(sp(totalCost() > DATA.tokens.left ? "urg b" : "b",
+      `${totalCost()} of ${DATA.tokens.left} tokens left this week`));
+    tr.appendChild(el("span", "fill"));
+    tr.appendChild(sp("dimmer", `resets ${DATA.tokens.resets}   `));
+    inner.appendChild(tr);
+    const wr = el("div", "row");
+    wr.appendChild(sp("k w22", "clock window"));
+    wr.appendChild(sp(windowOpen() ? "acc" : "urg",
+      windowOpen() ? `open until ${DATA.window.end}` : `shut — reopens ${DATA.window.start}`));
+    wr.appendChild(el("span", "fill"));
+    wr.appendChild(sp("dimmer", "read from the signed timezone, not the system one   "));
+    inner.appendChild(wr);
+    inner.appendChild(blank(1));
+
+    if (refusal && changes.length) {
+      const rr = el("div", "row");
+      rr.appendChild(sp("urg b", "▲  " + refusal));
+      inner.appendChild(rr);
+      inner.appendChild(rowOf(sp("dimmer", "   stated before any authentication — you never meet a fingerprint prompt you cannot pass")));
+      inner.appendChild(blank(1));
+    } else if (changes.length) {
+      inner.appendChild(rowOf(sp("dim", "on commit, this window suspends and the signer runs under sudo —")));
+      inner.appendChild(rowOf(sp("dim", "the password or fingerprint prompt appears inline, on this terminal.")));
+      inner.appendChild(blank(1));
+      inner.appendChild(rowOf(sp("dimmer", "the guard re-checks the hour with its own time source and may still refuse.")));
+      inner.appendChild(blank(1));
+    }
+
+    inner.appendChild(hedge(IW, "▔"));
+    inner.appendChild(chipRow([
+      ["back", "", () => switchView("dash")],
+      [refusal ? "authorise" : `authorise  ${totalCost()} token${totalCost() === 1 ? "" : "s"}`,
+        refusal ? "disabled" : "primary", null,
+        refusal || "suspends the window and runs the signer under sudo"],
+      ["discard all", changes.length ? "" : "disabled",
+        changes.length ? () => { STAGED = JSON.parse(JSON.stringify(LIVE)); paint(); } : null],
+      ["quit", "", null]
+    ]));
+  }));
+}
+
+/* ============================================================ plumbing */
+function switchView(v) {
+  VIEW = v;
+  const map = { dash: "dash", list: "list", commit: "commit" };
+  document.querySelectorAll(".variant-tab").forEach(b => b.classList.toggle("active", b.dataset.v === map[v]));
+  document.querySelectorAll(".variant").forEach(s => s.classList.toggle("active", s.id === "variant-" + map[v]));
+  paint();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+function paint() {
+  REG.length = 0;
+  [["dash", renderDash], ["list", renderList], ["commit", renderCommit]].forEach(([k, fn]) => {
+    const t = document.getElementById("term-" + k);
+    t.innerHTML = ""; fn(t);
+  });
+  reportRows();
+}
+function reportRows() {
+  const active = document.querySelector(".variant.active .term");
+  if (!active) return;
+  const out = document.getElementById("rowcount");
+  const lh = parseFloat(getComputedStyle(active).lineHeight);
+  const inner = active.querySelector(".inner") || active;
+  const used = Math.round(inner.scrollHeight / lh);
+  out.textContent = used + "/46";
+  out.classList.toggle("over", used > 46);
+}
+/* keyboard: the SAME cursor the pointer moves. j/k and arrows walk it,
+   Enter/Space activate — which is the kit's contract (Keys.onReturnPressed,
+   onEnterPressed, onSpacePressed on every control). */
+window.addEventListener("keydown", e => {
+  const ids = REG.map(r => r.id);
+  if (!ids.length) return;
+  const i = ids.indexOf(CURSOR.id);
+  if (["j", "ArrowDown"].includes(e.key)) {
+    CURSOR.id = ids[(i + 1 + ids.length) % ids.length]; paint(); e.preventDefault();
+  } else if (["k", "ArrowUp"].includes(e.key)) {
+    CURSOR.id = ids[(i - 1 + ids.length) % ids.length]; paint(); e.preventDefault();
+  } else if (["Enter", " "].includes(e.key)) {
+    const hit = REG.find(r => r.id === CURSOR.id);
+    if (hit && hit.onClick) { hit.onClick(false); e.preventDefault(); }
+  } else if (e.key === "Escape") {
+    if (VIEW !== "dash") switchView("dash");
+  }
+});
+document.querySelectorAll(".variant-tab").forEach(btn => {
+  btn.addEventListener("click", () => switchView(btn.dataset.v));
+});
+document.querySelectorAll("#state-bar button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#state-bar button").forEach(b => b.classList.remove("on"));
+    btn.classList.add("on"); STATE = btn.dataset.s; paint();
+  });
+});
+document.getElementById("theme-switcher").addEventListener("change", e => {
+  document.querySelector('link[href*=themes]').href = "../themes/" + e.target.value + ".css";
+});
+document.getElementById("rule-toggle").addEventListener("click", () => {
+  COST_RULE = COST_RULE === "every" ? "loosen" : "every";
+  document.getElementById("rule-toggle").textContent =
+    COST_RULE === "every" ? "every list edit" : "only loosenings";
+  paint();
+});
+let gridOn = false;
+document.getElementById("grid-toggle").addEventListener("click", () => {
+  gridOn = !gridOn;
+  document.querySelectorAll(".term").forEach(t => {
+    t.style.backgroundImage = gridOn
+      ? "repeating-linear-gradient(to right, rgba(248,235,227,.08) 0 1px, transparent 1px 1ch), repeating-linear-gradient(to bottom, rgba(248,235,227,.08) 0 1px, transparent 1px 1lh)"
+      : "none";
+  });
+  document.getElementById("grid-toggle").textContent = gridOn ? "grid on" : "135×46";
+});
+paint();
+window.addEventListener("resize", reportRows);
+</script>
+</body>
+</html>
