@@ -42,6 +42,8 @@ Package the existing `ngtui` Textual TUI as a first-class omarchy desktop app �
 
 - [x] Phase 11: Global Install + Status Subcommand (3 plans) — `uv tool install` exposes a global `ngtui`; key-less `ngtui status --json` emits Waybar JSON — DESK-01, DESK-02
 - [x] Phase 12: Launcher + Waybar Presence — floating-terminal `.desktop` + brand icon + Hyprland windowrule; `custom/nightguard` bar module (left-click open, right-click read-only menu, signal refresh) — DESK-03, DESK-04, BAR-01..04 (completed 2026-07-04)
+- [ ] Phase 12.1: Native dashboard — the TUI restyled from the live theme's structural tokens and driven by one cursor shared between pointer and keyboard — UIX-01..06
+- [ ] Phase 12.2: Blocking becomes editable — the four keys the signer classifies but the editor never exposed, at one token per list — BLK-01..05
 - [ ] Phase 13: Autostart + AUR Packaging — optional login autostart (module, not window) + publish-ready PKGBUILD/README that declares (never vendors) the trust stack — DESK-05, DESK-06
 
 ### 📋 v3.0 — (next milestone)
@@ -101,6 +103,39 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 12.1: Native dashboard — pointer-first Omarchy TUI (INSERTED)
+
+**Goal**: The TUI reads and behaves as a native Omarchy 4 app rather than a terminal form — restyled from the live theme's *structural* tokens (not just its colours), driven by **one cursor shared between pointer and keyboard**, with the day shown as a full-width instrument instead of a number. Same product as the finished bar panel, without copying its patterns.
+**Depends on**: Phase 12 (the launcher + windowrule that give the TUI its 135 × 46 window)
+**Requirements**: UIX-01, UIX-02, UIX-03, UIX-04, UIX-05, UIX-06
+**Design contract**: `.planning/sketches/00{1,2,3,4}-*/` — direction chosen (tile grid), aesthetic accepted (device frame, greyscale ASCII ramp hero, outline chips, one accent dot), interaction model read out of `/usr/share/omarchy/shell/`.
+**Success Criteria** (what must be TRUE):
+
+  1. `app.tcss` and the widgets are restyled from `shell.toml`'s `[controls]` state fills/borders, `[spacing]` and `[font]`, plus Hyprland's live `decoration:rounding` — and switching the desktop theme restyles the **running** TUI, borders and fills included, not only its colours. A negative-control test fails when the style tokens are ignored, and its failure message is recorded.
+  2. Hovering a row and then pressing `j`/`k` continues the highlight **from where the pointer left it** — one cursor, moved by either input, with paint priority pressed > focus > hover/cursor > selected > idle from the theme's own alphas. Every control is reachable and activatable by keyboard alone (`Enter`/`Space`), and by pointer alone.
+  3. Every changeable value on the home surface is a clickable control whose whole row is the click target; no action requires a memorised bracket hint. Hovering never reflows a neighbour (border widths constant across states).
+  4. The day renders as a full-width ASCII density ramp (density = hours-until-curfew) with a separate channel for the hours a loosening is accepted and a marker for now; hovering a column reads out that hour and whether a loosening would be accepted there.
+  5. No fixed hex in `app.tcss` or any widget, and the composed screen fits 135 × 46 cells — asserted by a test that fails on overflow, so the layout cannot quietly outgrow the sanctioned window.
+  6. The trust path is untouched: `backend.commit()`, the inline `sudo` under `App.suspend()` with a real PTY, the direction classifier, and the refusal to accept a weakening keystroke outside the edit window all behave exactly as before, proven by the existing suite staying green.
+
+**Plans**: TBD
+
+### Phase 12.2: Blocking becomes editable — the four frozen keys (INSERTED)
+
+**Goal**: The half of the product that actually ends applications stops being unchangeable. The four blocking keys the signer already classifies but the only sanctioned editor never exposed become editable, at one token per list touched, inside the same clock window that gates a curfew loosening — with the cost stated before any authentication.
+**Depends on**: Phase 12.1 (the control rows and staging surface these keys are edited through)
+**Requirements**: BLK-01, BLK-02, BLK-03, BLK-04, BLK-05
+**Success Criteria** (what must be TRUE):
+
+  1. The site list, the app blocklist/allowlist mode, game blocking and the allowlist are all editable from the TUI and commit through the signer — and a real end-to-end commit of each is proven against the running stack, not just unit-tested. Blocking a site becomes possible for the first time.
+  2. A commit touching N lists costs **N tokens**, decided inside the signer's own quota decision (the one function both the pre-auth preview and the commit call), so the cost and any refusal are visible **before** the fingerprint prompt and never after. A negative control proves the charge can fail.
+  3. Outside the clock edit window, a list edit is refused by the signer with its own reason, and the TUI shows that reason on the control before it is touched — never a prompt the user cannot pass.
+  4. The surface shows what the config cannot: which blocklist entries match a running process and which match nothing (`discord` matches nothing — it is a chromium webapp), the titles the game catalogue detected, the floor the allowlist cannot shrink, and whether enforcement is the strong cgroup jail or the weak `SIGTERM` fallback.
+  5. The TUI still holds no key and computes no HMAC; the signer stays the sole writer; the watchdog still reverts a hand edit to any of the four keys.
+  6. **Decision resolved before planning**: whether the per-list token applies in both directions or only when the edit loosens. Applied uniformly, *adding* a site to the blocklist is a tightening that still costs a token and is still refused outside the window — so the pact cannot be made stricter at midnight, which contradicts the rule the guard already applies to every other tightening. Both rules are live behind a switch in `.planning/sketches/004-native-dashboard/`.
+
+**Plans**: TBD
+
 ### Phase 13: Autostart + AUR Packaging
 
 **Goal**: Make the desktop app publish-ready — an optional, off-by-default login autostart for the status surface, plus an AUR `PKGBUILD` and documented README install path that declares (never vendors) the Python trust stack and fails loud when it is absent.
@@ -133,4 +168,6 @@ Plans:
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
 | 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete    | 2026-06-25 |
 | 12. Launcher + Waybar Presence | v2.1 | 6/6 | Complete    | 2026-07-04 |
+| 12.1 Native dashboard | v2.1 | 0/? | Not started | — |
+| 12.2 Blocking editable | v2.1 | 0/? | Not started | — |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |

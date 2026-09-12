@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
 status: planning
-stopped_at: Phase 13 context gathered
-last_updated: "2026-09-05T10:58:00.000Z"
-last_activity: 2026-09-05
+stopped_at: Phase 12.1/12.2 inserted, design direction chosen (sketches 001-004)
+last_updated: "2026-09-12T18:14:59.986Z"
+last_activity: 2026-07-04
 progress:
-  total_phases: 3
+  total_phases: 7
   completed_phases: 2
   total_plans: 9
   completed_plans: 9
-  percent: 67
+  percent: 40
 ---
 
 # Project State
@@ -21,11 +21,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts. *(v2.0: the wall is now root-backed; `sudo` is the past-the-impulse threshold.)*
-**Current focus:** Phase 13 — autostart + aur packaging
+**Current focus:** Phase 12.1 — native dashboard (pointer-first Omarchy TUI)
 
 ## Current Position
 
-Phase: 13
+Phase: 12.1
 Plan: Not started
 Status: Ready to plan
 Last activity: 2026-07-04
@@ -91,6 +91,11 @@ Last activity: 2026-07-04
 | Phase 12 P06 | 40 | 2 tasks | 2 files |
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 12.1 inserted after Phase 12: Native dashboard — TUI restyled from shell.toml structural tokens, one cursor shared between pointer and keyboard
+- Phase 12.2 inserted after Phase 12.1: Blocking becomes editable — the four keys the signer classifies but the editor never exposed, at one token per list
 
 ### Decisions
 
