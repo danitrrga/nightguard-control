@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
 status: planning
-stopped_at: Phase 12.1/12.2 inserted, design direction chosen (sketches 001-004)
-last_updated: "2026-09-12T18:14:59.986Z"
+stopped_at: Phase 12.1 design contract approved; 12.2 contract in verification; cost-rule direction awaiting the user
+last_updated: "2026-09-12T18:42:02.059Z"
 last_activity: 2026-07-04
 progress:
-  total_phases: 7
+  total_phases: 5
   completed_phases: 2
   total_plans: 9
   completed_plans: 9
@@ -183,9 +183,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-04T18:27:08.310Z
-Stopped at: Phase 13 context gathered
-Resume file: .planning/phases/13-autostart-aur-packaging/13-CONTEXT.md
+Last session: 2026-09-12T18:42:02.049Z
+Stopped at: Phase 12.1 design contract approved; 12.2 contract in verification; cost-rule direction awaiting the user
+Resume file: .planning/phases/12.1-native-dashboard-pointer-first-omarchy-tui/12.1-UI-SPEC.md
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
 
 ## Deferred Items

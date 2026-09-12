@@ -132,7 +132,7 @@ Plans:
   3. Outside the clock edit window, a list edit is refused by the signer with its own reason, and the TUI shows that reason on the control before it is touched — never a prompt the user cannot pass.
   4. The surface shows what the config cannot: which blocklist entries match a running process and which match nothing (`discord` matches nothing — it is a chromium webapp), the titles the game catalogue detected, the floor the allowlist cannot shrink, and whether enforcement is the strong cgroup jail or the weak `SIGTERM` fallback.
   5. The TUI still holds no key and computes no HMAC; the signer stays the sole writer; the watchdog still reverts a hand edit to any of the four keys.
-  6. **Decision resolved before planning**: whether the per-list token applies in both directions or only when the edit loosens. Applied uniformly, *adding* a site to the blocklist is a tightening that still costs a token and is still refused outside the window — so the pact cannot be made stricter at midnight, which contradicts the rule the guard already applies to every other tightening. Both rules are live behind a switch in `.planning/sketches/004-native-dashboard/`.
+  6. **Decision resolved before the signer is touched** (it blocks one task, not the phase — the surface work is identical either way): whether the per-list token applies in both directions or only when the edit loosens. Applied uniformly, *adding* a site to the blocklist is a tightening that still costs a token and is still refused outside the window — so the pact cannot be made stricter at midnight, which contradicts the rule the guard already applies to every other tightening. Both rules are live behind a switch in `.planning/sketches/004-native-dashboard/`.
 
 **Plans**: TBD
 
