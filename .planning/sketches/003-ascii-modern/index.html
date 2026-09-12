@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sketch 003 — ascii, modern</title>
+<link rel="stylesheet" href="../themes/default.css">
+<style>
+  body {
+    margin: 0; background: #07080a; color: var(--fg);
+    font-family: "CaskaydiaCove Nerd Font", ui-monospace, monospace;
+    padding: 52px 0 84px;
+  }
+
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: #101215; border-bottom: 1px solid var(--hairline);
+    padding: 7px 14px; display: flex; gap: 6px; align-items: center;
+    font-size: 12px; flex-wrap: wrap;
+  }
+  .variant-tab {
+    background: transparent; color: var(--dim);
+    border: 1px solid var(--border-normal); border-radius: 0;
+    padding: 4px 10px; cursor: pointer; font: inherit;
+    transition: background .12s ease-out, color .12s ease-out, border-color .12s ease-out;
+  }
+  .variant-tab:hover { color: var(--fg); border-color: var(--border-hover); }
+  /* the reference's own selected-chip treatment: inverted to a bright border */
+  .variant-tab.active { color: var(--fg); border-color: var(--fg); background: transparent; }
+  #variant-nav .navsep { width: 1px; height: 20px; background: var(--hairline); margin: 0 6px; }
+  #variant-nav .navlabel { color: var(--dimmer); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
+
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .variant { display: none; }
+  .variant.active { display: block; }
+  .cap { width: calc(var(--cols) * 1ch); margin: 0 auto; }
+  .cap h2 { font-size: 15px; margin: 0 0 2px; font-weight: 700; letter-spacing: -.01em; }
+  .cap p { font-size: 12px; line-height: 1.55; color: var(--dim); margin: 0 0 6px; max-width: 100ch; }
+  .cap .axis { color: var(--focus); }
+  .cap code { color: var(--sage); font-size: 11.5px; }
+
+  .win { border: 1px solid var(--sage); border-radius: 0; width: max-content; margin: 0 auto; }
+
+  /* ---------- grid primitives, all in ch / lh ---------- */
+  .term { position: relative; }
+  .row { height: 1lh; display: flex; align-items: baseline; white-space: pre; }
+  .row.h3 { height: 3lh; }
+  .sp { height: 1lh; }
+  .fill { flex: 1 1 auto; }
+  .dim { color: var(--dim); }
+  .dimmer { color: var(--dimmer); }
+  .b { font-weight: 700; }
+  .acc { color: var(--accent); }
+  .urg { color: var(--urgent); }
+  .foc { color: var(--focus); }
+
+  /* Corner/section label — the reference's "Before" / "After": small, dim,
+     uppercase, letter-spaced, NO chrome around it. */
+  .label { color: var(--dimmer); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+
+  /* The device frame: hairline rules bracketing the viewport.
+     `border: vkey` is ▏▕ and `hkey` is ▔▁ — one eighth of a cell each. */
+  .frame { display: flex; align-items: stretch; }
+  .vedge { width: 1ch; white-space: pre; color: var(--dimmer); opacity: .45;
+           display: flex; flex-direction: column; flex: 0 0 auto; }
+  .vedge span { height: 1lh; }
+  .inner { flex: 1 1 auto; padding: 0 calc(2 * 1ch); box-sizing: border-box; }
+  .hedge { height: 1lh; white-space: pre; color: var(--dimmer); opacity: .45; }
+  /* `keyline: thin` between grid children */
+  .kl { color: var(--dimmer); opacity: .38; white-space: pre; }
+
+  .k { width: 16ch; color: var(--dim); flex: 0 0 auto; }
+  .k.w12 { width: 12ch; }
+  .k.w14 { width: 14ch; }
+
+  /* Square outline chip, radius 0 — a control, one row tall, drawn with
+     box-drawing so it is what Textual's `border: solid` really produces. */
+  .chipbox { display: flex; gap: 2ch; }
+  .chip { white-space: pre; color: var(--dim); }
+  .chip .edge { color: var(--border-normal); }
+  /* selected chip: inverted to a bright border + bright text */
+  .chip.on { color: var(--fg); }
+  .chip.on .edge { color: var(--fg); }
+  /* the one primary action: filled, like the reference's white button */
+  .chip.primary { color: var(--bg); background: var(--fg); font-weight: 700; }
+  .chip.primary .edge { color: var(--bg); }
+
+  /* inline on/off chip, one row, reverse video for "on" */
+  .tag { padding: 0 1ch; }
+  .tag.on { background: var(--fg); color: var(--bg); font-weight: 700; }
+  .tag.bad { background: var(--urgent); color: var(--bg); font-weight: 700; }
+  .tag.off { color: var(--dimmer); }
+
+  /* Textual `Digits` — thin box strokes, or the bold set */
+  .digits { white-space: pre; line-height: var(--cell-ratio); margin: 0; font-weight: 400; }
+  .digits.bold { font-weight: 700; }
+
+  /* the ASCII density ramp: the hero, and greyscale on purpose — density is
+     carrying the information, so it does not need to spend the colour budget */
+  .ramp { white-space: pre; }
+
+  .seg { display: flex; height: 1lh; align-items: stretch; }
+  .seg > i { display: block; font-style: normal; }
+
+  /* `border-left: tall` → ▊ : a solid spine, no box */
+  .spine { border-left: 3px solid var(--border-selected); padding-left: calc(1 * 1ch); box-sizing: border-box; }
+  .spine.alarm { border-left-color: var(--urgent); }
+  .spine.ok { border-left-color: var(--accent); }
+
+  #sketch-tools, #state-bar {
+    position: fixed; bottom: 12px; z-index: 9999;
+    font-family: system-ui, sans-serif; font-size: 12px;
+    background: rgba(0,0,0,.8); color: #fff; padding: 8px 12px;
+    border-radius: 8px; opacity: .38; transition: opacity .2s ease-out;
+    display: flex; gap: 8px; align-items: center;
+  }
+  #sketch-tools { right: 12px; }
+  #state-bar { left: 12px; }
+  #sketch-tools:hover, #state-bar:hover { opacity: 1; }
+  #sketch-tools select, #sketch-tools button, #state-bar button {
+    font: inherit; background: #1b1d20; color: #cfd3d6;
+    border: 1px solid #3a4045; border-radius: 4px; padding: 3px 8px; cursor: pointer;
+  }
+  #state-bar button:hover, #sketch-tools button:hover { background: #2a2e32; color: #fff; }
+  #state-bar button.on { background: #3a4b45; color: #fff; border-color: #5d726a; }
+  .lbl { color: #9aa0a6; }
+  #rowcount { color: #9aa0a6; font-variant-numeric: tabular-nums; }
+  #rowcount.over { color: #ff8a8a; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="navlabel">Sketch 003 · ascii, modern</span>
+  <span class="navsep"></span>
+  <button class="variant-tab active" data-v="a">E1★ · keyline grid</button>
+  <button class="variant-tab" data-v="c">E3★ · solid chrome</button>
+  <span class="navsep"></span>
+  <button class="variant-tab" data-v="ramp">the ramp, on its own</button>
+</div>
+
+<div class="stage">
+
+  <section class="variant active" id="variant-a">
+    <div class="cap">
+      <h2>E1★ · keyline grid, modernized</h2>
+      <p>The no-boxes grid with the reference's mechanisms actually applied: a
+      <b>hairline device frame</b> bracketing the viewport with small dim corner labels
+      instead of headings, a <b>row of square outline chips</b> for the actions with the
+      one primary filled, and the day promoted to <b>full-width hero</b> rendered as an
+      ASCII density ramp. <span class="axis">Colour budget: the ramp is greyscale because
+      density is already carrying the information, so the entire budget goes to one
+      subject — the verdict — plus one accent dot. Accent coverage is now under 1%, where
+      before it was whole red bands.</span></p>
+    </div>
+    <div class="win"><div class="term" id="term-a"></div></div>
+  </section>
+
+  <section class="variant" id="variant-c">
+    <div class="cap">
+      <h2>E3★ · solid chrome, modernized</h2>
+      <p>Same frame and same hero. The six filled title bars are gone — they were six
+      saturated strips on one screen, which is exactly the guardrail the reference warns
+      about. What replaces them: <b>corner labels</b> for the quiet regions, an
+      <b>inverted chip</b> for the one region that is shouting, and a <b>solid spine</b>
+      on the state region. Bold <code>Digits</code>, and the enforcement state as a
+      reverse-video tag rather than a coloured word.
+      <span class="axis">Keeps E3's "this is software, not a terminal" read while spending
+      a fifth of the ink.</span></p>
+    </div>
+    <div class="win"><div class="term" id="term-c"></div></div>
+  </section>
+
+  <section class="variant" id="variant-ramp">
+    <div class="cap">
+      <h2>The ramp, on its own</h2>
+      <p>The hero, at four widths and in every state, so it can be judged as an
+      instrument rather than as texture. <b>Density is hours-until-curfew</b>: inside the
+      curfew it saturates to <code>@</code>, the moment it lifts it drops to
+      <code>.</code>, and it climbs back through <code>: - = + * # %</code> as the night
+      approaches — so you can feel 21:30 coming at 17:00 without reading a number. The
+      thin underline is the window in which the curfew may be weakened at all. One bright
+      cell is now. <span class="axis">This is the one thing on the screen that is
+      genuinely ASCII art, and it is the product's own output — which is the reference's
+      actual rule: one hero material, and it should be what the tool makes.</span></p>
+    </div>
+    <div class="win"><div class="term" id="term-ramp"></div></div>
+  </section>
+
+</div>
+
+<div id="state-bar">
+  <span class="lbl">State</span>
+  <button data-s="locked" class="on">locked</button>
+  <button data-s="open">open</button>
+  <button data-s="grace">grace</button>
+  <button data-s="tamper">clock tamper</button>
+  <button data-s="weak">weak mode</button>
+</div>
+
+<div id="sketch-tools">
+  <span class="lbl">rows</span><span id="rowcount">—</span>
+  <select id="theme-switcher"><option value="default">dos-moos (live)</option></select>
+  <button id="grid-toggle">135×46</button>
+</div>
+
+<script>
+/* ============================================================================
+   Live data, same as sketches 001/002 — the running stack on this box.
+   ========================================================================== */
+const DATA = {
+  theme: "dos-moos", tz: "Europe/Amsterdam",
+  curfew: { start: "21:30", end: "05:30" },
+  window: { start: "05:30", end: "14:00" },
+  tokens: { left: 1, of: 3, resets: "Mon 09-14" },
+  hmac: { config: "555b5d2b…81bb", state: "904d5e26…7039" },
+  watchdog: { last: "21:52:33", every: 60 },
+  policy: { restored: "21:28" },
+  blocking: {
+    apps: { on: true, mode: "blocklist", named: ["steam", "discord"], dead: ["discord"] },
+    games: { on: false, detected: ["Counter-Strike 2", "Yu-Gi-Oh! Master Duel", "Rocket League"] },
+    sites: { on: true, urls: [], ext: "StayFree" },
+    jail: { path: "/sys/fs/cgroup/nightguard" }
+  },
+  ledger: [
+    ["2026-09-06 00:04", "curfew.window"], ["2026-09-05 22:17", "curfew.window"],
+    ["2026-07-09 23:16", "curfew.window"], ["2026-07-07 21:44", "curfew.window"],
+    ["2026-07-05 18:25", "curfew.window"], ["2026-07-05 17:34", "curfew.window"],
+    ["2026-07-05 15:59", "curfew.window"], ["2026-06-23 12:38", "curfew.allow_commands"]
+  ]
+};
+const STATES = {
+  locked:  { verdict: "LOCKED", role: "urg", glyph: "", now: "21:52", left: "07:38:00",
+             meta: "CURFEW · 7H 38M REMAINING", caption: "curfew until 05:30" },
+  open:    { verdict: "OPEN",   role: "acc", glyph: "", now: "14:10", left: "07:20:00",
+             meta: "OPEN · CURFEW STARTS 21:30", caption: "house open" },
+  grace:   { verdict: "GRACE",  role: "foc", glyph: "", now: "22:40", left: "00:18:32",
+             meta: "GRACE · 18M 32S REMAINING", caption: "daily bypass running" },
+  tamper:  { verdict: "LOCKED", role: "urg", glyph: "", now: "03:11", left: "02:19:00",
+             meta: "CLOCK TAMPER · LOCKED", caption: "clock tamper detected — locked" },
+  weak:    { verdict: "LOCKED", role: "urg", glyph: "", now: "22:04", left: "07:26:00",
+             meta: "CURFEW · 7H 26M REMAINING", caption: "curfew until 05:30" }
+};
+let STATE = "locked";
+const isWeak = () => STATE === "weak", isOpen = () => STATE === "open", isGrace = () => STATE === "grace";
+
+const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x !== undefined) n.textContent = x; return n; };
+const sp = (c, x) => el("span", c, x);
+const rowOf = (...k) => { const r = el("div", "row"); k.forEach(n => r.appendChild(typeof n === "string" ? document.createTextNode(n) : n)); return r; };
+const blank = n => { const f = document.createDocumentFragment(); for (let i = 0; i < (n || 1); i++) f.appendChild(el("div", "sp")); return f; };
+const minOf = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const inArc = (m, a, b) => (a <= b ? (m >= a && m < b) : (m >= a || m < b));
+
+/* ---------------------------------------------------------------- the hero
+   ASCII density ramp. Density = how little room you have left: saturated
+   inside the curfew, sparse the moment it lifts, climbing back as it returns.
+   Greyscale on purpose — the ramp is the information, not the colour. */
+const RAMP = " .:-=+*#%@";
+function dayDensity(m) {
+  const cs = minOf(DATA.curfew.start), ce = minOf(DATA.curfew.end);
+  if (inArc(m, cs, ce)) return 9;
+  const h = ((cs - m + 1440) % 1440) / 60;
+  if (h < 1) return 8;
+  if (h < 2) return 7;
+  if (h < 3) return 6;
+  if (h < 4) return 5;
+  if (h < 6) return 4;
+  if (h < 8) return 3;
+  if (h < 11) return 2;
+  return 1;
+}
+/* One run of like characters per span, so the "now" cell can be bright and the
+   curfew stretch can sit a shade above the rest without painting it red. */
+function rampRow(widthCh, nowMin) {
+  const r = el("div", "row ramp");
+  const nowCell = Math.floor((nowMin / 1440) * widthCh);
+  const cs = minOf(DATA.curfew.start), ce = minOf(DATA.curfew.end);
+  let run = null;
+  const flush = () => {
+    if (!run) return;
+    const s = sp("", run.txt);
+    s.style.color = run.locked ? "var(--fg)" : "var(--dim)";
+    s.style.opacity = run.locked ? ".92" : String(0.30 + run.d * 0.055);
+    r.appendChild(s); run = null;
+  };
+  for (let i = 0; i < widthCh; i++) {
+    const m = ((i + 0.5) / widthCh) * 1440;
+    if (i === nowCell) {
+      flush();
+      const c = sp("b", "█"); c.style.color = "var(--fg)"; r.appendChild(c);
+      continue;
+    }
+    const d = dayDensity(m), locked = inArc(m, cs, ce);
+    const ch = RAMP[d];
+    if (run && run.d === d) run.txt += ch;
+    else { flush(); run = { d, locked, txt: ch }; }
+  }
+  flush();
+  return r;
+}
+/* The permission channel, kept OFF the ramp so two meanings never fight for the
+   same cell: a thin underline under the hours a loosening is even considered. */
+function permissionRow(widthCh) {
+  const ws = minOf(DATA.window.start), we = minOf(DATA.window.end);
+  const r = el("div", "row");
+  let run = null;
+  const flush = () => { if (run) { const s = sp(run.on ? "dim" : "", run.txt);
+    if (run.on) s.style.opacity = ".8"; r.appendChild(s); run = null; } };
+  for (let i = 0; i < widthCh; i++) {
+    const m = ((i + 0.5) / widthCh) * 1440;
+    const on = inArc(m, ws, we);
+    const ch = on ? "▔" : " ";
+    if (run && run.on === on) run.txt += ch; else { flush(); run = { on, txt: ch }; }
+  }
+  flush();
+  return r;
+}
+function axisRow(widthCh, every) {
+  const r = el("div", "row dimmer");
+  let s = "";
+  for (let h = 0; h <= 24; h += (every || 2)) {
+    const col = Math.round((h / 24) * widthCh);
+    const lab = String(h % 24).padStart(2, "0");
+    while (s.length < col) s += " ";
+    s = s.slice(0, Math.max(0, col - 1)) + lab;
+  }
+  r.appendChild(document.createTextNode(s.slice(0, widthCh)));
+  return r;
+}
+function rampLegend() {
+  return rowOf(
+    sp("dim", "@"), sp("dimmer", " curfew    "),
+    sp("dim", "% # * + = -"), sp("dimmer", " curfew approaching    "),
+    sp("dimmer", "."), sp("dimmer", " open    "),
+    sp("dim", "▔"), sp("dimmer", " may weaken    "),
+    sp("b", "█"), sp("dimmer", " now"));
+}
+
+/* ---------------------------------------------------------------- Digits
+   Exact tables from the installed textual 8.2.7
+   (textual/renderables/digits.py: DIGITS3X3 / DIGITS3X3_BOLD). Proportional —
+   "1" is narrower than "0". */
+const DIG3 = [["   ","   ","   "],["╭─╮","│ │","╰─╯"],["╶╮"," │","╶┴╴"],["╶─╮","┌─┘","╰─╴"],["╶─╮"," ─┤","╶─╯"],["╷ ╷","╰─┤","  ╵"],["╭─╴","╰─╮","╶─╯"],["╭─╴","├─╮","╰─╯"],["╶─┐","  │","  ╵"],["╭─╮","├─┤","╰─╯"],["╭─╮","╰─┤","╶─╯"]];
+const DIG3B = [["   ","   ","   "],["┏━┓","┃ ┃","┗━┛"],["╺┓"," ┃","╺┻╸"],["╺━┓","┏━┛","┗━╸"],["╺━┓"," ━┫","╺━┛"],["╻ ╻","┗━┫","  ╹"],["┏━╸","┗━┓","╺━┛"],["┏━╸","┣━┓","┗━┛"],["╺━┓","  ┃","  ╹"],["┏━┓","┣━┫","┗━┛"],["┏━┓","┗━┫","╺━┛"]];
+function digits(txt, bold) {
+  const tbl = bold ? DIG3B : DIG3, lines = ["", "", ""];
+  for (const ch of txt) {
+    if (ch === ":") { lines[0] += " "; lines[1] += ":"; lines[2] += " "; continue; }
+    const i = " 0123456789".indexOf(ch);
+    const g = i > 0 ? tbl[i] : tbl[0];
+    for (let r = 0; r < 3; r++) lines[r] += g[r];
+  }
+  return lines.join("\n");
+}
+function digitsNode(txt, cls, bold) {
+  const p = el("pre", "digits" + (bold ? " bold" : "") + (cls ? " " + cls : ""));
+  p.textContent = digits(txt, bold);
+  return p;
+}
+
+/* ---------------------------------------------------------------- chrome
+   A square outline chip, radius 0, drawn with the characters Textual's
+   `border: solid` actually emits. One row tall: ▏label▕ with a bright border
+   when selected, filled when it is the one primary action. */
+function chip(label, mode) {
+  const c = el("span", "chip" + (mode ? " " + mode : ""));
+  const filled = mode === "primary";
+  c.appendChild(sp("edge", filled ? " " : "▏"));
+  c.appendChild(sp("", " " + label + " "));
+  c.appendChild(sp("edge", filled ? " " : "▕"));
+  return c;
+}
+function chipRow(items) {
+  const r = el("div", "row");
+  items.forEach(([label, mode], i) => {
+    if (i) r.appendChild(sp("", "  "));
+    r.appendChild(chip(label, mode));
+  });
+  return r;
+}
+/* A meter as SURFACE: solid background over whole cells. In Textual, three
+   Statics with `background: $foreground` / `$foreground 18%` inside a Horizontal.
+   No glyph anywhere, which is what stops it reading as ASCII texture. */
+function tokenSurface(left, of, w) {
+  const seg = el("span", "seg");
+  seg.style.display = "inline-flex";
+  for (let i = 0; i < of; i++) {
+    if (i) { const g = el("i"); g.style.width = "1ch"; g.textContent = " "; seg.appendChild(g); }
+    const b = el("i");
+    b.style.width = w + "ch"; b.textContent = " ".repeat(w);
+    b.style.background = i < left ? "var(--fg)" : "var(--fill-selected)";
+    seg.appendChild(b);
+  }
+  return seg;
+}
+
+/* the reference's announcement dot: the ONLY warm accent on the page */
+const accentDot = () => { const d = sp("acc b", "●"); return d; };
+
+/* device frame: ▏ ▕ columns down both sides, ▔ ▁ across */
+function framed(rows, build) {
+  const f = el("div", "frame");
+  const left = el("div", "vedge"), right = el("div", "vedge");
+  for (let i = 0; i < rows; i++) { left.appendChild(sp("", "▏")); right.appendChild(sp("", "▕")); }
+  const inner = el("div", "inner");
+  build(inner);
+  f.appendChild(left); f.appendChild(inner); f.appendChild(right);
+  return f;
+}
+const hedge = (n, ch) => { const r = el("div", "hedge"); r.textContent = (ch || "▔").repeat(n); return r; };
+
+/* ---------------------------------------------------------------- blocking */
+function blockingFacts() {
+  const b = DATA.blocking;
+  return [
+    { label: "apps", on: b.apps.on, bad: b.apps.dead.length > 0,
+      value: b.apps.on ? `${b.apps.mode} · 2 named` : "off",
+      note: "steam ends · discord matches nothing" },
+    { label: "games", on: b.games.on, bad: !b.games.on,
+      value: b.games.on ? "on · 3 covered" : "off",
+      note: "3 installed, covered by nothing" },
+    { label: "sites", on: b.sites.urls.length > 0, bad: b.sites.urls.length === 0,
+      value: b.sites.urls.length ? `${b.sites.urls.length} blocked` : "none blocked",
+      note: `${b.sites.ext} installed · policy restored ${DATA.policy.restored}` },
+    { label: "jail", on: !isWeak(), bad: isWeak(),
+      value: isWeak() ? "weak · SIGTERM" : "strong · cgroup",
+      note: isWeak() ? "anything that forks survives the tick" : b.jail.path }
+  ];
+}
+/* on/off as a reverse-video tag, not as a coloured word */
+function tag(f) {
+  const t = el("span", "tag " + (f.bad ? "bad" : f.on ? "on" : "off"));
+  t.textContent = f.bad ? "GAP" : f.on ? "ON" : "OFF";
+  return t;
+}
+
+/* ============================================================ E1★ */
+function renderA(root) {
+  const s = STATES[STATE], facts = blockingFacts();
+  const IW = 127;                            // inner width: 135 - 2 edges - 4 padding
+  root.appendChild(framed(46, inner => {
+    inner.appendChild(blank(1));
+
+    /* header: wordmark, the one accent dot, live context */
+    const h = el("div", "row");
+    h.appendChild(sp("b", "󰂲 NIGHTGUARD"));
+    h.appendChild(sp("", "  "));
+    h.appendChild(accentDot());
+    h.appendChild(el("span", "fill"));
+    h.appendChild(sp("dimmer", `${DATA.theme} · ${DATA.tz} · ${s.now}`));
+    inner.appendChild(h);
+    inner.appendChild(hedge(IW));
+
+    /* ---- HERO: the day, full width ---- */
+    inner.appendChild(blank(1));
+    inner.appendChild(rowOf(sp("label", "The day"), el("span", "fill"),
+      sp("dimmer", s.caption)));
+    inner.appendChild(blank(2));
+    inner.appendChild(rampRow(IW, minOf(s.now)));
+    inner.appendChild(permissionRow(IW));
+    inner.appendChild(axisRow(IW, 2));
+    inner.appendChild(blank(1));
+    inner.appendChild(rampLegend());
+    inner.appendChild(blank(1));
+    inner.appendChild(el("div", "kl row", "─".repeat(IW)));
+
+    /* ---- two columns: state | blocking ---- */
+    const COL = 62;
+    const band = (h, L, R) => {
+      const r = el("div", "row"); r.style.height = h + "lh"; r.style.alignItems = "stretch";
+      const a = el("div"); a.style.width = COL + "ch"; a.style.flex = "0 0 auto"; L(a);
+      const v = el("div", "kl"); v.style.width = "1ch"; v.style.whiteSpace = "pre";
+      for (let i = 0; i < h; i++) v.appendChild(rowOf("│"));
+      const b = el("div"); b.style.flex = "1 1 auto"; b.style.paddingLeft = "2ch"; R(b);
+      r.appendChild(a); r.appendChild(v); r.appendChild(b);
+      return r;
+    };
+
+    inner.appendChild(band(14, c => {
+      c.appendChild(blank(1));
+      c.appendChild(rowOf(sp("label", "State")));
+      c.appendChild(blank(1));
+      c.appendChild(rowOf(sp(s.role + " b", s.glyph + "  " + s.verdict),
+        sp("", "   "), sp("dimmer", `${DATA.curfew.start}–${DATA.curfew.end}`)));
+      const d = el("div", "row h3"); d.appendChild(digitsNode(s.left, s.role, false)); c.appendChild(d);
+      c.appendChild(blank(1));
+      c.appendChild(rowOf(sp("label", s.meta)));
+      c.appendChild(blank(1));
+      c.appendChild(rowOf(sp("k w14", "a loosening"),
+        sp(isOpen() ? "dim" : "urg", isOpen() ? "costs 1 token" : "is refused right now")));
+    }, c => {
+      c.appendChild(blank(1));
+      c.appendChild(rowOf(sp("label", "Blocking"), el("span", "fill"),
+        sp("dimmer", "what the curfew actually stops")));
+      c.appendChild(blank(1));
+      facts.forEach(f => {
+        const r = el("div", "row");
+        r.appendChild(sp("k w12", f.label));
+        r.appendChild(tag(f));
+        r.appendChild(sp("", "  "));
+        r.appendChild(sp("dim", f.value));
+        c.appendChild(r);
+        c.appendChild(rowOf(sp("dimmer", "            " + f.note)));
+      });
+    }));
+    inner.appendChild(el("div", "kl row", "─".repeat(IW)));
+
+    /* ---- two columns: week | ledger ---- */
+    inner.appendChild(band(11, c => {
+      c.appendChild(blank(1));
+      c.appendChild(rowOf(sp("label", "This week")));
+      c.appendChild(blank(1));
+      const t = el("div", "row");
+      t.appendChild(sp("k w14", "tokens"));
+      t.appendChild(tokenSurface(DATA.tokens.left, DATA.tokens.of, 6));
+      t.appendChild(sp("dim", `   ${DATA.tokens.left} of ${DATA.tokens.of}`));
+      c.appendChild(t);
+      c.appendChild(rowOf(sp("k w14", ""), sp("dimmer", `resets ${DATA.tokens.resets}`)));
+      c.appendChild(blank(1));
+      c.appendChild(rowOf(sp("k w14", "grace"),
+        sp("dim", isGrace() ? "running · 18m 32s left" : "unavailable today")));
+      c.appendChild(rowOf(sp("k w14", "watchdog"),
+        sp("dimmer", `${DATA.watchdog.last} · ok · every ${DATA.watchdog.every}s`)));
+    }, c => {
+      c.appendChild(blank(1));
+      c.appendChild(rowOf(sp("label", "Last changes")));
+      c.appendChild(blank(1));
+      DATA.ledger.slice(0, 4).forEach(([d, f]) =>
+        c.appendChild(rowOf(sp("dimmer", d + "   "), sp("dim", f))));
+      c.appendChild(rowOf(sp("dimmer", `${DATA.ledger.length} in the ledger`)));
+    }));
+
+    /* ---- the chip strip: one row of square outline chips, one filled ---- */
+    inner.appendChild(hedge(IW, "▔"));
+    inner.appendChild(chipRow([
+      ["e  edit", "primary"], ["b  blocking", ""], ["l  ledger", ""],
+      ["r  refresh", ""], ["q  quit", ""]
+    ]));
+    inner.appendChild(blank(1));
+  }));
+}
+
+/* ============================================================ E3★ */
+function renderC(root) {
+  const s = STATES[STATE], facts = blockingFacts();
+  const IW = 127;
+  root.appendChild(framed(46, inner => {
+    inner.appendChild(blank(1));
+
+    const h = el("div", "row");
+    h.appendChild(sp("b", "󰂲 NIGHTGUARD"));
+    h.appendChild(sp("", "  "));
+    h.appendChild(accentDot());
+    h.appendChild(el("span", "fill"));
+    /* the one region that is shouting gets the inverted chip, not a filled bar */
+    if (isWeak()) h.appendChild(chip("WEAK MODE", "on"));
+    h.appendChild(sp("dimmer", `  ${DATA.theme} · ${s.now}`));
+    inner.appendChild(h);
+    inner.appendChild(hedge(IW));
+
+    /* hero */
+    inner.appendChild(blank(1));
+    inner.appendChild(rowOf(sp("label", "The day"), el("span", "fill"), sp("dimmer", s.caption)));
+    inner.appendChild(blank(2));
+    inner.appendChild(rampRow(IW, minOf(s.now)));
+    inner.appendChild(permissionRow(IW));
+    inner.appendChild(axisRow(IW, 2));
+    inner.appendChild(blank(1));
+    inner.appendChild(rampLegend());
+    inner.appendChild(blank(1));
+
+    /* state, on a solid spine — no box, no filled header */
+    const st = el("div", "spine " + (s.role === "urg" ? "alarm" : s.role === "acc" ? "ok" : ""));
+    st.appendChild(rowOf(sp("label", "State")));
+    const srow = el("div", "row");
+    srow.appendChild(sp(s.role + " b", s.glyph + "  " + s.verdict));
+    srow.appendChild(sp("", "   "));
+    srow.appendChild(sp("dimmer", `curfew ${DATA.curfew.start}–${DATA.curfew.end}`));
+    srow.appendChild(el("span", "fill"));
+    srow.appendChild(sp("dimmer", `may weaken ${DATA.window.start}–${DATA.window.end}`));
+    st.appendChild(srow);
+    const d = el("div", "row h3"); d.appendChild(digitsNode(s.left, s.role, true)); st.appendChild(d);
+    st.appendChild(rowOf(sp("label", s.meta), el("span", "fill"),
+      sp(isOpen() ? "dim" : "urg", isOpen() ? "a loosening costs 1 token" : "a loosening is refused right now")));
+    inner.appendChild(st);
+    inner.appendChild(blank(1));
+    inner.appendChild(hedge(IW, "▔"));
+
+    /* blocking + week side by side, corner labels only */
+    const two = el("div", "row");
+    two.style.height = "15lh"; two.style.alignItems = "stretch";
+    const L = el("div"); L.style.width = "66ch"; L.style.flex = "0 0 auto";
+    L.appendChild(blank(1));
+    L.appendChild(rowOf(sp("label", "Blocking"), el("span", "fill"),
+      sp("dimmer", "what the curfew actually stops  ")));
+    L.appendChild(blank(1));
+    facts.forEach(f => {
+      const r = el("div", "row");
+      r.appendChild(sp("k w12", f.label));
+      r.appendChild(tag(f));
+      r.appendChild(sp("", "  "));
+      r.appendChild(sp("dim", f.value));
+      L.appendChild(r);
+      L.appendChild(rowOf(sp("dimmer", "            " + f.note)));
+    });
+    const V = el("div", "kl"); V.style.width = "1ch"; V.style.whiteSpace = "pre";
+    for (let i = 0; i < 15; i++) V.appendChild(rowOf("│"));
+    const R = el("div"); R.style.flex = "1 1 auto"; R.style.paddingLeft = "2ch";
+    R.appendChild(blank(1));
+    R.appendChild(rowOf(sp("label", "This week")));
+    R.appendChild(blank(1));
+    const t = el("div", "row");
+    t.appendChild(sp("k w12", "tokens"));
+    t.appendChild(tokenSurface(DATA.tokens.left, DATA.tokens.of, 6));
+    t.appendChild(sp("dim", `   ${DATA.tokens.left} of ${DATA.tokens.of}`));
+    R.appendChild(t);
+    R.appendChild(rowOf(sp("k w12", ""), sp("dimmer", `resets ${DATA.tokens.resets}`)));
+    R.appendChild(blank(1));
+    R.appendChild(rowOf(sp("k w12", "grace"),
+      sp("dim", isGrace() ? "running · 18m 32s" : "unavailable today")));
+    R.appendChild(blank(1));
+    R.appendChild(rowOf(sp("label", "Last changes")));
+    DATA.ledger.slice(0, 3).forEach(([dd, ff]) =>
+      R.appendChild(rowOf(sp("dimmer", dd.slice(5) + "   "), sp("dim", ff))));
+    two.appendChild(L); two.appendChild(V); two.appendChild(R);
+    inner.appendChild(two);
+
+    inner.appendChild(hedge(IW, "▔"));
+    inner.appendChild(rowOf(sp("dimmer", `config ${DATA.hmac.config}    state ${DATA.hmac.state}`),
+      el("span", "fill"), sp("dimmer", "signed by the guard, never by this window")));
+    inner.appendChild(blank(1));
+    inner.appendChild(chipRow([
+      ["e  edit", "primary"], ["b  blocking", ""], ["l  ledger", ""], ["q  quit", ""]
+    ]));
+    inner.appendChild(blank(1));
+  }));
+}
+
+/* ============================================================ the ramp alone */
+function renderRamp(root) {
+  const s = STATES[STATE];
+  root.appendChild(framed(46, inner => {
+    inner.appendChild(blank(1));
+    inner.appendChild(rowOf(sp("b", "THE DAY, AS THE PRODUCT'S OWN OUTPUT"), el("span", "fill"),
+      accentDot()));
+    inner.appendChild(hedge(127));
+    inner.appendChild(blank(1));
+
+    [127, 96, 64, 40].forEach(w => {
+      inner.appendChild(rowOf(sp("label", `${w} columns`)));
+      inner.appendChild(rampRow(w, minOf(s.now)));
+      inner.appendChild(permissionRow(w));
+      inner.appendChild(axisRow(w, w >= 96 ? 2 : w >= 64 ? 4 : 6));
+      inner.appendChild(blank(1));
+    });
+
+    inner.appendChild(el("div", "kl row", "─".repeat(127)));
+    inner.appendChild(blank(1));
+    inner.appendChild(rowOf(sp("label", "Every state, at 127 columns")));
+    inner.appendChild(blank(1));
+    Object.entries(STATES).forEach(([name, st]) => {
+      inner.appendChild(rowOf(sp("dim", name.padEnd(8)), sp("dimmer", st.now)));
+      inner.appendChild(rampRow(127, minOf(st.now)));
+      inner.appendChild(blank(1));
+    });
+    inner.appendChild(el("div", "kl row", "─".repeat(127)));
+    inner.appendChild(blank(1));
+    inner.appendChild(rampLegend());
+  }));
+}
+
+/* ============================================================ plumbing */
+const RENDER = { a: renderA, c: renderC, ramp: renderRamp };
+function paint() {
+  for (const k of Object.keys(RENDER)) {
+    const t = document.getElementById("term-" + k);
+    t.innerHTML = ""; RENDER[k](t);
+  }
+  reportRows();
+}
+/* A real overflow check: how many rows did the active variant actually draw?
+   46 is the sanctioned window; more than that is clipped in the real thing. */
+function reportRows() {
+  const active = document.querySelector(".variant.active .term");
+  if (!active) return;
+  const out = document.getElementById("rowcount");
+  const lh = parseFloat(getComputedStyle(active).lineHeight);
+  const inner = active.querySelector(".inner") || active;
+  const used = Math.round(inner.scrollHeight / lh);
+  out.textContent = used + "/46";
+  out.classList.toggle("over", used > 46);
+}
+document.querySelectorAll(".variant-tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".variant-tab").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".variant").forEach(v => v.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("variant-" + btn.dataset.v).classList.add("active");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    reportRows();
+  });
+});
+document.querySelectorAll("#state-bar button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#state-bar button").forEach(b => b.classList.remove("on"));
+    btn.classList.add("on"); STATE = btn.dataset.s; paint();
+  });
+});
+document.getElementById("theme-switcher").addEventListener("change", e => {
+  document.querySelector('link[href*=themes]').href = "../themes/" + e.target.value + ".css";
+});
+let gridOn = false;
+document.getElementById("grid-toggle").addEventListener("click", () => {
+  gridOn = !gridOn;
+  document.querySelectorAll(".term").forEach(t => {
+    t.style.backgroundImage = gridOn
+      ? "repeating-linear-gradient(to right, rgba(248,235,227,.08) 0 1px, transparent 1px 1ch), repeating-linear-gradient(to bottom, rgba(248,235,227,.08) 0 1px, transparent 1px 1lh)"
+      : "none";
+  });
+  document.getElementById("grid-toggle").textContent = gridOn ? "grid on" : "135×46";
+});
+paint();
+window.addEventListener("resize", reportRows);
+</script>
+</body>
+</html>

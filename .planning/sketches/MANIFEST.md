@@ -33,6 +33,16 @@ Hard constraints carried into every sketch:
   `/usr/share/omarchy/shell/Ui/` + `/usr/share/omarchy/shell/Commons/Style.qml`
 - The live theme (dos-moos, "Muted Sage"):
   `~/.local/state/omarchy/current/theme/{colors,shell}.toml`
+- **`ascii-magic`** (`forge/design/taste/entries/ascii-magic.md`, live at
+  ascii-magic.com/landing) — named directly as the reference for "ascii style but
+  modern". Mechanisms taken: square outline chips in one row with the selected one
+  inverted to a bright border; hairline rules bracketing the viewport as a device
+  frame; small dim corner labels instead of heading bars; near-black over ~80% of
+  the area with the whole colour budget on one subject; one warm accent appearing
+  exactly once, as a dot; monospace display at 4× body where the headline
+  demonstrates the tool while stating it; one white filled primary button.
+  Its guardrails are binding: accent under ~5% of pixels, radius 0, no shadow, and
+  never soften it halfway.
 - Daniel's taste library (`forge/design/taste/`) — web and desktop, so it informs
   rather than decides. It holds three families, not five: `minimalist-ui`
   (space and type do the grouping, no card chrome), `industrial-brutalist-ui`
@@ -48,7 +58,8 @@ Hard constraints carried into every sketch:
 | # | Name | Design Question | Winner | Tags |
 |---|------|----------------|--------|------|
 | 001 | tui-direction | What shape lets you see the cycle rather than read it off a list, and where does blocking live on it? | **E · tile grid** — chosen, with "less terminal" as the note | layout, tui, textual, omarchy-quattro, blocking |
-| 002 | tiles-less-terminal | The tile grid is right — what exactly makes it still read as a terminal, and which lever removes it? | — | layout, tui, textual, omarchy-quattro, blocking, refinement |
+| 002 | tiles-less-terminal | The tile grid is right — what exactly makes it still read as a terminal, and which lever removes it? | **E1 and E3 both survived** | layout, tui, textual, omarchy-quattro, blocking, refinement |
+| 003 | ascii-modern | E1 and E3 are both close — what does the ASCII-Magic reference actually change about them? | — | layout, tui, textual, industrial-brutalist-ui, ascii-magic, blocking, refinement |
 
 ## What the stack can actually draw
 
@@ -86,3 +97,18 @@ one process with the calendar, the todo list and the portal.
 
 Every sketch shows that state honestly. Whether those keys also become *editable* is
 an open scope decision, not a visual one.
+
+## The hero, decided
+
+The day is rendered as an **ASCII density ramp** (` .:-=+*#%@`) at full width, and it
+is the only thing on the screen that is ASCII art. Density is hours-until-curfew, so
+it informs rather than decorates: saturated inside the curfew, sparse the moment it
+lifts, climbing back as the night returns. A separate thin underline marks the hours
+in which a loosening is even considered; one bright cell is now. Greyscale on
+purpose — density already carries the meaning, and the colour budget belongs to the
+verdict.
+
+One hero only, which is the family's rule. Everything else in the interface is
+surface and hairline: meters are a `Static` with a `background` colour rather than
+run of block glyphs, on/off is a reverse-video tag, and section labels have no
+chrome at all.
