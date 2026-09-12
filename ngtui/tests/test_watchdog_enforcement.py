@@ -21,6 +21,18 @@ import nightguard_watchdog as wd
 
 
 _EXT = "elfaihghhjjoknimpccccmkioofjjfkf"
+_FF_EXT = "{30b15d56-b2fa-4cb2-98fd-7b5e26306483}"
+
+
+@pytest.fixture
+def only_chromium(monkeypatch):
+    """Isolate the Chromium family from the Gecko one.
+
+    ``desired_bodies`` covers both, so a test that monkeypatches POLICY_PATHS alone
+    still picks up /etc/zen and /etc/firefox from the real machine. Clearing the Gecko
+    map keeps the Chromium assertions about Chromium.
+    """
+    monkeypatch.setattr(wd, "MOZILLA_POLICY_TARGETS", {})
 
 
 def _cfg(blocked_urls=None, ext=_EXT, enabled=True, native=None):
@@ -78,7 +90,7 @@ def test_an_empty_blocklist_omits_the_key_entirely():
     assert "URLBlocklist" not in body
 
 
-def test_a_stale_blocklist_is_detected_as_missing(tmp_path, monkeypatch):
+def test_a_stale_blocklist_is_detected_as_missing(tmp_path, monkeypatch, only_chromium):
     """The old check only looked for the extension id, so a policy left over from
     the night would have survived all day: the id was still present, so the file
     read as correct while it was still blocking Discord at noon."""
@@ -92,12 +104,12 @@ def test_a_stale_blocklist_is_detected_as_missing(tmp_path, monkeypatch):
     assert wd._missing_policies(cfg, "outside_curfew") == [str(path)]
 
 
-def test_a_deleted_policy_is_detected_as_missing(tmp_path, monkeypatch):
+def test_a_deleted_policy_is_detected_as_missing(tmp_path, monkeypatch, only_chromium):
     monkeypatch.setattr(wd, "POLICY_PATHS", [str(tmp_path / "gone.json")])
     assert wd._missing_policies(_cfg(), "locked") == [str(tmp_path / "gone.json")]
 
 
-def test_restoring_writes_the_verdict_appropriate_body(tmp_path, monkeypatch):
+def test_restoring_writes_the_verdict_appropriate_body(tmp_path, monkeypatch, only_chromium):
     path = tmp_path / "nightguard.json"
     monkeypatch.setattr(wd, "POLICY_PATHS", [str(path)])
     cfg = _cfg(blocked_urls=["discord.com"])
@@ -110,6 +122,138 @@ def test_restoring_writes_the_verdict_appropriate_body(tmp_path, monkeypatch):
     assert failed == []
     assert "discord.com" not in path.read_text(encoding="utf-8")
     assert _EXT in path.read_text(encoding="utf-8")
+
+
+# --- incognito, guest mode and safe mode -------------------------------------
+# Every one of these starts a browser session the force-installed extension is not
+# in. They are the difference between "cannot be switched off" and "cannot be
+# switched off without opening a second window".
+
+def test_incognito_and_guest_mode_are_closed_on_chromium():
+    """Chromium has no policy to grant an extension incognito access -- ExtensionSettings
+    carries no incognito key -- so removing incognito is the only enforcement there is.
+    Guest mode is the quieter hole: a guest session carries no extensions at all."""
+    body = json.loads(wd._policy_body(_EXT))
+    assert body["IncognitoModeAvailability"] == 1
+    assert body["BrowserGuestModeEnabled"] is False
+
+
+def test_incognito_closure_can_be_turned_off_from_config():
+    body = json.loads(wd._policy_body(_EXT, block_incognito=False))
+    assert "IncognitoModeAvailability" not in body
+    assert "BrowserGuestModeEnabled" not in body
+
+
+# --- the Gecko (Zen, Firefox) policy -----------------------------------------
+
+def test_the_gecko_policy_force_installs_from_amo(tmp_path):
+    base = tmp_path / "policies.json"
+    body = json.loads(wd._mozilla_policy_body(str(base), _FF_EXT, wd.FIREFOX_INSTALL_URL))
+    entry = body["policies"]["ExtensionSettings"][_FF_EXT]
+    assert entry["installation_mode"] == "force_installed"
+    assert entry["install_url"] == wd.FIREFOX_INSTALL_URL
+
+
+def test_the_gecko_policy_grants_private_browsing_instead_of_removing_it():
+    """Chromium can only close incognito by deleting the feature; Gecko can hand the
+    add-on the private window instead, so private browsing stays usable AND covered."""
+    body = json.loads(wd._mozilla_policy_body("/nonexistent", _FF_EXT, "https://x/y.xpi"))
+    assert body["policies"]["ExtensionSettings"][_FF_EXT]["private_browsing"] is True
+
+
+def test_safe_mode_is_disabled():
+    """Safe mode starts Gecko with every extension off, two clicks from the help menu."""
+    body = json.loads(wd._mozilla_policy_body("/nonexistent", _FF_EXT, "https://x/y.xpi"))
+    assert body["policies"]["DisableSafeMode"] is True
+
+
+def test_the_vendors_own_policies_survive_the_overwrite(tmp_path):
+    """/etc/<app>/policies/policies.json SHADOWS the install-directory file -- Gecko
+    returns the system file and never reads the other one. Writing the lock without
+    merging would silently drop Zen's DisableAppUpdate."""
+    base = tmp_path / "policies.json"
+    base.write_text(json.dumps({"policies": {"DisableAppUpdate": True,
+                                             "DefaultSerialGuardSetting": 3}}),
+                    encoding="utf-8")
+    body = json.loads(wd._mozilla_policy_body(str(base), _FF_EXT, "https://x/y.xpi"))
+    assert body["policies"]["DisableAppUpdate"] is True
+    assert body["policies"]["DefaultSerialGuardSetting"] == 3
+    assert _FF_EXT in body["policies"]["ExtensionSettings"]
+
+
+def test_a_missing_base_document_still_produces_the_lock(tmp_path):
+    """No vendor file is nothing to carry forward, not a reason to skip enforcement."""
+    body = json.loads(wd._mozilla_policy_body(str(tmp_path / "absent.json"),
+                                              _FF_EXT, "https://x/y.xpi"))
+    assert _FF_EXT in body["policies"]["ExtensionSettings"]
+
+
+def test_blocked_hosts_become_gecko_match_patterns():
+    """Chromium takes a bare host; Gecko's WebsiteFilter wants a match pattern and
+    silently drops anything else. One config list, two syntaxes."""
+    body = json.loads(wd._mozilla_policy_body("/nonexistent", _FF_EXT, "https://x/y.xpi",
+                                              ["discord.com", "*://old.reddit.com/*"]))
+    assert body["policies"]["WebsiteFilter"]["Block"] == [
+        "*://*.discord.com/*", "*://old.reddit.com/*"]
+
+
+def test_gecko_blocked_sites_are_lifted_outside_the_curfew(tmp_path):
+    cfg = _cfg(blocked_urls=["discord.com"])
+    base = str(tmp_path / "absent.json")
+    locked = json.loads(wd.desired_mozilla_policy(cfg, "locked", base))
+    assert locked["policies"]["WebsiteFilter"]["Block"] == ["*://*.discord.com/*"]
+    open_hours = json.loads(wd.desired_mozilla_policy(cfg, "outside_curfew", base))
+    assert "WebsiteFilter" not in open_hours["policies"]
+    assert _FF_EXT in open_hours["policies"]["ExtensionSettings"], \
+        "the add-on is still force-installed"
+
+
+def test_no_gecko_policy_is_written_when_browser_blocking_is_disabled():
+    assert wd.desired_mozilla_policy(_cfg(enabled=False), "locked", "/nonexistent") is None
+
+
+def test_a_browser_that_is_not_installed_gets_no_policy_file(tmp_path, monkeypatch):
+    """An unread file that reports "restored" on every tick is noise, not enforcement."""
+    monkeypatch.setattr(wd, "POLICY_PATHS", [])
+    monkeypatch.setattr(wd, "MOZILLA_POLICY_TARGETS", {
+        str(tmp_path / "etc/ghost/policies/policies.json"):
+            str(tmp_path / "opt/ghost/distribution/policies.json"),
+    })
+    assert wd.desired_bodies(_cfg(), "locked") == {}
+
+
+def test_an_installed_browser_gets_its_policy_file(tmp_path, monkeypatch):
+    install = tmp_path / "opt/zen/distribution"
+    install.mkdir(parents=True)
+    target = str(tmp_path / "etc/zen/policies/policies.json")
+    monkeypatch.setattr(wd, "POLICY_PATHS", [])
+    monkeypatch.setattr(wd, "MOZILLA_POLICY_TARGETS",
+                        {target: str(install / "policies.json")})
+
+    want = wd.desired_bodies(_cfg(), "locked")
+    assert list(want) == [target]
+    assert wd._missing_policies(_cfg(), "locked") == [target], "absent file is missing"
+
+    restored, failed = wd._restore_policies(_cfg(), [target], "locked")
+    assert restored == [target] and failed == []
+    assert wd._missing_policies(_cfg(), "locked") == [], "and correct once written"
+    assert _FF_EXT in open(target, encoding="utf-8").read()
+
+
+def test_a_hand_edited_gecko_policy_is_detected_and_rewritten(tmp_path, monkeypatch):
+    """The whole point: deleting the ExtensionSettings block must not survive a tick."""
+    install = tmp_path / "opt/zen/distribution"
+    install.mkdir(parents=True)
+    target = tmp_path / "etc/zen/policies/policies.json"
+    target.parent.mkdir(parents=True)
+    monkeypatch.setattr(wd, "POLICY_PATHS", [])
+    monkeypatch.setattr(wd, "MOZILLA_POLICY_TARGETS",
+                        {str(target): str(install / "policies.json")})
+
+    target.write_text(json.dumps({"policies": {}}), encoding="utf-8")
+    assert wd._missing_policies(_cfg(), "locked") == [str(target)]
+    wd._restore_policies(_cfg(), [str(target)], "locked")
+    assert _FF_EXT in target.read_text(encoding="utf-8")
 
 
 # --- the process killer ------------------------------------------------------

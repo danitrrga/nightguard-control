@@ -46,7 +46,7 @@ systemctl stop nightguard-watchdog.timer 2>/dev/null || true
 
 echo "== installing code -> $CODE (root-owned, not writable by $OWNER) =="
 install -d -o root -g root -m 0755 "$CODE"
-for f in ngcommon.py guard.py nightguard_ctl.py nightguard_watchdog.py appblock.py; do
+for f in ngcommon.py guard.py nightguard_ctl.py nightguard_watchdog.py appblock.py verify_browser_lock.py; do
     install -o root -g root -m 0644 "$REPO_CODE/$f" "$CODE/$f"
 done
 # A stale __pycache__ from the old user-owned tree must not shadow the deployed sources.
@@ -88,15 +88,40 @@ chown "$OWNER:$OWNER" "$DATA/config.yaml"; chmod 0644 "$DATA/config.yaml"
 [[ -e $DATA/.timecache ]] || : > "$DATA/.timecache"
 chown "$OWNER:$OWNER" "$DATA/.timecache"; chmod 0644 "$DATA/.timecache"
 [[ -e $DATA/curfew.log ]] && { chown "$OWNER:$OWNER" "$DATA/curfew.log"; chmod 0644 "$DATA/curfew.log"; }
-[[ -d $DATA/policies ]] && chown -R root:root "$DATA/policies"
+# $DATA/policies held two hand-written policy templates. Nothing ever read them: the
+# watchdog generates both families from config.yaml, and the Gecko one sat there
+# looking like protection for three months while Zen went unlocked. Removed rather
+# than re-owned, so it cannot be mistaken for enforcement again.
+rm -rf "$DATA/policies"
 
 echo "== browser policy directories -> root:root 0755 =="
-for d in /etc/chromium/policies/managed /etc/brave/policies/managed; do
+# Chromium family: one managed-policy file per browser, alongside whatever else is
+# already there (omarchy writes its own theme policy into these directories).
+for d in /etc/chromium/policies/managed /etc/brave/policies/managed /etc/opt/chrome/policies/managed; do
     if [[ -d $d ]]; then
         chown root:root "$d"; chmod 0755 "$d"
         [[ -e $d/nightguard.json ]] && { chown root:root "$d/nightguard.json"; chmod 0644 "$d/nightguard.json"; }
         # Other policy files in the directory keep working; they just stop being user-editable.
         find "$d" -maxdepth 1 -type f ! -name nightguard.json -exec chown root:root {} \; -exec chmod 0644 {} \;
+    fi
+done
+
+# Gecko family: ONE policies.json per browser, at /etc/<app>/policies/, and it shadows
+# the vendor's own file in the install directory rather than sitting beside it. The
+# directories do not exist until something creates them, which is why the Zen lock had
+# nowhere to land before now. Created only for a browser that is actually installed.
+echo "== gecko policy directories -> root:root 0755 =="
+declare -A GECKO=(
+    [/etc/zen/policies]=/opt/zen-browser-bin
+    [/etc/firefox/policies]=/usr/lib/firefox
+)
+for d in "${!GECKO[@]}"; do
+    if [[ -d ${GECKO[$d]} ]]; then
+        install -d -o root -g root -m 0755 "$d"
+        [[ -e $d/policies.json ]] && { chown root:root "$d/policies.json"; chmod 0644 "$d/policies.json"; }
+        echo "   $d (for ${GECKO[$d]})"
+    else
+        echo "   skipping $d — ${GECKO[$d]} is not installed"
     fi
 done
 
@@ -171,3 +196,10 @@ systemctl is-active nightguard-watchdog.timer
 
 echo
 echo "Deployed. Old instance left at $OLD_DATA — remove it once you have verified this one."
+
+echo
+echo "== now prove the browsers actually read it (as $OWNER, no root needed) =="
+echo "   python3 $CODE/verify_browser_lock.py"
+echo "   It starts each Gecko browser headless and reads back WHICH policies.json was"
+echo "   used. A file in a directory the browser ignores is what the previous setup had."
+
