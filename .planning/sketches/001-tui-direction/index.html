@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sketch 001 — ngtui direction</title>
+<link rel="stylesheet" href="../themes/default.css">
+<style>
+  body {
+    margin: 0;
+    background: #0a0b0c;
+    color: var(--fg);
+    font-family: "CaskaydiaCove Nerd Font", ui-monospace, monospace;
+    padding: 52px 0 80px;
+  }
+
+  /* ---------- variant tabs ---------- */
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: #15171a; border-bottom: 1px solid var(--hairline);
+    padding: 7px 14px; display: flex; gap: 6px; align-items: center;
+    font-size: 12px; flex-wrap: wrap;
+  }
+  .variant-tab {
+    background: transparent; color: var(--dim);
+    border: 1px solid var(--border-normal); border-radius: var(--radius);
+    padding: 4px 10px; cursor: pointer; font: inherit;
+    transition: background .12s ease-out, color .12s ease-out, border-color .12s ease-out;
+  }
+  .variant-tab:hover { background: var(--fill-hover); border-color: var(--border-hover); color: var(--fg); }
+  .variant-tab.active { background: var(--fill-selected); border-color: var(--border-selected); color: var(--fg); }
+  #variant-nav .navsep { width: 1px; height: 20px; background: var(--hairline); margin: 0 6px; }
+  #variant-nav .navlabel { color: var(--dimmer); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
+
+  /* ---------- stage ---------- */
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .variant { display: none; }
+  .variant.active { display: block; }
+  .cap { width: calc(var(--cols) * 1ch); margin: 0 auto; }
+  .cap h2 { font-size: 15px; margin: 0 0 2px; font-weight: 700; letter-spacing: -.01em; }
+  .cap p { font-size: 12px; line-height: 1.5; color: var(--dim); margin: 0 0 10px; max-width: 96ch; }
+  .cap .axis { color: var(--focus); }
+
+  /* the simulated window: Hyprland draws a 1px active border around it */
+  .win {
+    border: 1px solid var(--sage);
+    border-radius: var(--radius);
+    padding: 0;
+    width: max-content;
+    margin: 0 auto;
+  }
+
+  /* ---------- grid primitives (everything in ch / lh) ---------- */
+  .term { padding: 0; position: relative; }
+  .pad { padding: 0 calc(2 * 1ch); }
+  .row { height: 1lh; display: flex; align-items: baseline; white-space: pre; }
+  .row.h2 { height: 2lh; }
+  .row.h3 { height: 3lh; }
+  .sp { height: 1lh; }
+  .sp2 { height: 2lh; }
+  .fill { flex: 1 1 auto; }
+  .dim { color: var(--dim); }
+  .dimmer { color: var(--dimmer); }
+  .b { font-weight: 700; }
+  .acc { color: var(--accent); }
+  .urg { color: var(--urgent); }
+  .foc { color: var(--focus); }
+  .sage { color: var(--sage); }
+
+  /* caption = the Quattro `meta` treatment: uppercase, letterspaced, dim */
+  .meta { color: var(--dim); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  /* section header = PanelSectionHeader */
+  .sect { color: var(--dim); font-weight: 700; letter-spacing: .10em; text-transform: uppercase; }
+  /* PanelSeparator: foreground @ 12% */
+  .rule { height: 1lh; display: flex; align-items: center; }
+  .rule::before { content: ""; display: block; height: 1px; width: 100%; background: var(--rule); }
+  .vrule { width: 1ch; align-self: stretch; display: flex; justify-content: center; }
+  .vrule::before { content: ""; display: block; width: 1px; background: var(--rule); }
+
+  /* key/value row: label column then value, both on the grid */
+  .k { width: 16ch; color: var(--dim); flex: 0 0 auto; }
+  .k.w14 { width: 14ch; }
+  .k.w20 { width: 20ch; }
+
+  /* detail pill = PanelHero's BorderSurface pill (transparent fill, normal border) */
+  .pill {
+    border: 1px solid var(--border-normal); border-radius: var(--radius);
+    padding: 0 1ch; height: 1lh; display: inline-flex; align-items: center;
+    color: var(--dim); font-weight: 700;
+  }
+  .pill.warn { border-color: rgba(240,51,74,.55); color: var(--urgent); }
+  .pill.ok { border-color: rgba(129,152,144,.55); color: var(--accent); }
+
+  /* control surface = Style.normalFillFor + normalBorderFor */
+  .card {
+    border: 1px solid var(--border-normal); border-radius: var(--radius);
+    background: var(--fill-normal); box-sizing: border-box;
+  }
+  .card.hot { background: var(--fill-hover); border-color: var(--border-hover); }
+  .card.alarm { border-color: rgba(240,51,74,.45); background: rgba(240,51,74,.06); }
+  .card.focusring { border-color: var(--border-focus); background: var(--fill-focus); }
+  .card:hover { background: var(--fill-hover); border-color: var(--border-hover); }
+  .cardpad { padding: 0 calc(2 * 1ch); }
+
+  /* big-figure countdown: the only place the grid gets a "display" size, made of
+     half-block glyphs so it still lands on whole cells */
+  /* 3 rows of half-block figures, held to the cell so 3 lines == 3lh exactly */
+  .bigfig { white-space: pre; line-height: var(--cell-ratio); font-weight: 700; letter-spacing: 0; margin: 0; }
+
+  .art { white-space: pre; line-height: var(--cell-ratio); }
+
+  /* meters */
+  .pip { letter-spacing: .35em; font-weight: 700; }
+
+  /* the horizontal day band */
+  .band { display: flex; height: 1lh; align-items: stretch; }
+  .band > i { display: block; font-style: normal; }
+
+  /* ---------- toolbar ---------- */
+  #sketch-tools {
+    position: fixed; bottom: 12px; right: 12px; z-index: 9999;
+    font-family: system-ui, sans-serif; font-size: 12px;
+    background: rgba(0,0,0,.78); color: #fff; padding: 8px 12px;
+    border-radius: 8px; opacity: .38; transition: opacity .2s ease-out;
+    display: flex; gap: 10px; align-items: center;
+  }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools select, #sketch-tools button {
+    font: inherit; background: #1d1f22; color: #fff;
+    border: 1px solid #3a4045; border-radius: 4px; padding: 3px 7px; cursor: pointer;
+  }
+  #sketch-tools .lbl { color: #9aa0a6; }
+
+  #state-bar {
+    position: fixed; bottom: 12px; left: 12px; z-index: 9999;
+    font-family: system-ui, sans-serif; font-size: 12px;
+    background: rgba(0,0,0,.78); color: #fff; padding: 8px 12px;
+    border-radius: 8px; display: flex; gap: 6px; align-items: center;
+    opacity: .38; transition: opacity .2s ease-out;
+  }
+  #state-bar:hover { opacity: 1; }
+  #state-bar button {
+    font: inherit; background: #1d1f22; color: #cfd3d6;
+    border: 1px solid #3a4045; border-radius: 4px; padding: 3px 8px; cursor: pointer;
+    transition: background .12s ease-out, color .12s ease-out;
+  }
+  #state-bar button:hover { background: #2a2e32; color: #fff; }
+  #state-bar button.on { background: #3a4b45; color: #fff; border-color: #5d726a; }
+  #state-bar .lbl { color: #9aa0a6; }
+
+  .gridnote {
+    width: calc(var(--cols) * 1ch); margin: 4px auto 0;
+    font-size: 11px; color: var(--dimmer); display: flex; justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="navlabel">Sketch 001 · direction</span>
+  <span class="navsep"></span>
+  <button class="variant-tab active" data-v="a">A · Panel stack</button>
+  <button class="variant-tab" data-v="b">B · Cycle dial</button>
+  <button class="variant-tab" data-v="c">C · Two-column console</button>
+  <button class="variant-tab" data-v="d">D · Day band</button>
+  <button class="variant-tab" data-v="e">E · Tile grid ★ chosen</button>
+</div>
+
+<div class="stage">
+
+  <!-- ===================== A ===================== -->
+  <section class="variant active" id="variant-a">
+    <div class="cap">
+      <h2>A · Panel stack</h2>
+      <p>The bar panel, grown into a window. Literally the Quattro kit: a hero
+      (icon + bold title + outlined detail pill + uppercase dim caption), then
+      <span class="acc">PanelSectionHeader</span> / <span class="acc">PanelSeparator</span> /
+      rows, all the way down. <span class="axis">Axis: nothing is invented — if the shell
+      has a component for it, this uses it.</span> Cheapest to build, and the
+      strongest coherence claim. Risk: a list of rows is not "seeing the cycle".</p>
+    </div>
+    <div class="win"><div class="term" id="term-a"></div></div>
+  </section>
+
+  <!-- ===================== B ===================== -->
+  <section class="variant" id="variant-b">
+    <div class="cap">
+      <h2>B · Cycle dial</h2>
+      <p>The day as a 24-hour ring, drawn on the character grid — the same idea as
+      the dial already in the bar panel, but given the whole window. Curfew is an
+      arc you can see the end of; now is a marker travelling it.
+      <span class="axis">Axis: time is spatial, not a number.</span> Blocking and
+      tokens ring the dial as satellites. Risk: one big ornament that has to keep
+      earning its 18 rows.</p>
+    </div>
+    <div class="win"><div class="term" id="term-b"></div></div>
+  </section>
+
+  <!-- ===================== C ===================== -->
+  <section class="variant" id="variant-c">
+    <div class="cap">
+      <h2>C · Two-column console</h2>
+      <p>135 columns is a wide window; this is the only variant that uses them.
+      Left column is the pact — verdict, cycle, what it costs. Right column is
+      enforcement — what is actually being blocked right now, and what is not.
+      <span class="axis">Axis: blocking gets equal billing with the curfew, not a
+      footnote.</span> Risk: two columns is two ideas per screen.</p>
+    </div>
+    <div class="win"><div class="term" id="term-c"></div></div>
+  </section>
+
+  <!-- ===================== D ===================== -->
+  <section class="variant" id="variant-d">
+    <div class="cap">
+      <h2>D · Day band</h2>
+      <p>The 24 hours laid flat across the window: curfew shaded, the edit window
+      marked, now a bright cursor on the line. Reads at a glance like a progress
+      surface in a normal app, and it is the only shape that shows curfew and the
+      edit window in the same picture — which is the thing that is genuinely hard
+      to hold in your head. <span class="axis">Axis: one horizontal instrument, stats
+      hung underneath.</span></p>
+    </div>
+    <div class="win"><div class="term" id="term-d"></div></div>
+  </section>
+
+  <!-- ===================== E ===================== -->
+  <section class="variant" id="variant-e">
+    <div class="cap">
+      <h2>E · Tile grid</h2>
+      <p>Quattro control surfaces as tiles — each one a fill at 4% over the
+      foreground with a 30% border, exactly what every button and field in the
+      shell is made of. Verdict and blocking get the big tiles.
+      <span class="axis">Axis: the screen is a dashboard of objects, and blocking is
+      one of the two biggest.</span> Risk: the slop catalogue's "card containers
+      around things that are not cards" — a tile has to mean an object.</p>
+    </div>
+    <div class="win"><div class="term" id="term-e"></div></div>
+  </section>
+
+</div>
+
+<div id="state-bar">
+  <span class="lbl">State</span>
+  <button data-s="locked" class="on">locked</button>
+  <button data-s="open">open</button>
+  <button data-s="grace">grace</button>
+  <button data-s="tamper">clock tamper</button>
+  <button data-s="weak">weak mode</button>
+</div>
+
+<div id="sketch-tools">
+  <span class="lbl">theme</span>
+  <select id="theme-switcher">
+    <option value="default">dos-moos (live)</option>
+  </select>
+  <span class="lbl">grid</span>
+  <button id="grid-toggle">135×46</button>
+</div>
+
+<script>
+/* ============================================================================
+   ONE data model for all five variants — the same shape the real TUI reads from
+   `backend`. Values are the live stack on this box (2026-09-12), not invented:
+     config.yaml        curfew 21:30-05:30, edit_window 05:30-14:00,
+                        blocking.native_apps {enabled:true, mode:blocklist,
+                        blacklist:[steam,discord], block_games:false},
+                        blocking.browser_extension {enabled:true, blocked_urls:[]}
+     guard.json         weekly_spent 2, week_anchor 2026-08-31, grace null,
+                        config_hmac 555b5d2b…81bb, state_hmac 904d5e26…7039
+     watchdog.log       "tick: ok" every ~60s; a RESTORED browser policies line
+     steamapps/heroic   Counter-Strike 2, Yu-Gi-Oh! Master Duel, Rocket League
+   ========================================================================== */
+const DATA = {
+  theme: "dos-moos", tz: "Europe/Amsterdam",
+  curfew: { start: "21:30", end: "05:30" },
+  window: { start: "05:30", end: "14:00" },
+  tokens: { left: 1, of: 3, resets: "Mon 09-14" },
+  hmac: { config: "555b5d2b…81bb", state: "904d5e26…7039" },
+  watchdog: { every: 60, last: "21:52:33", note: "tick: ok" },
+  policy: { restored: "21:28", targets: 5 },
+  blocking: {
+    apps: { on: true, mode: "blocklist", named: ["steam", "discord"], matching: ["steam"], dead: ["discord"] },
+    games: { on: false, detected: ["Counter-Strike 2", "Yu-Gi-Oh! Master Duel", "Rocket League"] },
+    sites: { on: true, urls: [], ext: "StayFree" },
+    jail: { path: "/sys/fs/cgroup/nightguard", strong: true }
+  },
+  ledger: [
+    ["2026-09-06 00:04", "curfew.window"],
+    ["2026-09-05 22:17", "curfew.window"],
+    ["2026-07-09 23:16", "curfew.window"],
+    ["2026-07-07 21:44", "curfew.window"],
+    ["2026-07-05 18:25", "curfew.window"],
+    ["2026-07-05 17:34", "curfew.window"],
+    ["2026-07-05 15:59", "curfew.window"],
+    ["2026-06-23 12:38", "curfew.allow_commands"]
+  ]
+};
+
+/* The five states the screen has to survive. `now` drives every clock. */
+const STATES = {
+  locked:  { verdict: "LOCKED",  role: "urg",  glyph: "", now: "21:52", left: "07:38:00",
+             meta: "CURFEW · 7H 38M REMAINING", caption: "curfew until 05:30" },
+  open:    { verdict: "OPEN",    role: "acc",  glyph: "", now: "14:10", left: "07:20:00",
+             meta: "OPEN · CURFEW STARTS 21:30", caption: "house open" },
+  grace:   { verdict: "GRACE",   role: "foc",  glyph: "", now: "22:40", left: "00:18:32",
+             meta: "GRACE · 18M 32S REMAINING", caption: "daily bypass running" },
+  tamper:  { verdict: "LOCKED",  role: "urg",  glyph: "", now: "03:11", left: "02:19:00",
+             meta: "CLOCK TAMPER · LOCKED", caption: "clock tamper detected — locked" },
+  weak:    { verdict: "LOCKED",  role: "urg",  glyph: "", now: "22:04", left: "07:26:00",
+             meta: "CURFEW · 7H 26M REMAINING", caption: "curfew until 05:30" }
+};
+let STATE = "locked";
+const isWeak  = () => STATE === "weak";
+const isOpen  = () => STATE === "open";
+const isGrace = () => STATE === "grace";
+
+/* -------------------------------------------------- tiny DOM helpers */
+const el = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) n.className = cls; if (txt !== undefined) n.textContent = txt; return n; };
+const sp = (cls, txt) => el("span", cls, txt);
+const rowOf = (...kids) => { const r = el("div", "row"); kids.forEach(k => r.appendChild(typeof k === "string" ? document.createTextNode(k) : k)); return r; };
+const blank = (n) => { const f = document.createDocumentFragment(); for (let i = 0; i < (n || 1); i++) f.appendChild(el("div", "sp")); return f; };
+const rule = () => el("div", "rule");
+const sect = (t) => rowOf(sp("sect", t));
+const kv = (k, ...v) => { const r = el("div", "row"); r.appendChild(sp("k", k)); v.forEach(x => r.appendChild(typeof x === "string" ? document.createTextNode(x) : x)); return r; };
+const pips = (left, of) => sp("pip", "●".repeat(left) + "○".repeat(of - left));
+const minOf = (hhmm) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
+
+/* The blocking lines, written once. This is the part the current TUI has no
+   surface for at all, so every variant carries the same four facts — and names
+   the two holes rather than implying coverage. */
+function blockingFacts() {
+  const b = DATA.blocking;
+  return {
+    apps:  { label: "Apps",  on: b.apps.on,
+             value: b.apps.on ? `${b.apps.mode} · ${b.apps.named.length} named` : "off",
+             note: `${b.apps.matching.join(", ")} matches · ${b.apps.dead.join(", ")} matches nothing`,
+             bad: b.apps.dead.length > 0 },
+    games: { label: "Games", on: b.games.on,
+             value: b.games.on ? `on · ${b.games.detected.length} covered` : "off",
+             note: `${b.games.detected.length} titles installed, none covered`,
+             bad: !b.games.on && b.games.detected.length > 0 },
+    sites: { label: "Sites", on: b.sites.urls.length > 0,
+             value: b.sites.urls.length ? `${b.sites.urls.length} blocked` : "none blocked",
+             note: `${b.sites.ext} installed · policy restored ${DATA.policy.restored}`,
+             bad: b.sites.urls.length === 0 },
+    force: { label: "Enforcement", on: !isWeak(),
+             value: isWeak() ? "WEAK MODE · SIGTERM" : "jail cgroup · strong",
+             note: isWeak() ? "no jail cgroup — anything that forks survives" : b.jail.path,
+             bad: isWeak() }
+  };
+}
+const badge = (f) => sp(f.bad ? "urg b" : (f.on ? "acc b" : "dim b"), f.bad ? "▲" : (f.on ? "●" : "○"));
+
+/* ============================================================ big figures
+   A "display" type size does not exist on a character grid. The countdown gets
+   glyph MASS instead: 3-row half-block figures. Still whole cells. */
+const FIG = {
+  "0": ["█▀▀█", "█  █", "█▄▄█"], "1": ["  ▀█", "   █", "   █"],
+  "2": ["▀▀▀█", "█▀▀▀", "█▄▄▄"], "3": ["▀▀▀█", " ▀▀█", "▄▄▄█"],
+  "4": ["█  █", "▀▀▀█", "   █"], "5": ["█▀▀▀", "▀▀▀█", "▄▄▄█"],
+  "6": ["█▀▀▀", "█▀▀█", "█▄▄█"], "7": ["▀▀▀█", "   █", "   █"],
+  "8": ["█▀▀█", "█▀▀█", "█▄▄█"], "9": ["█▀▀█", "▀▀▀█", "   █"],
+  ":": ["  ", "▄▄", "▄▄"],       " ": ["  ", "  ", "  "]
+};
+function bigFigure(txt) {
+  const lines = ["", "", ""];
+  for (const ch of txt) { const g = FIG[ch] || FIG[" "]; for (let i = 0; i < 3; i++) lines[i] += g[i] + " "; }
+  return lines.join("\n");
+}
+
+/* ============================================================ the dial (B)
+   24h ring on the grid. Cells are ~1:2, so columns are sampled at twice the
+   density of rows — that is what makes it read as a circle and not an egg. */
+function dialArt(nowMin, curfewStart, curfewEnd, winStart, winEnd, W, H) {
+  const grid = Array.from({ length: H }, () => Array(W).fill(" "));
+  const cx = (W - 1) / 2, cy = (H - 1) / 2;
+  // Leave room outside the ring for the hour labels, and remember: a cell is
+  // ~1:2, so the column radius is twice the row radius or the ring reads as an egg.
+  const r = Math.max(3, Math.min(cx / 2 - 2, cy - 1.5));
+  const inArc = (m, a, b) => (a <= b ? (m >= a && m < b) : (m >= a || m < b));
+  const N = 900;
+  for (let i = 0; i < N; i++) {
+    const m = (i / N) * 1440;
+    const ang = (m / 1440) * 2 * Math.PI - Math.PI / 2;      // 00:00 at top
+    const x = Math.round(cx + Math.cos(ang) * r * 2);
+    const y = Math.round(cy + Math.sin(ang) * r);
+    if (y < 0 || y >= H || x < 0 || x >= W) continue;
+    let ch = "\u00b7";                                  // open hours
+    if (inArc(m, curfewStart, curfewEnd)) ch = "\u2588"; // curfew arc
+    else if (inArc(m, winStart, winEnd)) ch = "\u2592";  // may-weaken arc
+    if (grid[y][x] === " " || ch === "\u2588") grid[y][x] = ch;
+  }
+  // hour ticks at 00 / 06 / 12 / 18, outside the ring
+  [0, 360, 720, 1080].forEach(m => {
+    const ang = (m / 1440) * 2 * Math.PI - Math.PI / 2;
+    const x = Math.round(cx + Math.cos(ang) * (r + 1.8) * 2);
+    const y = Math.round(cy + Math.sin(ang) * (r + 1.3));
+    const lab = String(Math.floor(m / 60)).padStart(2, "0");
+    for (let k = 0; k < lab.length; k++) {
+      const xx = x - 1 + k;
+      if (y >= 0 && y < H && xx >= 0 && xx < W) grid[y][xx] = lab[k];
+    }
+  });
+  // now marker, drawn last so nothing can bury it
+  const ang = (nowMin / 1440) * 2 * Math.PI - Math.PI / 2;
+  const nx = Math.round(cx + Math.cos(ang) * r * 2), ny = Math.round(cy + Math.sin(ang) * r);
+  if (ny >= 0 && ny < H && nx >= 0 && nx < W) grid[ny][nx] = "\u25c6";
+  return grid;
+}
+
+/* The dial has four meanings on it, so it cannot be one <pre> in one colour.
+   Each run of like characters becomes its own span — curfew, may-weaken, open,
+   marker, label. Same thing a Textual widget does when it yields Segments. */
+const DIAL_ROLE = {
+  "\u2588": "urg",      // curfew
+  "\u2592": "foc",      // may weaken
+  "\u00b7": "dimmer",   // open
+  "\u25c6": "b"         // now
+};
+function dialNode(grid) {
+  const box = el("div");
+  box.style.whiteSpace = "pre";
+  grid.forEach(cells => {
+    const line = el("div", "row");
+    let run = null;
+    const flush = () => { if (run) { line.appendChild(sp(run.cls, run.txt)); run = null; } };
+    cells.forEach(c => {
+      const cls = c === " " ? "" : (DIAL_ROLE[c] !== undefined ? DIAL_ROLE[c] : "dim");
+      if (run && run.cls === cls) run.txt += c; else { flush(); run = { cls, txt: c }; }
+    });
+    flush();
+    box.appendChild(line);
+  });
+  return box;
+}
+
+/* ============================================================ the day band (D) */
+function dayBand(widthCh, nowMin) {
+  const cs = minOf(DATA.curfew.start), ce = minOf(DATA.curfew.end);
+  const ws = minOf(DATA.window.start), we = minOf(DATA.window.end);
+  const band = el("div", "band");
+  const inArc = (m, a, b) => (a <= b ? (m >= a && m < b) : (m >= a || m < b));
+  const nowCell = Math.floor((nowMin / 1440) * widthCh);
+  let run = null;
+  const kindOf = (i) => {
+    const m = ((i + 0.5) / widthCh) * 1440;
+    if (inArc(m, cs, ce)) return "curfew";
+    if (inArc(m, ws, we)) return "window";
+    return "open";
+  };
+  const flush = () => {
+    if (!run) return;
+    const seg = el("i");
+    seg.style.width = run.n + "ch";
+    if (run.k === "curfew") { seg.textContent = "█".repeat(run.n); seg.style.color = "var(--urgent)"; seg.style.opacity = ".82"; }
+    else if (run.k === "window") { seg.textContent = "▒".repeat(run.n); seg.style.color = "var(--focus)"; seg.style.opacity = ".85"; }
+    else { seg.textContent = "─".repeat(run.n); seg.style.color = "var(--dimmer)"; }
+    band.appendChild(seg); run = null;
+  };
+  for (let i = 0; i < widthCh; i++) {
+    if (i === nowCell) {
+      flush();
+      const cur = el("i", "b"); cur.textContent = "█"; cur.style.color = "var(--fg)"; cur.style.width = "1ch";
+      band.appendChild(cur); continue;
+    }
+    const k = kindOf(i);
+    if (run && run.k === k) run.n++; else { flush(); run = { k, n: 1 }; }
+  }
+  flush();
+  return band;
+}
+function bandAxis(widthCh) {
+  const r = el("div", "row dimmer");
+  let s = "";
+  for (let h = 0; h <= 24; h += 3) {
+    const col = Math.round((h / 24) * widthCh);
+    const lab = String(h % 24).padStart(2, "0");
+    while (s.length < col) s += " ";
+    s = s.slice(0, Math.max(0, col - 1)) + lab;
+  }
+  r.appendChild(document.createTextNode(s.slice(0, widthCh)));
+  return r;
+}
+
+/* ============================================================ shared pieces */
+function header(width) {
+  const s = STATES[STATE];
+  const r = el("div", "row");
+  r.appendChild(sp("b", "󰂲 NIGHTGUARD"));
+  r.appendChild(sp("dimmer", "  │  "));
+  r.appendChild(sp("dim", "the only sanctioned editor"));
+  r.appendChild(el("span", "fill"));
+  r.appendChild(sp("dimmer", `${DATA.theme} · ${DATA.tz} · ${s.now}`));
+  return r;
+}
+function footer(keys) {
+  const r = el("div", "row");
+  keys.forEach(([k, label], i) => {
+    if (i) r.appendChild(sp("dimmer", "   "));
+    r.appendChild(sp("foc b", k));
+    r.appendChild(sp("dim", " " + label));
+  });
+  return r;
+}
+function hero(opts) {
+  /* PanelHero: icon, bold title, trailing outlined pill, uppercase dim meta */
+  const s = STATES[STATE];
+  const f = document.createDocumentFragment();
+  const r = el("div", "row");
+  r.appendChild(sp(s.role + " b", s.glyph + "  " + s.verdict));
+  r.appendChild(el("span", "fill"));
+  if (opts && opts.pill !== false) {
+    const p = sp("pill", `${DATA.curfew.start} – ${DATA.curfew.end}`);
+    r.appendChild(p);
+  }
+  f.appendChild(r);
+  f.appendChild(rowOf(sp("meta", s.meta)));
+  return f;
+}
+
+/* ================================================================== VARIANT A */
+function renderA(root) {
+  const s = STATES[STATE], b = blockingFacts();
+  const pad = el("div", "pad");
+  pad.appendChild(blank(1));
+  pad.appendChild(header());
+  pad.appendChild(blank(1));
+
+  // hero, with the countdown given real mass
+  const hr = el("div", "row");
+  hr.appendChild(sp(s.role + " b", s.glyph + "  " + s.verdict));
+  hr.appendChild(el("span", "fill"));
+  hr.appendChild(sp("pill", `CURFEW  ${DATA.curfew.start} – ${DATA.curfew.end}`));
+  pad.appendChild(hr);
+  pad.appendChild(rowOf(sp("meta", s.meta)));
+  pad.appendChild(blank(1));
+  const big = el("div", "row h3");
+  const fig = el("pre", "bigfig " + s.role);
+  fig.style.margin = "0"; fig.textContent = bigFigure(s.left);
+  big.appendChild(fig);
+  big.appendChild(el("span", "fill"));
+  pad.appendChild(big);
+  pad.appendChild(blank(1));
+  pad.appendChild(rowOf(sp("dim", s.caption)));
+  pad.appendChild(blank(1));
+
+  pad.appendChild(rule());
+  pad.appendChild(sect("This week"));
+  pad.appendChild(kv("Tokens", pips(DATA.tokens.left, DATA.tokens.of),
+    sp("dim", `   ${DATA.tokens.left} of ${DATA.tokens.of} left · resets ${DATA.tokens.resets}`)));
+  pad.appendChild(kv("Grace", sp("dim", isGrace() ? "running · 18m 32s left" : "unavailable today")));
+  pad.appendChild(kv("Edit window", sp(isOpen() ? "acc" : "dim",
+    isOpen() ? `open · closes ${DATA.window.end}` : `closed · opens ${DATA.window.start}`),
+    sp("dimmer", "    a loosening is refused outside it")));
+  pad.appendChild(blank(1));
+
+  pad.appendChild(rule());
+  pad.appendChild(sect("Blocking"));
+  [b.apps, b.games, b.sites, b.force].forEach(f => {
+    const r = el("div", "row");
+    r.appendChild(sp("k", f.label));
+    r.appendChild(badge(f)); r.appendChild(document.createTextNode(" "));
+    r.appendChild(sp(f.bad ? "urg" : "", f.value));
+    r.appendChild(el("span", "fill"));
+    r.appendChild(sp("dimmer", f.note));
+    pad.appendChild(r);
+  });
+  pad.appendChild(blank(1));
+
+  pad.appendChild(rule());
+  pad.appendChild(sect("Integrity"));
+  pad.appendChild(kv("Config", sp("dimmer", DATA.hmac.config), sp("dimmer", "      signed by the guard, not by this window")));
+  pad.appendChild(kv("Watchdog", sp("dim", `every ${DATA.watchdog.every}s · ${DATA.watchdog.last} · ${DATA.watchdog.note}`)));
+  pad.appendChild(blank(1));
+
+  pad.appendChild(rule());
+  pad.appendChild(sect("Audit ledger"));
+  DATA.ledger.slice(0, 3).forEach(([d, f]) => pad.appendChild(kv(" ", sp("dimmer", d + "   "), sp("dim", f))));
+  pad.appendChild(rowOf(sp("dimmer", "  " + (DATA.ledger.length - 3) + " older · l to expand")));
+
+  root.appendChild(pad);
+  const foot = el("div", "pad");
+  foot.style.position = "absolute"; foot.style.bottom = "0"; foot.style.left = "0"; foot.style.right = "0";
+  foot.appendChild(rule());
+  foot.appendChild(footer([["e", "edit"], ["l", "ledger"], ["r", "refresh"], ["q", "quit"]]));
+  root.appendChild(foot);
+}
+
+/* ================================================================== VARIANT B */
+function renderB(root) {
+  const s = STATES[STATE], b = blockingFacts();
+  const pad = el("div", "pad");
+  pad.appendChild(blank(1));
+  pad.appendChild(header());
+  pad.appendChild(blank(1));
+
+  const W = 48, H = 21;
+  const wrap = el("div", "row");
+  wrap.style.height = H + "lh"; wrap.style.alignItems = "flex-start";
+
+  const art = dialNode(dialArt(minOf(s.now), minOf(DATA.curfew.start), minOf(DATA.curfew.end),
+                              minOf(DATA.window.start), minOf(DATA.window.end), W, H));
+  art.style.width = W + "ch"; art.style.flex = "0 0 auto";
+  wrap.appendChild(art);
+
+  // centre readout, absolutely placed over the ring
+  const hub = el("div");
+  hub.style.position = "absolute"; hub.style.left = "0"; hub.style.top = "0";
+  hub.style.width = W + "ch"; hub.style.pointerEvents = "none";
+  hub.style.paddingTop = (4 + Math.floor(H / 2) - 2) + "lh";
+  hub.appendChild(rowOf(el("span", "fill"), sp(s.role + " b", s.verdict), el("span", "fill")));
+  hub.appendChild(rowOf(el("span", "fill"), sp("b", s.left), el("span", "fill")));
+  hub.appendChild(rowOf(el("span", "fill"), sp("dimmer", s.caption), el("span", "fill")));
+
+  const right = el("div");
+  right.style.flex = "1 1 auto"; right.style.paddingLeft = "2ch";
+  right.appendChild(rowOf(sp("meta", s.meta)));
+  right.appendChild(blank(1));
+  right.appendChild(rowOf(sp("k w14", "Curfew"), sp("urg b", `${DATA.curfew.start} – ${DATA.curfew.end}`), sp("urg", "  █")));
+  right.appendChild(rowOf(sp("k w14", "Edit window"), sp("foc b", `${DATA.window.start} – ${DATA.window.end}`), sp("foc", "  ▒")));
+  right.appendChild(rowOf(sp("k w14", "Open"), sp("dim", "the rest"), sp("dimmer", "        ·")));
+  right.appendChild(blank(1));
+  right.appendChild(rule());
+  right.appendChild(sect("This week"));
+  right.appendChild(rowOf(sp("k w14", "Tokens"), pips(DATA.tokens.left, DATA.tokens.of),
+    sp("dim", `  ${DATA.tokens.left} of ${DATA.tokens.of} · ${DATA.tokens.resets}`)));
+  right.appendChild(rowOf(sp("k w14", "Grace"), sp("dim", isGrace() ? "running" : "unavailable")));
+  right.appendChild(blank(1));
+  right.appendChild(rule());
+  right.appendChild(sect("Blocking"));
+  [b.apps, b.games, b.sites, b.force].forEach(f => {
+    const r = el("div", "row");
+    r.appendChild(sp("k w14", f.label));
+    r.appendChild(badge(f)); r.appendChild(document.createTextNode(" "));
+    r.appendChild(sp(f.bad ? "urg" : "dim", f.value));
+    right.appendChild(r);
+  });
+  wrap.appendChild(right);
+
+  const stack = el("div");
+  stack.style.position = "relative";
+  stack.appendChild(wrap);
+  stack.appendChild(hub);
+  pad.appendChild(stack);
+
+  root.appendChild(pad);
+  const foot = el("div", "pad");
+  foot.style.position = "absolute"; foot.style.bottom = "0"; foot.style.left = "0"; foot.style.right = "0";
+  foot.appendChild(rule());
+  foot.appendChild(footer([["e", "edit"], ["b", "blocking"], ["l", "ledger"], ["q", "quit"]]));
+  root.appendChild(foot);
+}
+
+/* ================================================================== VARIANT C */
+function renderC(root) {
+  const s = STATES[STATE], b = blockingFacts();
+  const pad = el("div", "pad");
+  pad.appendChild(blank(1));
+  pad.appendChild(header());
+  pad.appendChild(blank(1));
+  pad.appendChild(rule());
+
+  const cols = el("div", "row");
+  cols.style.height = "34lh"; cols.style.alignItems = "stretch";
+
+  /* --- left: the pact --- */
+  const L = el("div");
+  L.style.width = "58ch"; L.style.flex = "0 0 auto"; L.style.paddingRight = "2ch";
+  L.appendChild(blank(1));
+  L.appendChild(rowOf(sp(s.role + " b", s.glyph + "  " + s.verdict)));
+  L.appendChild(rowOf(sp("meta", s.meta)));
+  L.appendChild(blank(1));
+  const big = el("div", "row h3");
+  const fig = el("pre", "bigfig " + s.role);
+  fig.style.margin = "0"; fig.textContent = bigFigure(s.left);
+  big.appendChild(fig);
+  L.appendChild(big);
+  L.appendChild(blank(2));
+  L.appendChild(rowOf(sp("dim", s.caption)));
+  L.appendChild(blank(1));
+  L.appendChild(dayBand(54, minOf(s.now)));
+  L.appendChild(bandAxis(54));
+  L.appendChild(blank(1));
+  L.appendChild(sect("Cost of a change"));
+  L.appendChild(rowOf(sp("k w20", "Tokens"), pips(DATA.tokens.left, DATA.tokens.of),
+    sp("dim", `  ${DATA.tokens.left} of ${DATA.tokens.of}`)));
+  L.appendChild(rowOf(sp("k w20", "Resets"), sp("dim", DATA.tokens.resets)));
+  L.appendChild(rowOf(sp("k w20", "Edit window"), sp(isOpen() ? "acc" : "urg",
+    isOpen() ? `open until ${DATA.window.end}` : `closed until ${DATA.window.start}`)));
+  L.appendChild(rowOf(sp("k w20", "Grace"), sp("dim", isGrace() ? "running · 18m 32s" : "unavailable today")));
+  L.appendChild(blank(1));
+  L.appendChild(sect("Integrity"));
+  L.appendChild(rowOf(sp("k w20", "Config"), sp("dimmer", DATA.hmac.config)));
+  L.appendChild(rowOf(sp("k w20", "State"), sp("dimmer", DATA.hmac.state)));
+  L.appendChild(rowOf(sp("k w20", "Watchdog"), sp("dim", `${DATA.watchdog.last} · ok`)));
+
+  const v = el("div", "vrule");
+
+  /* --- right: enforcement --- */
+  const R = el("div");
+  R.style.flex = "1 1 auto"; R.style.paddingLeft = "2ch";
+  R.appendChild(blank(1));
+  R.appendChild(rowOf(sp("b", "󰆚  BLOCKING"), el("span", "fill"),
+    sp(isWeak() ? "pill warn" : "pill ok", isWeak() ? "WEAK MODE" : "STRONG")));
+  R.appendChild(rowOf(sp("meta", "what the curfew actually stops")));
+  R.appendChild(blank(1));
+
+  const group = (f, lines) => {
+    const head = el("div", "row");
+    head.appendChild(badge(f)); head.appendChild(document.createTextNode(" "));
+    head.appendChild(sp("b", f.label));
+    head.appendChild(el("span", "fill"));
+    head.appendChild(sp(f.bad ? "urg b" : "dim", f.value));
+    R.appendChild(head);
+    lines.forEach(([txt, cls]) => R.appendChild(rowOf(sp("dimmer", "    "), sp(cls || "dimmer", txt))));
+    R.appendChild(blank(1));
+  };
+  group(b.apps, [
+    ["steam        ends during curfew", "dim"],
+    ["discord      matches nothing — it is a chromium webapp", "urg"]
+  ]);
+  group(b.games, [
+    ["Counter-Strike 2 · Yu-Gi-Oh! Master Duel · Rocket League", "dim"],
+    ["detected and installed, covered by nothing", "urg"]
+  ]);
+  group(b.sites, [
+    ["StayFree force-installed, policy restored " + DATA.policy.restored, "dim"],
+    ["no site is blocked — the list is empty", "urg"]
+  ]);
+  group(b.force, [
+    [isWeak() ? "no jail cgroup — fell back to SIGTERM" : DATA.blocking.jail.path,
+      isWeak() ? "urg" : "dim"],
+    [isWeak() ? "anything that forks between scan and signal survives"
+              : "moved into a root-owned cgroup, killed in one write", "dimmer"]
+  ]);
+
+  cols.appendChild(L); cols.appendChild(v); cols.appendChild(R);
+  pad.appendChild(cols);
+  root.appendChild(pad);
+
+  const foot = el("div", "pad");
+  foot.style.position = "absolute"; foot.style.bottom = "0"; foot.style.left = "0"; foot.style.right = "0";
+  foot.appendChild(rule());
+  foot.appendChild(footer([["e", "edit"], ["b", "blocking"], ["l", "ledger"], ["r", "refresh"], ["q", "quit"]]));
+  root.appendChild(foot);
+}
+
+/* ================================================================== VARIANT D */
+function renderD(root) {
+  const s = STATES[STATE], b = blockingFacts();
+  const pad = el("div", "pad");
+  pad.appendChild(blank(1));
+  pad.appendChild(header());
+  pad.appendChild(blank(2));
+
+  pad.appendChild(rowOf(sp(s.role + " b", s.glyph + "  " + s.verdict),
+    sp("dimmer", "     "), sp("meta", s.meta)));
+  pad.appendChild(blank(1));
+
+  const big = el("div", "row h3");
+  const fig = el("pre", "bigfig " + s.role);
+  fig.style.margin = "0"; fig.textContent = bigFigure(s.left);
+  big.appendChild(fig);
+  big.appendChild(el("span", "fill"));
+  const legend = el("div");
+  legend.style.flex = "0 0 auto"; legend.style.textAlign = "right";
+  legend.appendChild(rowOf(el("span", "fill"), sp("urg", "█"), sp("dim", " curfew  "),
+    sp("foc", "▒"), sp("dim", " may edit  "), sp("dimmer", "─"), sp("dim", " open  "),
+    sp("b", "█"), sp("dim", " now")));
+  big.appendChild(legend);
+  pad.appendChild(big);
+  pad.appendChild(blank(2));
+
+  const W = 127;
+  pad.appendChild(dayBand(W, minOf(s.now)));
+  pad.appendChild(bandAxis(W));
+  pad.appendChild(blank(1));
+  pad.appendChild(rowOf(
+    sp("dim", `curfew ${DATA.curfew.start}–${DATA.curfew.end}`),
+    sp("dimmer", "      "),
+    sp("dim", `may weaken ${DATA.window.start}–${DATA.window.end}`),
+    sp("dimmer", "      "),
+    sp("dim", s.caption)));
+  pad.appendChild(blank(1));
+  pad.appendChild(rule());
+
+  /* three stat groups side by side, hung under the instrument */
+  const stats = el("div", "row");
+  stats.style.height = "13lh"; stats.style.alignItems = "stretch";
+  const colBox = (title, build, w) => {
+    const c = el("div");
+    if (w) { c.style.width = w + "ch"; c.style.flex = "0 0 auto"; } else c.style.flex = "1 1 auto";
+    c.style.paddingRight = "2ch";
+    c.appendChild(blank(1));
+    c.appendChild(sect(title));
+    build(c);
+    return c;
+  };
+  stats.appendChild(colBox("This week", c => {
+    c.appendChild(rowOf(pips(DATA.tokens.left, DATA.tokens.of),
+      sp("dim", `   ${DATA.tokens.left} of ${DATA.tokens.of} tokens`)));
+    c.appendChild(rowOf(sp("dimmer", `resets ${DATA.tokens.resets}`)));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("dim", isGrace() ? "grace running · 18m" : "grace unavailable")));
+    c.appendChild(rowOf(sp("dimmer", "one bypass a day")));
+  }, 34));
+  stats.appendChild(el("div", "vrule"));
+  stats.appendChild(colBox("Blocking", c => {
+    [b.apps, b.games, b.sites, b.force].forEach(f => {
+      const r = el("div", "row");
+      r.appendChild(document.createTextNode(" "));
+      r.appendChild(badge(f)); r.appendChild(document.createTextNode(" "));
+      r.appendChild(sp("k w14", f.label));
+      r.appendChild(sp(f.bad ? "urg" : "dim", f.value));
+      c.appendChild(r);
+    });
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("dimmer", " " + b.apps.note)));
+    c.appendChild(rowOf(sp("dimmer", " " + b.games.note)));
+  }));
+  stats.appendChild(el("div", "vrule"));
+  stats.appendChild(colBox("Last changes", c => {
+    DATA.ledger.slice(0, 4).forEach(([d, f]) =>
+      c.appendChild(rowOf(sp("dimmer", d.slice(5) + "  "), sp("dim", f))));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("dimmer", `${DATA.ledger.length} in the ledger`)));
+  }, 36));
+  pad.appendChild(stats);
+
+  root.appendChild(pad);
+  const foot = el("div", "pad");
+  foot.style.position = "absolute"; foot.style.bottom = "0"; foot.style.left = "0"; foot.style.right = "0";
+  foot.appendChild(rule());
+  foot.appendChild(footer([["e", "edit"], ["b", "blocking"], ["l", "ledger"], ["q", "quit"]]));
+  root.appendChild(foot);
+}
+
+/* ================================================================== VARIANT E */
+function renderE(root) {
+  const s = STATES[STATE], b = blockingFacts();
+  const pad = el("div", "pad");
+  pad.appendChild(blank(1));
+  pad.appendChild(header());
+  pad.appendChild(blank(1));
+
+  const tile = (w, h, cls, build) => {
+    const t = el("div", "card " + (cls || ""));
+    t.style.width = w + "ch"; t.style.height = h + "lh"; t.style.flex = "0 0 auto";
+    const inner = el("div", "cardpad");
+    build(inner);
+    t.appendChild(inner);
+    return t;
+  };
+  const gridRow = (h) => { const r = el("div", "row"); r.style.height = h + "lh"; r.style.gap = "2ch"; r.style.alignItems = "stretch"; return r; };
+
+  /* --- row 1: verdict (big) + cycle --- */
+  const r1 = gridRow(13);
+  r1.appendChild(tile(64, 13, s.role === "urg" ? "alarm" : "", c => {
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp(s.role + " b", s.glyph + "  " + s.verdict), el("span", "fill"),
+      sp("pill", `${DATA.curfew.start} – ${DATA.curfew.end}`)));
+    c.appendChild(rowOf(sp("meta", s.meta)));
+    c.appendChild(blank(1));
+    const big = el("div", "row h3");
+    const fig = el("pre", "bigfig " + s.role);
+    fig.style.margin = "0"; fig.textContent = bigFigure(s.left);
+    big.appendChild(fig);
+    c.appendChild(big);
+    c.appendChild(blank(2));
+    c.appendChild(rowOf(sp("dim", s.caption)));
+  }));
+  r1.appendChild(tile(63, 13, "", c => {
+    c.appendChild(blank(1));
+    c.appendChild(sect("The day"));
+    c.appendChild(blank(1));
+    c.appendChild(dayBand(57, minOf(s.now)));
+    c.appendChild(bandAxis(57));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("urg", "█"), sp("dim", " curfew   "), sp("foc", "▒"),
+      sp("dim", " may weaken   "), sp("b", "█"), sp("dim", " now")));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("k w14", "Tokens"), pips(DATA.tokens.left, DATA.tokens.of),
+      sp("dim", `  ${DATA.tokens.left} of ${DATA.tokens.of} · ${DATA.tokens.resets}`)));
+    c.appendChild(rowOf(sp("k w14", "Grace"), sp("dim", isGrace() ? "running · 18m 32s" : "unavailable today")));
+  }));
+  pad.appendChild(r1);
+  pad.appendChild(blank(1));
+
+  /* --- row 2: blocking (big) + integrity/ledger --- */
+  const r2 = gridRow(17);
+  r2.appendChild(tile(64, 17, isWeak() ? "alarm" : "", c => {
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("b", "󰆚  BLOCKING"), el("span", "fill"),
+      sp(isWeak() ? "pill warn" : "pill ok", isWeak() ? "WEAK MODE" : "STRONG")));
+    c.appendChild(rowOf(sp("meta", "what the curfew actually stops")));
+    c.appendChild(blank(1));
+    [b.apps, b.games, b.sites].forEach(f => {
+      const r = el("div", "row");
+      r.appendChild(badge(f)); r.appendChild(document.createTextNode(" "));
+      r.appendChild(sp("k w14", f.label));
+      r.appendChild(sp(f.bad ? "urg" : "dim", f.value));
+      c.appendChild(r);
+      c.appendChild(rowOf(sp("dimmer", "      " + f.note)));
+    });
+    c.appendChild(blank(1));
+    c.appendChild(rule());
+    c.appendChild(rowOf(badge(b.force), document.createTextNode(" "),
+      sp("k w14", "Enforcement"), sp(b.force.bad ? "urg" : "dim", b.force.value)));
+  }));
+  const rightStack = el("div");
+  rightStack.style.width = "63ch"; rightStack.style.flex = "0 0 auto";
+  rightStack.appendChild(tile(63, 6, "", c => {
+    c.appendChild(blank(1));
+    c.appendChild(sect("Integrity"));
+    c.appendChild(rowOf(sp("k w14", "Config"), sp("dimmer", DATA.hmac.config)));
+    c.appendChild(rowOf(sp("k w14", "Watchdog"), sp("dim", `${DATA.watchdog.last} · ok · every ${DATA.watchdog.every}s`)));
+  }));
+  rightStack.appendChild(blank(1));
+  rightStack.appendChild(tile(63, 10, "", c => {
+    c.appendChild(blank(1));
+    c.appendChild(sect("Audit ledger"));
+    DATA.ledger.slice(0, 5).forEach(([d, f]) =>
+      c.appendChild(rowOf(sp("dimmer", d + "   "), sp("dim", f))));
+    c.appendChild(rowOf(sp("dimmer", `${DATA.ledger.length - 5} older · l to expand`)));
+  }));
+  r2.appendChild(rightStack);
+  pad.appendChild(r2);
+
+  root.appendChild(pad);
+  const foot = el("div", "pad");
+  foot.style.position = "absolute"; foot.style.bottom = "0"; foot.style.left = "0"; foot.style.right = "0";
+  foot.appendChild(rule());
+  foot.appendChild(footer([["e", "edit"], ["b", "blocking"], ["l", "ledger"], ["q", "quit"]]));
+  root.appendChild(foot);
+}
+
+/* ================================================================== plumbing */
+const RENDER = { a: renderA, b: renderB, c: renderC, d: renderD, e: renderE };
+function paint() {
+  for (const k of Object.keys(RENDER)) {
+    const t = document.getElementById("term-" + k);
+    t.innerHTML = "";
+    RENDER[k](t);
+  }
+}
+document.querySelectorAll(".variant-tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".variant-tab").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".variant").forEach(v => v.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("variant-" + btn.dataset.v).classList.add("active");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+});
+document.querySelectorAll("#state-bar button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#state-bar button").forEach(b => b.classList.remove("on"));
+    btn.classList.add("on");
+    STATE = btn.dataset.s;
+    paint();
+  });
+});
+document.getElementById("theme-switcher").addEventListener("change", e => {
+  document.querySelector('link[href*=themes]').href = "../themes/" + e.target.value + ".css";
+});
+let gridOn = false;
+document.getElementById("grid-toggle").addEventListener("click", () => {
+  gridOn = !gridOn;
+  document.querySelectorAll(".term").forEach(t => {
+    t.style.backgroundImage = gridOn
+      ? "repeating-linear-gradient(to right, rgba(248,235,227,.08) 0 1px, transparent 1px 1ch), repeating-linear-gradient(to bottom, rgba(248,235,227,.08) 0 1px, transparent 1px 1lh)"
+      : "none";
+  });
+  document.getElementById("grid-toggle").textContent = gridOn ? "grid on" : "135×46";
+});
+paint();
+</script>
+</body>
+</html>

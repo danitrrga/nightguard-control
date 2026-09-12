@@ -1,0 +1,93 @@
+/* default.css — the LIVE Omarchy Quattro theme, read off this box on 2026-09-12.
+ *
+ * Values are not invented. Colours come from
+ *   ~/.local/state/omarchy/current/theme/colors.toml        (dos-moos, "Muted Sage")
+ * surface/state/spacing/type tokens from
+ *   ~/.local/state/omarchy/current/theme/shell.toml         ([controls] [spacing] [font] [popups])
+ * corner radius from the live compositor
+ *   hyprctl getoption decoration:rounding                   -> 0  (SQUARE, not round)
+ * cell geometry from the sanctioned window + terminal font
+ *   windowrule size 875 600 + CaskaydiaCove Nerd Font 8pt   -> 6.25 x 12.40 px  -> 135 x 46 cells
+ *
+ * The point of the sketch is that every one of these is a token the TUI can read
+ * at runtime, so a theme change repaints it. Nothing here is a brand colour.
+ */
+
+:root {
+  /* ---- palette: colors.toml ---- */
+  --bg:            #131516;   /* background            */
+  --fg:            #F8EBE3;   /* foreground            */
+  --accent:        #819890;   /* accent  / color2      */
+  --urgent:        #F0334A;   /* color1  (error)       */
+  --focus:         #F4E276;   /* cursor  / color3      */
+  --sage:          #A5B5AB;   /* color4  / hyprland.active-border */
+  --hairline:      #3A4849;   /* color8  (tooltip/menu border)    */
+
+  /* dim = Qt.darker(foreground, 1.4), which is what PanelHero and
+     PanelSectionHeader use for every secondary label. */
+  --dim:           #b1a8a2;
+  --dimmer:        #7d7772;
+
+  /* ---- state surfaces: shell.toml [controls] ----
+     Quickshell composes these as alpha-on-colour. In Textual the same thing is
+     written `background: $foreground 4%`, so the translation is literal. */
+  --fill-normal:   rgba(248, 235, 227, 0.04);
+  --fill-hover:    rgba(165, 181, 171, 0.10);
+  --fill-focus:    rgba(244, 226, 118, 0.08);
+  --fill-selected: rgba(129, 152, 144, 0.18);
+  --fill-pressed:  rgba(244, 226, 118, 0.10);
+  --fill-selection:rgba(129, 152, 144, 0.35);
+
+  --border-normal:   rgba(248, 235, 227, 0.30);
+  --border-hover:    rgba(165, 181, 171, 0.48);
+  --border-focus:    rgba(244, 226, 118, 0.90);
+  --border-selected: rgba(129, 152, 144, 0.56);
+
+  /* PanelSeparator: foreground at 12% */
+  --rule: rgba(248, 235, 227, 0.12);
+
+  /* ---- shape: hyprctl decoration:rounding = 0 ---- */
+  --radius: 0px;
+
+  /* ---- spacing: shell.toml [spacing] (scale 1.0) ---- */
+  --space-xs: 2;
+  --space-md: 4;
+  --control-pad-y: 5;
+  --panel-pad: 10;
+
+  /* ---- type: shell.toml [font] ----
+     A character grid has ONE cell size, so the Quattro type scale cannot be
+     translated as px. It translates as weight + case + dim + glyph mass:
+       display/heading -> bold, and big-figure glyphs for the countdown
+       title           -> bold
+       caption         -> dim + UPPERCASE + letter-spaced (PanelHero.meta does
+                          exactly this: toUpperCase, letterSpacing 1.2, dim)
+     Recorded here so the mapping is a decision, not an accident. */
+  --font-base: 12;
+  --font-heading: 16;
+  --font-icon-large: 18;
+
+  /* ---- the terminal cell, measured ---- */
+  --cols: 135;
+  --rows: 46;
+  --cell-ratio: 1.162;        /* line-height / font-size for CaskaydiaCove */
+  --grid-font: 13px;
+}
+
+/* The simulated terminal. Everything inside is sized in `ch` and `lh` so the
+   mockup cannot cheat the grid — if a row does not fit in 135 columns here, it
+   does not fit in the real window either. */
+.term {
+  font-family: "CaskaydiaCove Nerd Font", "CaskaydiaMono Nerd Font",
+               "JetBrainsMono Nerd Font", ui-monospace, monospace;
+  font-size: var(--grid-font);
+  line-height: var(--cell-ratio);
+  background: var(--bg);
+  color: var(--fg);
+  width: calc(var(--cols) * 1ch);
+  height: calc(var(--rows) * 1lh);
+  overflow: hidden;
+  box-sizing: content-box;
+  font-variant-ligatures: none;
+  -webkit-font-smoothing: antialiased;
+}

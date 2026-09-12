@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sketch 002 — tiles, less terminal</title>
+<link rel="stylesheet" href="../themes/default.css">
+<style>
+  body {
+    margin: 0; background: #0a0b0c; color: var(--fg);
+    font-family: "CaskaydiaCove Nerd Font", ui-monospace, monospace;
+    padding: 52px 0 80px;
+  }
+
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: #15171a; border-bottom: 1px solid var(--hairline);
+    padding: 7px 14px; display: flex; gap: 6px; align-items: center;
+    font-size: 12px; flex-wrap: wrap;
+  }
+  .variant-tab {
+    background: transparent; color: var(--dim);
+    border: 1px solid var(--border-normal); border-radius: var(--radius);
+    padding: 4px 10px; cursor: pointer; font: inherit;
+    transition: background .12s ease-out, color .12s ease-out, border-color .12s ease-out;
+  }
+  .variant-tab:hover { background: var(--fill-hover); border-color: var(--border-hover); color: var(--fg); }
+  .variant-tab.active { background: var(--fill-selected); border-color: var(--border-selected); color: var(--fg); }
+  #variant-nav .navsep { width: 1px; height: 20px; background: var(--hairline); margin: 0 6px; }
+  #variant-nav .navlabel { color: var(--dimmer); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
+
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .variant { display: none; }
+  .variant.active { display: block; }
+  .cap { width: calc(var(--cols) * 1ch); margin: 0 auto; }
+  .cap h2 { font-size: 15px; margin: 0 0 2px; font-weight: 700; letter-spacing: -.01em; }
+  .cap p { font-size: 12px; line-height: 1.5; color: var(--dim); margin: 0 0 6px; max-width: 100ch; }
+  .cap .axis { color: var(--focus); }
+  .cap code { color: var(--sage); font-size: 11.5px; }
+
+  .win { border: 1px solid var(--sage); border-radius: var(--radius); width: max-content; margin: 0 auto; }
+
+  /* ---------- grid primitives: everything in ch / lh ---------- */
+  .term { position: relative; }
+  .pad { padding: 0 calc(2 * 1ch); }
+  .row { height: 1lh; display: flex; align-items: baseline; white-space: pre; }
+  .row.h3 { height: 3lh; }
+  .sp { height: 1lh; }
+  .fill { flex: 1 1 auto; }
+  .dim { color: var(--dim); }
+  .dimmer { color: var(--dimmer); }
+  .b { font-weight: 700; }
+  .acc { color: var(--accent); }
+  .urg { color: var(--urgent); }
+  .foc { color: var(--focus); }
+  .sage { color: var(--sage); }
+
+  .meta { color: var(--dim); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  .sect { color: var(--dim); font-weight: 700; letter-spacing: .10em; text-transform: uppercase; }
+
+  /* A REAL hairline, the way Textual can actually draw one: the `hkey` border is
+     ▔ / ▁ — one eighth of a cell, ~1.5px. Not a CSS lie, the actual glyph. */
+  .hr { height: 1lh; color: var(--dimmer); white-space: pre; opacity: .55; }
+  /* `vkey` border: ▏ ▕ — one eighth of a cell wide, ~0.8px. */
+  .vr { width: 1ch; align-self: stretch; color: var(--dimmer); white-space: pre;
+        opacity: .5; display: flex; flex-direction: column; }
+  .vr span { height: 1lh; }
+
+  /* `keyline: thin` draws ─ │ ┼ between grid children and costs a whole cell.
+     Shown as the characters it really is. */
+  .kl { color: var(--dimmer); opacity: .45; white-space: pre; }
+
+  .k { width: 16ch; color: var(--dim); flex: 0 0 auto; }
+  .k.w12 { width: 12ch; }
+  .k.w14 { width: 14ch; }
+  .k.w20 { width: 20ch; }
+
+  .pill {
+    border: 1px solid var(--border-normal); border-radius: var(--radius);
+    padding: 0 1ch; height: 1lh; display: inline-flex; align-items: center;
+    color: var(--dim); font-weight: 700;
+  }
+  .pill.warn { border-color: rgba(240,51,74,.55); color: var(--urgent); }
+  .pill.ok { border-color: rgba(129,152,144,.55); color: var(--accent); }
+
+  /* `Digits`: Textual's own large-figure renderable. Thin box-drawing strokes,
+     3 rows tall, 3 cells per figure. Not blocks. */
+  .digits { white-space: pre; line-height: var(--cell-ratio); font-weight: 400; margin: 0; }
+  .digits.bold { font-weight: 700; }
+
+  /* A meter as a SURFACE, not as glyphs: solid background over whole cells.
+     `background: $accent` on a fixed-width Static. Zero glyph texture. */
+  .seg { display: flex; height: 1lh; align-items: stretch; }
+  .seg > i { display: block; font-style: normal; }
+  .swatch { display: inline-block; height: 1lh; vertical-align: bottom; }
+
+  /* Quattro control surface: normalFillFor (fg @ 4%) + normalBorderFor (fg @ 30%) */
+  .card { border: 1px solid var(--border-normal); background: var(--fill-normal); box-sizing: border-box; }
+  .cardpad { padding: 0 calc(2 * 1ch); }
+
+  /* `border: panel` — ▊█▎ : a SOLID filled title bar above the region. */
+  .panelbox { box-sizing: border-box; }
+  .panelhead {
+    height: 1lh; display: flex; align-items: baseline; white-space: pre;
+    background: var(--fill-selected); font-weight: 700; padding: 0 1ch;
+  }
+  .panelbody { border-left: 1px solid var(--border-normal); border-right: 1px solid var(--border-normal);
+               border-bottom: 1px solid var(--border-normal); padding: 0 1ch; box-sizing: border-box; }
+  /* `border-left: tall $accent` — ▊ : a solid accent spine, no box. */
+  .spine { border-left: 3px solid var(--accent); padding-left: calc(1 * 1ch); box-sizing: border-box; }
+  .spine.alarm { border-left-color: var(--urgent); }
+
+  #sketch-tools, #state-bar {
+    position: fixed; bottom: 12px; z-index: 9999;
+    font-family: system-ui, sans-serif; font-size: 12px;
+    background: rgba(0,0,0,.78); color: #fff; padding: 8px 12px;
+    border-radius: 8px; opacity: .38; transition: opacity .2s ease-out;
+    display: flex; gap: 8px; align-items: center;
+  }
+  #sketch-tools { right: 12px; }
+  #state-bar { left: 12px; }
+  #sketch-tools:hover, #state-bar:hover { opacity: 1; }
+  #sketch-tools select, #sketch-tools button, #state-bar button {
+    font: inherit; background: #1d1f22; color: #cfd3d6;
+    border: 1px solid #3a4045; border-radius: 4px; padding: 3px 8px; cursor: pointer;
+    transition: background .12s ease-out, color .12s ease-out;
+  }
+  #state-bar button:hover, #sketch-tools button:hover { background: #2a2e32; color: #fff; }
+  #state-bar button.on { background: #3a4b45; color: #fff; border-color: #5d726a; }
+  .lbl { color: #9aa0a6; }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="navlabel">Sketch 002 · E, less terminal</span>
+  <span class="navsep"></span>
+  <button class="variant-tab active" data-v="a">E1 · No boxes</button>
+  <button class="variant-tab" data-v="b">E2 · Air</button>
+  <button class="variant-tab" data-v="c">E3 · Solid chrome</button>
+  <span class="navsep"></span>
+  <button class="variant-tab" data-v="ref">E · original, for reference</button>
+</div>
+
+<div class="stage">
+
+  <section class="variant active" id="variant-a">
+    <div class="cap">
+      <h2>E1 · No boxes — one keyline grid</h2>
+      <p><b>Axis: remove the boxes.</b> The six tiles keep their positions and lose
+      their outlines. One <code>layout: grid</code> with <code>keyline: thin $foreground 20%</code>
+      draws a line only <i>between</i> cells, so the screen reads as a set of regions on a
+      shared grid instead of six drawn rectangles. The countdown is Textual's own
+      <code>Digits</code> — thin box strokes, not blocks. Every meter is a solid
+      <code>background</code> fill on whole cells, so there is no glyph texture anywhere.
+      <span class="axis">Closest reference in the library: Geist's hairline cell grid.</span></p>
+    </div>
+    <div class="win"><div class="term" id="term-a"></div></div>
+  </section>
+
+  <section class="variant" id="variant-b">
+    <div class="cap">
+      <h2>E2 · Air — fewer facts, wider margins</h2>
+      <p><b>Axis: remove the density.</b> Same regions, half the content. Two rows of
+      padding inside every region, no rules inside them, four regions instead of six,
+      and the countdown is <i>plain bold text</i> with no large figures at all — the
+      space around it does the work. Grouping by whitespace, not by chrome.
+      <span class="axis">This is the minimalist-editorial family's actual thesis,
+      tested honestly: if it works here, the large figures were never needed.</span></p>
+    </div>
+    <div class="win"><div class="term" id="term-b"></div></div>
+  </section>
+
+  <section class="variant" id="variant-c">
+    <div class="cap">
+      <h2>E3 · Solid chrome — filled headers and an accent spine</h2>
+      <p><b>Axis: make the chrome solid rather than drawn.</b> Each region gets a real
+      filled title bar (<code>border: panel</code> → <code>▊█▎</code>) the way a GUI window
+      has one, and the state region carries a solid accent spine
+      (<code>border-left: tall</code> → <code>▊</code>) instead of a full outline. Bold
+      <code>Digits</code>. The most ink of the three, and the furthest from a terminal —
+      at the cost of being the busiest. <span class="axis">Watch whether the filled
+      headers read as software or as decoration.</span></p>
+    </div>
+    <div class="win"><div class="term" id="term-c"></div></div>
+  </section>
+
+  <section class="variant" id="variant-ref">
+    <div class="cap">
+      <h2>E · the original, for reference</h2>
+      <p>What you picked, unchanged: every region in its own box, half-block figures,
+      <code>●○○</code> pips, a <code>█▒─</code> day band. Kept so the three above have
+      something to be compared against rather than remembered against.</p>
+    </div>
+    <div class="win"><div class="term" id="term-ref"></div></div>
+  </section>
+
+</div>
+
+<div id="state-bar">
+  <span class="lbl">State</span>
+  <button data-s="locked" class="on">locked</button>
+  <button data-s="open">open</button>
+  <button data-s="grace">grace</button>
+  <button data-s="tamper">clock tamper</button>
+  <button data-s="weak">weak mode</button>
+</div>
+
+<div id="sketch-tools">
+  <span class="lbl">theme</span>
+  <select id="theme-switcher"><option value="default">dos-moos (live)</option></select>
+  <button id="grid-toggle">135×46</button>
+</div>
+
+<script>
+/* ============================================================================
+   Same live data as sketch 001 — the running stack on this box, 2026-09-12.
+   ========================================================================== */
+const DATA = {
+  theme: "dos-moos", tz: "Europe/Amsterdam",
+  curfew: { start: "21:30", end: "05:30" },
+  window: { start: "05:30", end: "14:00" },
+  tokens: { left: 1, of: 3, resets: "Mon 09-14" },
+  hmac: { config: "555b5d2b…81bb", state: "904d5e26…7039" },
+  watchdog: { every: 60, last: "21:52:33" },
+  policy: { restored: "21:28" },
+  blocking: {
+    apps: { on: true, mode: "blocklist", named: ["steam", "discord"], dead: ["discord"] },
+    games: { on: false, detected: ["Counter-Strike 2", "Yu-Gi-Oh! Master Duel", "Rocket League"] },
+    sites: { on: true, urls: [], ext: "StayFree" },
+    jail: { path: "/sys/fs/cgroup/nightguard" }
+  },
+  ledger: [
+    ["2026-09-06 00:04", "curfew.window"], ["2026-09-05 22:17", "curfew.window"],
+    ["2026-07-09 23:16", "curfew.window"], ["2026-07-07 21:44", "curfew.window"],
+    ["2026-07-05 18:25", "curfew.window"], ["2026-07-05 17:34", "curfew.window"],
+    ["2026-07-05 15:59", "curfew.window"], ["2026-06-23 12:38", "curfew.allow_commands"]
+  ]
+};
+const STATES = {
+  locked:  { verdict: "LOCKED", role: "urg", glyph: "", now: "21:52", left: "07:38:00",
+             meta: "CURFEW · 7H 38M REMAINING", caption: "curfew until 05:30" },
+  open:    { verdict: "OPEN",   role: "acc", glyph: "", now: "14:10", left: "07:20:00",
+             meta: "OPEN · CURFEW STARTS 21:30", caption: "house open" },
+  grace:   { verdict: "GRACE",  role: "foc", glyph: "", now: "22:40", left: "00:18:32",
+             meta: "GRACE · 18M 32S REMAINING", caption: "daily bypass running" },
+  tamper:  { verdict: "LOCKED", role: "urg", glyph: "", now: "03:11", left: "02:19:00",
+             meta: "CLOCK TAMPER · LOCKED", caption: "clock tamper detected — locked" },
+  weak:    { verdict: "LOCKED", role: "urg", glyph: "", now: "22:04", left: "07:26:00",
+             meta: "CURFEW · 7H 26M REMAINING", caption: "curfew until 05:30" }
+};
+let STATE = "locked";
+const isWeak = () => STATE === "weak", isOpen = () => STATE === "open", isGrace = () => STATE === "grace";
+
+const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x !== undefined) n.textContent = x; return n; };
+const sp = (c, x) => el("span", c, x);
+const rowOf = (...k) => { const r = el("div", "row"); k.forEach(n => r.appendChild(typeof n === "string" ? document.createTextNode(n) : n)); return r; };
+const blank = (n) => { const f = document.createDocumentFragment(); for (let i = 0; i < (n || 1); i++) f.appendChild(el("div", "sp")); return f; };
+const sect = (t) => rowOf(sp("sect", t));
+const minOf = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+
+/* A hairline, as the `hkey` border really draws it: ▁ repeated. */
+const hr = (n) => { const r = el("div", "hr row"); r.appendChild(sp("", "▁".repeat(n))); return r; };
+/* `vkey`: a column of ▏ */
+const vr = (rows) => { const c = el("div", "vr"); for (let i = 0; i < rows; i++) c.appendChild(sp("", "▏")); return c; };
+/* `keyline: thin` between grid children: a real ─ / │ / ┼ line, one cell thick */
+const klH = (n) => { const r = el("div", "kl row"); r.appendChild(sp("", "─".repeat(n))); return r; };
+const klV = (rows) => { const c = el("div", "kl"); c.style.width = "1ch"; c.style.whiteSpace = "pre";
+  for (let i = 0; i < rows; i++) c.appendChild(rowOf("│")); return c; };
+
+/* ---------- Textual `Digits`: the real glyph table, copied from
+   textual/renderables/digits.py (DIGITS3X3 / DIGITS3X3_BOLD). ---------- */
+const DIG_CHARS = " 0123456789+-^x:ABCDEF$£€()";
+/* Exact tables, dumped from the installed textual 8.2.7 —
+   textual/renderables/digits.py DIGITS3X3 / DIGITS3X3_BOLD.
+   Note they are proportional: "1" is narrower than "0". */
+const DIG3 = [["   ", "   ", "   "], ["╭─╮", "│ │", "╰─╯"], ["╶╮", " │", "╶┴╴"], ["╶─╮", "┌─┘", "╰─╴"], ["╶─╮", " ─┤", "╶─╯"], ["╷ ╷", "╰─┤", "  ╵"], ["╭─╴", "╰─╮", "╶─╯"], ["╭─╴", "├─╮", "╰─╯"], ["╶─┐", "  │", "  ╵"], ["╭─╮", "├─┤", "╰─╯"], ["╭─╮", "╰─┤", "╶─╯"]];
+const DIG3B = [["   ", "   ", "   "], ["┏━┓", "┃ ┃", "┗━┛"], ["╺┓", " ┃", "╺┻╸"], ["╺━┓", "┏━┛", "┗━╸"], ["╺━┓", " ━┫", "╺━┛"], ["╻ ╻", "┗━┫", "  ╹"], ["┏━╸", "┗━┓", "╺━┛"], ["┏━╸", "┣━┓", "┗━┛"], ["╺━┓", "  ┃", "  ╹"], ["┏━┓", "┣━┫", "┗━┛"], ["┏━┓", "┗━┫", "╺━┛"]];
+
+function digits(txt, bold) {
+  const tbl = bold ? DIG3B : DIG3;
+  const lines = ["", "", ""];
+  for (const ch of txt) {
+    if (ch === ":") { lines[0] += " "; lines[1] += ":"; lines[2] += " "; continue; }
+    const i = DIG_CHARS.indexOf(ch);
+    const g = (i > 0 && i <= 10) ? tbl[i] : tbl[0];
+    for (let r = 0; r < 3; r++) lines[r] += g[r];
+  }
+  return lines.join("\n");
+}
+function digitsNode(txt, cls, bold) {
+  const p = el("pre", "digits" + (bold ? " bold" : "") + (cls ? " " + cls : ""));
+  p.textContent = digits(txt, bold);
+  return p;
+}
+
+/* ---------- a meter made of SURFACE, not glyphs ----------
+   Three solid cells of background, one cell of gap. In Textual: three Statics
+   with `background: $accent` / `$foreground 18%`, width 3, inside a Horizontal. */
+function tokenSurface(left, of, w) {
+  const seg = el("div", "seg");
+  for (let i = 0; i < of; i++) {
+    if (i) { const g = el("i"); g.style.width = "1ch"; g.textContent = " "; seg.appendChild(g); }
+    const b = el("i");
+    b.style.width = (w || 6) + "ch";
+    b.textContent = " ".repeat(w || 6);
+    b.style.background = i < left ? "var(--accent)" : "var(--fill-selected)";
+    seg.appendChild(b);
+  }
+  return seg;
+}
+/* The day, as a continuous filled band — again surface, not █ glyphs. */
+function daySurface(widthCh, nowMin) {
+  const cs = minOf(DATA.curfew.start), ce = minOf(DATA.curfew.end);
+  const ws = minOf(DATA.window.start), we = minOf(DATA.window.end);
+  const inArc = (m, a, b) => (a <= b ? (m >= a && m < b) : (m >= a || m < b));
+  const band = el("div", "seg");
+  const nowCell = Math.floor((nowMin / 1440) * widthCh);
+  const kindOf = (i) => {
+    const m = ((i + 0.5) / widthCh) * 1440;
+    if (inArc(m, cs, ce)) return "curfew";
+    if (inArc(m, ws, we)) return "window";
+    return "open";
+  };
+  let run = null;
+  const flush = () => {
+    if (!run) return;
+    const s = el("i");
+    s.style.width = run.n + "ch"; s.textContent = " ".repeat(run.n);
+    if (run.k === "curfew") s.style.background = "rgba(240,51,74,.72)";
+    else if (run.k === "window") s.style.background = "rgba(244,226,118,.52)";
+    else s.style.background = "var(--fill-selected)";
+    band.appendChild(s); run = null;
+  };
+  for (let i = 0; i < widthCh; i++) {
+    if (i === nowCell) { flush();
+      const c = el("i"); c.style.width = "1ch"; c.textContent = " ";
+      c.style.background = "var(--fg)"; band.appendChild(c); continue; }
+    const k = kindOf(i);
+    if (run && run.k === k) run.n++; else { flush(); run = { k, n: 1 }; }
+  }
+  flush();
+  return band;
+}
+function dayAxis(widthCh) {
+  const r = el("div", "row dimmer");
+  let s = "";
+  for (let h = 0; h <= 24; h += 4) {
+    const col = Math.round((h / 24) * widthCh);
+    const lab = String(h % 24).padStart(2, "0");
+    while (s.length < col) s += " ";
+    s = s.slice(0, Math.max(0, col - 1)) + lab;
+  }
+  r.appendChild(document.createTextNode(s.slice(0, widthCh)));
+  return r;
+}
+const swatch = (color, w) => { const s = el("span", "swatch"); s.style.width = (w || 3) + "ch";
+  s.style.background = color; s.textContent = " ".repeat(w || 3); return s; };
+
+/* ---------- blocking facts: the same four, stated once ---------- */
+function blockingFacts() {
+  const b = DATA.blocking;
+  return [
+    { label: "Apps",  on: b.apps.on, bad: b.apps.dead.length > 0,
+      value: b.apps.on ? `${b.apps.mode} · ${b.apps.named.length} named` : "off",
+      note: "steam ends · discord matches nothing" },
+    { label: "Games", on: b.games.on, bad: !b.games.on && b.games.detected.length > 0,
+      value: b.games.on ? `on · ${b.games.detected.length} covered` : "off",
+      note: `${b.games.detected.length} installed, covered by nothing` },
+    { label: "Sites", on: b.sites.urls.length > 0, bad: b.sites.urls.length === 0,
+      value: b.sites.urls.length ? `${b.sites.urls.length} blocked` : "none blocked",
+      note: `${b.sites.ext} installed · policy restored ${DATA.policy.restored}` },
+    { label: "Enforcement", on: !isWeak(), bad: isWeak(),
+      value: isWeak() ? "WEAK MODE · SIGTERM" : "jail cgroup · strong",
+      note: isWeak() ? "anything that forks survives the tick" : b.jail.path }
+  ];
+}
+const dot = (f) => sp(f.bad ? "urg b" : (f.on ? "acc b" : "dimmer b"), f.bad ? "▲" : (f.on ? "●" : "○"));
+
+function head() {
+  const s = STATES[STATE], r = el("div", "row");
+  r.appendChild(sp("b", "󰂲 NIGHTGUARD"));
+  r.appendChild(el("span", "fill"));
+  r.appendChild(sp("dimmer", `${DATA.theme} · ${DATA.tz} · ${s.now}`));
+  return r;
+}
+function foot(keys) {
+  const r = el("div", "row");
+  keys.forEach(([k, l], i) => {
+    if (i) r.appendChild(sp("dimmer", "   "));
+    r.appendChild(sp("foc b", k)); r.appendChild(sp("dim", " " + l));
+  });
+  return r;
+}
+function footer(root, keys, width) {
+  const f = el("div", "pad");
+  f.style.position = "absolute"; f.style.bottom = "0"; f.style.left = "0"; f.style.right = "0";
+  f.appendChild(hr(width));
+  f.appendChild(foot(keys));
+  root.appendChild(f);
+}
+
+/* ====================================================== E1 · no boxes */
+function renderA(root) {
+  const s = STATES[STATE], facts = blockingFacts();
+  const W = 131;                      // 135 minus 2ch padding each side
+  const COLW = 64, ROWH = 12;
+  const pad = el("div", "pad");
+  pad.appendChild(blank(1));
+  pad.appendChild(head());
+  pad.appendChild(hr(W));
+
+  const cell = (build) => { const c = el("div"); c.style.width = COLW + "ch";
+    c.style.flex = "0 0 auto"; build(c); return c; };
+  const band = (h, left, right) => {
+    const r = el("div", "row"); r.style.height = h + "lh"; r.style.alignItems = "stretch";
+    r.appendChild(cell(left)); r.appendChild(klV(h)); r.appendChild(cell(right));
+    return r;
+  };
+
+  /* --- row 1: state | the day --- */
+  pad.appendChild(band(ROWH, c => {
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("sect", "State")));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp(s.role + " b", s.glyph + "  " + s.verdict), el("span", "fill"),
+      sp("pill", `${DATA.curfew.start} – ${DATA.curfew.end}`), sp("", " ")));
+    c.appendChild(blank(1));
+    const d = el("div", "row h3"); d.appendChild(digitsNode(s.left, s.role, false)); c.appendChild(d);
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("meta", s.meta)));
+    c.appendChild(rowOf(sp("dimmer", s.caption)));
+  }, c => {
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("", " "), sp("sect", "The day")));
+    c.appendChild(blank(2));
+    const b = el("div", "row"); b.appendChild(sp("", " ")); b.appendChild(daySurface(60, minOf(s.now))); c.appendChild(b);
+    const a = el("div", "row"); a.appendChild(sp("", " ")); a.appendChild(dayAxis(60)); c.appendChild(a);
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("", " "), swatch("rgba(240,51,74,.72)"), sp("dim", " curfew   "),
+      swatch("rgba(244,226,118,.52)"), sp("dim", " may weaken   "),
+      swatch("var(--fg)", 1), sp("dim", " now")));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("", " "), sp("k w14", "Curfew"), sp("dim", `${DATA.curfew.start} – ${DATA.curfew.end}`)));
+    c.appendChild(rowOf(sp("", " "), sp("k w14", "May weaken"), sp(isOpen() ? "acc" : "dim",
+      `${DATA.window.start} – ${DATA.window.end}`), sp("dimmer", isOpen() ? "   open now" : "   closed now")));
+  }));
+  pad.appendChild(klH(W));
+
+  /* --- row 2: this week | blocking --- */
+  pad.appendChild(band(ROWH, c => {
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("sect", "This week")));
+    c.appendChild(blank(1));
+    const t = el("div", "row");
+    t.appendChild(sp("k w14", "Tokens"));
+    t.appendChild(tokenSurface(DATA.tokens.left, DATA.tokens.of, 6));
+    t.appendChild(sp("dim", `   ${DATA.tokens.left} of ${DATA.tokens.of}`));
+    c.appendChild(t);
+    c.appendChild(rowOf(sp("k w14", ""), sp("dimmer", `resets ${DATA.tokens.resets}`)));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("k w14", "Grace"), sp("dim", isGrace() ? "running · 18m 32s left" : "unavailable today")));
+    c.appendChild(rowOf(sp("k w14", ""), sp("dimmer", "one bypass a day")));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("k w14", "A loosening"), sp(isOpen() ? "acc" : "urg",
+      isOpen() ? "costs 1 token" : "is refused right now")));
+  }, c => {
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("", " "), sp("sect", "Blocking"), el("span", "fill"),
+      sp(isWeak() ? "pill warn" : "pill ok", isWeak() ? "WEAK MODE" : "STRONG"), sp("", " ")));
+    c.appendChild(blank(1));
+    facts.forEach(f => {
+      const r = el("div", "row");
+      r.appendChild(sp("", " ")); r.appendChild(dot(f)); r.appendChild(sp("", " "));
+      r.appendChild(sp("k w14", f.label));
+      r.appendChild(sp(f.bad ? "urg" : "dim", f.value));
+      c.appendChild(r);
+      c.appendChild(rowOf(sp("dimmer", "     " + f.note)));
+    });
+  }));
+  pad.appendChild(klH(W));
+
+  /* --- row 3: integrity | ledger --- */
+  pad.appendChild(band(9, c => {
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("sect", "Integrity")));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("k w14", "Config"), sp("dimmer", DATA.hmac.config)));
+    c.appendChild(rowOf(sp("k w14", "State"), sp("dimmer", DATA.hmac.state)));
+    c.appendChild(rowOf(sp("k w14", "Watchdog"), sp("dim", `${DATA.watchdog.last} · ok · every ${DATA.watchdog.every}s`)));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("dimmer", "signed by the guard, never by this window")));
+  }, c => {
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("", " "), sp("sect", "Last changes")));
+    c.appendChild(blank(1));
+    DATA.ledger.slice(0, 4).forEach(([d, f]) =>
+      c.appendChild(rowOf(sp("", " "), sp("dimmer", d + "   "), sp("dim", f))));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("", " "), sp("dimmer", `${DATA.ledger.length} in the ledger · l to expand`)));
+  }));
+
+  root.appendChild(pad);
+  footer(root, [["e", "edit"], ["b", "blocking"], ["l", "ledger"], ["q", "quit"]], W);
+}
+
+/* ====================================================== E2 · air */
+function renderB(root) {
+  const s = STATES[STATE], facts = blockingFacts();
+  const W = 127;
+  const pad = el("div");
+  pad.style.padding = "0 calc(4 * 1ch)";
+  pad.appendChild(blank(2));
+  const h = el("div", "row");
+  h.appendChild(sp("b", "󰂲 NIGHTGUARD"));
+  h.appendChild(el("span", "fill"));
+  h.appendChild(sp("dimmer", `${DATA.theme} · ${s.now}`));
+  pad.appendChild(h);
+  pad.appendChild(blank(3));
+
+  /* state — no figures at all. Bold, alone, with air. */
+  pad.appendChild(rowOf(sp("meta", s.meta)));
+  pad.appendChild(blank(1));
+  const big = el("div", "row");
+  big.appendChild(sp(s.role + " b", s.glyph + "  " + s.verdict));
+  big.appendChild(sp("dimmer", "      "));
+  const cd = sp("b", s.left);
+  cd.style.letterSpacing = ".22em";
+  big.appendChild(cd);
+  big.appendChild(el("span", "fill"));
+  big.appendChild(sp("pill", `${DATA.curfew.start} – ${DATA.curfew.end}`));
+  pad.appendChild(big);
+  pad.appendChild(blank(1));
+  pad.appendChild(rowOf(sp("dim", s.caption)));
+  pad.appendChild(blank(3));
+
+  /* the day — one instrument, full width, nothing around it */
+  pad.appendChild(daySurface(W, minOf(s.now)));
+  pad.appendChild(dayAxis(W));
+  pad.appendChild(blank(1));
+  pad.appendChild(rowOf(swatch("rgba(240,51,74,.72)"), sp("dim", " curfew   "),
+    swatch("rgba(244,226,118,.52)"), sp("dim", " may weaken   "),
+    swatch("var(--fg)", 1), sp("dim", " now")));
+  pad.appendChild(blank(3));
+
+  /* two facts, side by side, no rules between them */
+  const two = el("div", "row");
+  two.style.height = "6lh"; two.style.alignItems = "flex-start";
+  const wk = el("div"); wk.style.width = "60ch"; wk.style.flex = "0 0 auto";
+  wk.appendChild(rowOf(sp("sect", "This week")));
+  wk.appendChild(blank(1));
+  const t = el("div", "row");
+  t.appendChild(tokenSurface(DATA.tokens.left, DATA.tokens.of, 8));
+  t.appendChild(sp("dim", `   ${DATA.tokens.left} of ${DATA.tokens.of} tokens`));
+  wk.appendChild(t);
+  wk.appendChild(blank(1));
+  wk.appendChild(rowOf(sp("dim", isGrace() ? "grace running · 18m 32s" : "grace unavailable today"),
+    sp("dimmer", `      resets ${DATA.tokens.resets}`)));
+  const bl = el("div"); bl.style.flex = "1 1 auto";
+  bl.appendChild(rowOf(sp("sect", "Blocking"), el("span", "fill"),
+    sp(isWeak() ? "pill warn" : "pill ok", isWeak() ? "WEAK MODE" : "STRONG")));
+  bl.appendChild(blank(1));
+  facts.slice(0, 3).forEach(f => {
+    const r = el("div", "row");
+    r.appendChild(dot(f)); r.appendChild(sp("", " "));
+    r.appendChild(sp("k w12", f.label));
+    r.appendChild(sp(f.bad ? "urg" : "dim", f.value));
+    r.appendChild(el("span", "fill"));
+    r.appendChild(sp("dimmer", f.note));
+    bl.appendChild(r);
+  });
+  two.appendChild(wk); two.appendChild(bl);
+  pad.appendChild(two);
+  pad.appendChild(blank(2));
+
+  pad.appendChild(hr(W));
+  pad.appendChild(rowOf(sp("dimmer", `${DATA.watchdog.last} · watchdog ok · ${facts[3].value}`),
+    el("span", "fill"),
+    sp("dimmer", `${DATA.ledger.length} changes in the ledger`)));
+
+  root.appendChild(pad);
+  const f = el("div");
+  f.style.padding = "0 calc(4 * 1ch)";
+  f.style.position = "absolute"; f.style.bottom = "0"; f.style.left = "0"; f.style.right = "0";
+  f.appendChild(foot([["e", "edit"], ["b", "blocking"], ["l", "ledger"], ["q", "quit"]]));
+  root.appendChild(f);
+}
+
+/* ====================================================== E3 · solid chrome */
+function renderC(root) {
+  const s = STATES[STATE], facts = blockingFacts();
+  const pad = el("div", "pad");
+  pad.appendChild(blank(1));
+  pad.appendChild(head());
+  pad.appendChild(blank(1));
+
+  const panel = (w, h, title, right, build, alarm) => {
+    const box = el("div", "panelbox");
+    box.style.width = w + "ch"; box.style.flex = "0 0 auto";
+    const hd = el("div", "panelhead");
+    hd.style.width = w + "ch"; hd.style.boxSizing = "border-box";
+    if (alarm) hd.style.background = "rgba(240,51,74,.22)";
+    hd.appendChild(sp(alarm ? "urg b" : "b", title));
+    if (right) { hd.appendChild(el("span", "fill")); hd.appendChild(right); }
+    const bd = el("div", "panelbody");
+    bd.style.width = w + "ch"; bd.style.height = (h - 1) + "lh"; bd.style.boxSizing = "border-box";
+    build(bd);
+    box.appendChild(hd); box.appendChild(bd);
+    return box;
+  };
+  const gridRow = (h) => { const r = el("div", "row"); r.style.height = h + "lh";
+    r.style.gap = "2ch"; r.style.alignItems = "stretch"; return r; };
+
+  /* row 1 */
+  const r1 = gridRow(14);
+  r1.appendChild(panel(64, 14, " STATE",
+    sp("dim", `${DATA.curfew.start} – ${DATA.curfew.end} `), c => {
+      const inner = el("div", s.role === "urg" ? "spine alarm" : "spine");
+      inner.appendChild(blank(1));
+      inner.appendChild(rowOf(sp(s.role + " b", s.glyph + "  " + s.verdict)));
+      inner.appendChild(rowOf(sp("meta", s.meta)));
+      inner.appendChild(blank(1));
+      const d = el("div", "row h3"); d.appendChild(digitsNode(s.left, s.role, true)); inner.appendChild(d);
+      inner.appendChild(blank(1));
+      inner.appendChild(rowOf(sp("dim", s.caption)));
+      inner.appendChild(blank(1));
+      inner.appendChild(rowOf(sp("k w14", "A loosening"), sp(isOpen() ? "acc" : "urg",
+        isOpen() ? "costs 1 token" : "is refused right now")));
+      c.appendChild(inner);
+    }, s.role === "urg"));
+  r1.appendChild(panel(63, 14, " THE DAY", null, c => {
+    c.appendChild(blank(1));
+    c.appendChild(daySurface(59, minOf(s.now)));
+    c.appendChild(dayAxis(59));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(swatch("rgba(240,51,74,.72)"), sp("dim", " curfew   "),
+      swatch("rgba(244,226,118,.52)"), sp("dim", " may weaken   "),
+      swatch("var(--fg)", 1), sp("dim", " now")));
+    c.appendChild(blank(1));
+    const t = el("div", "row");
+    t.appendChild(sp("k w14", "Tokens"));
+    t.appendChild(tokenSurface(DATA.tokens.left, DATA.tokens.of, 6));
+    t.appendChild(sp("dim", `   ${DATA.tokens.left} of ${DATA.tokens.of}`));
+    c.appendChild(t);
+    c.appendChild(rowOf(sp("k w14", "Resets"), sp("dim", DATA.tokens.resets)));
+    c.appendChild(rowOf(sp("k w14", "Grace"), sp("dim", isGrace() ? "running · 18m 32s" : "unavailable today")));
+  }));
+  pad.appendChild(r1);
+  pad.appendChild(blank(1));
+
+  /* row 2 */
+  const r2 = gridRow(16);
+  r2.appendChild(panel(64, 16, " 󰆚 BLOCKING",
+    sp(isWeak() ? "urg b" : "acc b", (isWeak() ? "WEAK MODE" : "STRONG") + " "), c => {
+      c.appendChild(blank(1));
+      facts.forEach(f => {
+        const r = el("div", "row");
+        r.appendChild(dot(f)); r.appendChild(sp("", " "));
+        r.appendChild(sp("k w14", f.label));
+        r.appendChild(sp(f.bad ? "urg" : "dim", f.value));
+        c.appendChild(r);
+        c.appendChild(rowOf(sp("dimmer", "     " + f.note)));
+        c.appendChild(blank(1));
+      });
+    }, isWeak()));
+  const stack = el("div");
+  stack.style.width = "63ch"; stack.style.flex = "0 0 auto";
+  stack.appendChild(panel(63, 6, " INTEGRITY", null, c => {
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("k w14", "Config"), sp("dimmer", DATA.hmac.config)));
+    c.appendChild(rowOf(sp("k w14", "Watchdog"), sp("dim", `${DATA.watchdog.last} · ok · every ${DATA.watchdog.every}s`)));
+  }));
+  stack.appendChild(blank(1));
+  stack.appendChild(panel(63, 9, " LAST CHANGES", null, c => {
+    DATA.ledger.slice(0, 5).forEach(([d, f]) =>
+      c.appendChild(rowOf(sp("dimmer", d + "   "), sp("dim", f))));
+    c.appendChild(rowOf(sp("dimmer", `${DATA.ledger.length - 5} older · l to expand`)));
+  }));
+  r2.appendChild(stack);
+  pad.appendChild(r2);
+
+  root.appendChild(pad);
+  footer(root, [["e", "edit"], ["b", "blocking"], ["l", "ledger"], ["q", "quit"]], 131);
+}
+
+/* ====================================================== E · reference */
+const FIG = {
+  "0": ["█▀▀█", "█  █", "█▄▄█"], "1": ["  ▀█", "   █", "   █"],
+  "2": ["▀▀▀█", "█▀▀▀", "█▄▄▄"], "3": ["▀▀▀█", " ▀▀█", "▄▄▄█"],
+  "4": ["█  █", "▀▀▀█", "   █"], "5": ["█▀▀▀", "▀▀▀█", "▄▄▄█"],
+  "6": ["█▀▀▀", "█▀▀█", "█▄▄█"], "7": ["▀▀▀█", "   █", "   █"],
+  "8": ["█▀▀█", "█▀▀█", "█▄▄█"], "9": ["█▀▀█", "▀▀▀█", "   █"],
+  ":": ["  ", "▄▄", "▄▄"], " ": ["  ", "  ", "  "]
+};
+function bigFigure(txt) {
+  const l = ["", "", ""];
+  for (const c of txt) { const g = FIG[c] || FIG[" "]; for (let i = 0; i < 3; i++) l[i] += g[i] + " "; }
+  return l.join("\n");
+}
+function glyphBand(widthCh, nowMin) {
+  const cs = minOf(DATA.curfew.start), ce = minOf(DATA.curfew.end);
+  const ws = minOf(DATA.window.start), we = minOf(DATA.window.end);
+  const inArc = (m, a, b) => (a <= b ? (m >= a && m < b) : (m >= a || m < b));
+  const band = el("div", "seg");
+  const nowCell = Math.floor((nowMin / 1440) * widthCh);
+  let run = null;
+  const kindOf = i => { const m = ((i + .5) / widthCh) * 1440;
+    return inArc(m, cs, ce) ? "c" : inArc(m, ws, we) ? "w" : "o"; };
+  const flush = () => { if (!run) return;
+    const s = el("i"); s.style.width = run.n + "ch";
+    s.textContent = (run.k === "c" ? "█" : run.k === "w" ? "▒" : "─").repeat(run.n);
+    s.style.color = run.k === "c" ? "var(--urgent)" : run.k === "w" ? "var(--focus)" : "var(--dimmer)";
+    band.appendChild(s); run = null; };
+  for (let i = 0; i < widthCh; i++) {
+    if (i === nowCell) { flush(); const c = el("i", "b"); c.textContent = "█";
+      c.style.width = "1ch"; c.style.color = "var(--fg)"; band.appendChild(c); continue; }
+    const k = kindOf(i);
+    if (run && run.k === k) run.n++; else { flush(); run = { k, n: 1 }; }
+  }
+  flush(); return band;
+}
+function renderRef(root) {
+  const s = STATES[STATE], facts = blockingFacts();
+  const pad = el("div", "pad");
+  pad.appendChild(blank(1)); pad.appendChild(head()); pad.appendChild(blank(1));
+  const tile = (w, h, cls, build) => { const t = el("div", "card " + (cls || ""));
+    t.style.width = w + "ch"; t.style.height = h + "lh"; t.style.flex = "0 0 auto";
+    const i = el("div", "cardpad"); build(i); t.appendChild(i); return t; };
+  const gr = h => { const r = el("div", "row"); r.style.height = h + "lh";
+    r.style.gap = "2ch"; r.style.alignItems = "stretch"; return r; };
+
+  const r1 = gr(13);
+  r1.appendChild(tile(64, 13, "", c => {
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp(s.role + " b", s.glyph + "  " + s.verdict), el("span", "fill"),
+      sp("pill", `${DATA.curfew.start} – ${DATA.curfew.end}`)));
+    c.appendChild(rowOf(sp("meta", s.meta)));
+    c.appendChild(blank(1));
+    const b = el("div", "row h3");
+    const p = el("pre", "digits b " + s.role); p.textContent = bigFigure(s.left);
+    b.appendChild(p); c.appendChild(b);
+    c.appendChild(blank(2));
+    c.appendChild(rowOf(sp("dim", s.caption)));
+  }));
+  r1.appendChild(tile(63, 13, "", c => {
+    c.appendChild(blank(1)); c.appendChild(sect("The day")); c.appendChild(blank(1));
+    c.appendChild(glyphBand(57, minOf(s.now)));
+    c.appendChild(dayAxis(57));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("urg", "█"), sp("dim", " curfew   "), sp("foc", "▒"),
+      sp("dim", " may weaken   "), sp("b", "█"), sp("dim", " now")));
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("k w14", "Tokens"),
+      sp("b", "●".repeat(DATA.tokens.left) + "○".repeat(DATA.tokens.of - DATA.tokens.left)),
+      sp("dim", `  ${DATA.tokens.left} of ${DATA.tokens.of} · ${DATA.tokens.resets}`)));
+    c.appendChild(rowOf(sp("k w14", "Grace"), sp("dim", isGrace() ? "running" : "unavailable today")));
+  }));
+  pad.appendChild(r1); pad.appendChild(blank(1));
+
+  const r2 = gr(17);
+  r2.appendChild(tile(64, 17, "", c => {
+    c.appendChild(blank(1));
+    c.appendChild(rowOf(sp("b", "󰆚  BLOCKING"), el("span", "fill"),
+      sp(isWeak() ? "pill warn" : "pill ok", isWeak() ? "WEAK MODE" : "STRONG")));
+    c.appendChild(rowOf(sp("meta", "what the curfew actually stops")));
+    c.appendChild(blank(1));
+    facts.forEach(f => {
+      const r = el("div", "row");
+      r.appendChild(dot(f)); r.appendChild(sp("", " "));
+      r.appendChild(sp("k w14", f.label));
+      r.appendChild(sp(f.bad ? "urg" : "dim", f.value));
+      c.appendChild(r);
+      c.appendChild(rowOf(sp("dimmer", "      " + f.note)));
+    });
+  }));
+  const st = el("div"); st.style.width = "63ch"; st.style.flex = "0 0 auto";
+  st.appendChild(tile(63, 6, "", c => {
+    c.appendChild(blank(1)); c.appendChild(sect("Integrity"));
+    c.appendChild(rowOf(sp("k w14", "Config"), sp("dimmer", DATA.hmac.config)));
+    c.appendChild(rowOf(sp("k w14", "Watchdog"), sp("dim", `${DATA.watchdog.last} · ok`)));
+  }));
+  st.appendChild(blank(1));
+  st.appendChild(tile(63, 10, "", c => {
+    c.appendChild(blank(1)); c.appendChild(sect("Audit ledger"));
+    DATA.ledger.slice(0, 5).forEach(([d, f]) =>
+      c.appendChild(rowOf(sp("dimmer", d + "   "), sp("dim", f))));
+  }));
+  r2.appendChild(st); pad.appendChild(r2);
+
+  root.appendChild(pad);
+  footer(root, [["e", "edit"], ["b", "blocking"], ["l", "ledger"], ["q", "quit"]], 131);
+}
+
+/* ====================================================== plumbing */
+const RENDER = { a: renderA, b: renderB, c: renderC, ref: renderRef };
+function paint() {
+  for (const k of Object.keys(RENDER)) {
+    const t = document.getElementById("term-" + k);
+    t.innerHTML = ""; RENDER[k](t);
+  }
+}
+document.querySelectorAll(".variant-tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".variant-tab").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".variant").forEach(v => v.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("variant-" + btn.dataset.v).classList.add("active");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+});
+document.querySelectorAll("#state-bar button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#state-bar button").forEach(b => b.classList.remove("on"));
+    btn.classList.add("on"); STATE = btn.dataset.s; paint();
+  });
+});
+document.getElementById("theme-switcher").addEventListener("change", e => {
+  document.querySelector('link[href*=themes]').href = "../themes/" + e.target.value + ".css";
+});
+let gridOn = false;
+document.getElementById("grid-toggle").addEventListener("click", () => {
+  gridOn = !gridOn;
+  document.querySelectorAll(".term").forEach(t => {
+    t.style.backgroundImage = gridOn
+      ? "repeating-linear-gradient(to right, rgba(248,235,227,.08) 0 1px, transparent 1px 1ch), repeating-linear-gradient(to bottom, rgba(248,235,227,.08) 0 1px, transparent 1px 1lh)"
+      : "none";
+  });
+  document.getElementById("grid-toggle").textContent = gridOn ? "grid on" : "135×46";
+});
+paint();
+</script>
+</body>
+</html>
