@@ -24,3 +24,4 @@ CLAUDE.md
 # Compiled Python — a stale .pyc next to a deployed source can shadow it
 __pycache__/
 *.pyc
+.codex/
