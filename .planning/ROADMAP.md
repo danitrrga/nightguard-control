@@ -137,8 +137,8 @@ Plans:
 
 **Wave 4** *(parallel)*
 
-- [ ] 12.1-05-PLAN.md — ControlRow + the 16-stop registry + the shared cursor and no-reflow controls (5/6/6b/6c/7/8)
-- [ ] 12.1-06-PLAN.md — DayRamp + the pure density/column helpers + the hero controls (11/11b/11c)
+- [x] 12.1-05-PLAN.md — ControlRow + the 16-stop registry + the shared cursor and no-reflow controls (5/6/6b/6c/7/8)
+- [x] 12.1-06-PLAN.md — DayRamp + the pure density/column helpers + the hero controls (11/11b/11c)
 
 **Wave 5**
 
@@ -200,6 +200,6 @@ Plans:
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
 | 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete    | 2026-06-25 |
 | 12. Launcher + Waybar Presence | v2.1 | 6/6 | Complete    | 2026-07-04 |
-| 12.1 Native dashboard | v2.1 | 4/9 | In Progress|  |
+| 12.1 Native dashboard | v2.1 | 6/9 | In Progress|  |
 | 12.2 Blocking editable | v2.1 | 0/? | Not started | — |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |

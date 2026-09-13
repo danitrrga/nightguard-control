@@ -4,13 +4,13 @@ milestone: v2.1
 milestone_name: Desktop App
 status: executing
 stopped_at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
-last_updated: "2026-09-13T09:55:54.346Z"
+last_updated: "2026-09-13T10:18:49.350Z"
 last_activity: 2026-09-13
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 13
+  completed_plans: 15
   percent: 40
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 ## Current Position
 
 Phase: 12.1 (native-dashboard-pointer-first-omarchy-tui) — EXECUTING
-Plan: 6 of 9
+Plan: 7 of 9
 Status: Ready to execute
 Last activity: 2026-09-13
 
@@ -93,6 +93,7 @@ Last activity: 2026-09-13
 | Phase 12.1 P02 | 9min | 2 tasks | 2 files |
 | Phase 12.1 P03 | 41 | 3 tasks | 3 files |
 | Phase 12.1 P04 | 17min | 3 tasks | 3 files |
+| Phase 12.1 P06 | 25 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -164,6 +165,10 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 12.1, 12.1-03] Border widths clamped at both the parser and the mapper; measured, removing either layer alone leaves the end-to-end assertion green, so the clamp is asserted per layer
 - [Phase ?]: [Phase 12.1, 12.1-03] ThemeWatch stats both colors.toml and shell.toml; paths added, path kept because two shipped tests pin watch.path by name
 - [Phase ?]: [Phase 12.1, 12.1-03] UIX-01 still Pending after three plans: its text requires the running TUI to restyle, and nothing is wired into the App until plan 04
+- [Phase ?]: 12.1-06: the Content + textual.style.Style colour route — an alpha never becomes a string, so rich's 8-digit-hex rejection is structurally unreachable
+- [Phase ?]: 12.1-06: the now marker is painted only when the clock was verified — an unread clock produces no claim about the time
+- [Phase ?]: 12.1-06: a control whose expectations are computed from the function under test cannot catch a uniformly-wrong version of it — measured, then fixed with an independent symmetry property
+- [Phase ?]: 12.1-06: UIX-04 left Pending — the mechanism is finished but nothing composes DayRamp, so the day the user sees is still a number
 
 ### Pending Todos
 
@@ -176,6 +181,7 @@ None yet.
 - [Phase 3]: Verify hook-path resolution under Claude Code junctions before wiring (`$PSScriptRoot\..` may resolve to the drifted `~/.claude/nightguard`).
 - [v2.0 P0 — HIGHEST RISK]: the Linux Python trust stack (`ngcommon`/`guard`/control-CLI/`nightguard_watchdog` .py) is absent from disk (only stale `.pyc`) and untracked in git. Blocks 06-02 and all of Phase 7. Restore + commit before any execution.
 - [Phase 8 — DE-RISKED 2026-06-22]: root watchdog reaching the user-owned Hyprland socket (`/run/user/1000/hypr`). Verified feasible — `runuser`-to-user + per-tick `$HIS` discovery (root traverses via CAP_DAC_OVERRIDE; socket node is world-rwx). Full approach + edge cases + live-proof command in `.planning/phases/08-native-blocker/08-NOTES-hyprland-from-root.md`. Not a blocker; implement in Phase 8.
+- 12.1: plan 04's control 2 (test_controls_fill_alpha_reaches_the_row) is flaky at 4/10 runs — it reads the ANIMATED styles.background. Makes 'no new red' unenforceable for plans 07-09. Measurement and fix shape in deferred-items.md
 
 ### Quick Tasks Completed
 
@@ -199,7 +205,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-13T09:55:54.337Z
+Last session: 2026-09-13T10:18:28.854Z
 Stopped at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
