@@ -135,6 +135,18 @@ Screen {
 .row-value  { width: 1fr; color: $foreground; }
 .row-detail { color: $foreground 50%; content-align: right middle; }
 
+/* Role classes on the two variable cells. ControlRow carries colour as a ROLE
+ * NAME and never as a value (D-12), so these are where the names land. Without
+ * them `no site is blocked` and `discord matches nothing` would carry the alarm
+ * role and paint nothing — a silent alarm, which is worse than no alarm.
+ * `.ctl.-refused .row-value` is three classes and still wins the tie, so a
+ * refused row's value drops to the quiet channel whatever role it carries. */
+.row-value.error    { color: $error; }
+.row-value.warning  { color: $warning; }
+.row-value.success  { color: $success; }
+.row-detail.error   { color: $error; }
+.row-detail.warning { color: $warning; }
+
 /* Section labels are the caption channel: 70% ink, UPPERCASE with one space of
  * tracking. Tracking is interleaved into the STRING (Textual has no
  * letter-spacing) and is permitted for section labels only. */
