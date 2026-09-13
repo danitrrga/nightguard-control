@@ -214,3 +214,60 @@ def test_deploy_runs_the_config_migration():
     with open(_DEPLOY, encoding="utf-8") as fh:
         text = fh.read()
     assert "ensure-config" in text
+
+
+def test_no_wrapping_text_hides_its_height_from_the_layout():
+    """A wrapped line the enclosing Column cannot see is a popup that asks to be
+    shorter than its own contents.
+
+    This is the defect that cut the sites card and both action buttons off the
+    bottom of the panel with no scrollbar to hint they were there. `Toggle` lays
+    its `description` out inside an ANCHORED Row: a description long enough to
+    wrap grows the row that is drawn without growing the `implicitHeight` the
+    Column adds up, and `fittedContentHeight` then faithfully sizes the popup to
+    a number that is too small. Measured at the time: the panel asked for 588
+    logical pixels against a cap that allowed 607, so it was never being
+    clamped — it was measuring itself wrong.
+
+    Two rules, and between them the class of bug cannot come back:
+
+    * no `Toggle` carries a `description` — the caption is a sibling Text that
+      the Column lays out itself;
+    * every `wrapMode: Text.WordWrap` has an explicit `width` above it, so the
+      Text can resolve its own height before anything sums it.
+    """
+    import glob
+    import re as _re
+
+    for path in glob.glob(os.path.join(_plugin_dir(), "*.qml")):
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().split("\n")
+        name = os.path.basename(path)
+
+        for index, line in enumerate(lines):
+            if _re.match(r"\s*description:", line):
+                assert False, (
+                    "%s:%d sets a Toggle description. A wrapped one does not "
+                    "reach the enclosing Column's implicitHeight — put the "
+                    "caption in a sibling Text with an explicit width"
+                    % (name, index + 1)
+                )
+
+            if "wrapMode: Text.WordWrap" not in line:
+                continue
+            # Walk back to the `Text {` that opens this block, not a fixed
+            # number of lines: a multi-line `color: { ... }` switch sits
+            # happily between the width and the wrapMode, and a short window
+            # reads that as a missing width. (It did, on the first run.)
+            width = None
+            for back in range(index, max(0, index - 80), -1):
+                if _re.search(r"\bwidth:", lines[back]):
+                    width = lines[back]
+                    break
+                if lines[back].strip().endswith("Text {"):
+                    break
+            assert width is not None, (
+                "%s:%d wraps with no width above it — its height is unknowable "
+                "until after layout, so whatever sums it sums the wrong number"
+                % (name, index + 1)
+            )
