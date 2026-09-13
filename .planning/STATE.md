@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
 status: executing
-stopped_at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
-last_updated: "2026-09-13T08:49:48.073Z"
+stopped_at: Completed 12.1-02-PLAN.md (Wave 1 — colour-role pick chains)
+last_updated: "2026-09-13T08:58:24.931Z"
 last_activity: 2026-09-13
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 10
+  completed_plans: 11
   percent: 40
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 ## Current Position
 
 Phase: 12.1 (native-dashboard-pointer-first-omarchy-tui) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
 Last activity: 2026-09-13
 
@@ -90,6 +90,7 @@ Last activity: 2026-09-13
 | Phase 12 P05 | 12 | 2 tasks | 5 files |
 | Phase 12 P06 | 40 | 2 tasks | 2 files |
 | Phase 12.1 P01 | 22 | 3 tasks | 3 files |
+| Phase 12.1 P02 | 9min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -154,6 +155,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 12.1, 12.1-01]: a Textual event handler cannot be replaced by overriding it — every on_mount in the MRO runs (message_pump.py:758). probe_app calls event.prevent_default(); without it the base pushed StatusScreen on top of the probe screen, which would have routed UI controls into live guard state (T-12.1-01).
 - [Phase ?]: [Phase 12.1, 12.1-01]: a relative CSS_PATH resolves against the directory of the module where the App subclass is DEFINED — a probe subclass in tests/ resolved 'app.tcss' to tests/app.tcss. probe_app pins it absolute from ngtui.app.__file__.
 - [Phase ?]: [Phase 12.1, 12.1-01]: Wave 1 complete — 4 UI fixtures + control 1 (literal-hex scan, seen to catch an injected #7aa2f7) + the async canary. Suite 459 passed / 1 failed / 3 skipped; baseline is 453 (not 458 — a theme was removed mid-planning, c40df13). No file under ngtui/ngtui/ touched.
+- [Phase ?]: [Phase 12.1, 12.1-02]: Colour roles resolve through per-role pick chains, first declared key wins — 25 of 27 installed themes collapsed the verdict colours to one because the loader knew only the ANSI color1/2/3 vocabulary
+- [Phase ?]: [Phase 12.1, 12.1-02]: The Textual-role sweep asserts provenance and verdict distinctness, never surface-vs-background: 4 of 27 themes legitimately resolve them equal (D-11)
+- [Phase ?]: [Phase 12.1, 12.1-02]: Provenance cannot catch theme.py's 'or accent' fallback — it is an in-theme colour. Distinctness is the load-bearing assertion; measured, not assumed
 
 ### Pending Todos
 
@@ -189,7 +193,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-13T08:49:48.060Z
+Last session: 2026-09-13T08:58:20.096Z
 Stopped at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
