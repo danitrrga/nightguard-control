@@ -112,12 +112,63 @@ def test_blocking_view_survives_a_config_with_nothing_in_it():
     assert view["apps"] == 0 and view["sites"] == 0 and view["apps_enabled"] is False
 
 
-def test_the_blocked_names_are_never_in_the_payload():
-    """The panel sits on the desktop in view of anyone walking past. That the user
-    blocks things is fine to show; which things is his business."""
+def test_the_blocked_names_are_in_the_payload():
+    """This reverses an earlier rule, deliberately, and the reason is recorded.
+
+    The panel used to emit counts only, so a passer-by could not read which
+    things the owner blocks himself from. The owner weighed that against a panel
+    that says "2" and cannot say WHICH two -- and a count can never show that an
+    entry matches nothing. On this machine "discord" named nothing for months:
+    the pact was not kept and the panel had no way to say so.
+    """
     payload = panel.build("locked", 2, _cfg(), {"week_anchor": "2026-09-07"}, 2 * 60)
-    text = json.dumps(payload)
-    assert "steam" not in text and "discord" not in text
+    names = [e["name"] for e in payload["blocking"]["entries"]]
+    assert names == ["steam", "discord"]
+
+
+def test_an_entry_nobody_resolved_reports_nothing_rather_than_guessing():
+    """Not read is not the same as fine, and it is not the same as broken.
+
+    A wrong "matches nothing" accuses the owner of a defect he does not have; a
+    wrong silence tells him a pact is kept when it is not. Both are worse than
+    an em dash, so an unresolved entry must carry None and the panel must draw
+    it as unknown.
+    """
+    payload = panel.build("locked", 2, _cfg(), {}, 0)
+    entries = payload["blocking"]["entries"]
+    assert [e["state"] for e in entries] == [None, None]
+    assert [e["label"] for e in entries] == [None, None]
+
+
+def test_resolution_is_injected_and_reported_verbatim():
+    """The panel renders what the enforcer's own matcher found; it never decides.
+
+    A second opinion about what counts as a match would drift from the watchdog
+    and start lying by degrees, so the only thing tested here is that what goes
+    in comes out attached to the right entry.
+    """
+    payload = panel.build(
+        "locked", 2, _cfg(), {}, 0,
+        app_resolution={
+            "steam": {"state": "running", "label": "Steam"},
+            "discord": {"state": "unmatched", "label": None},
+        },
+    )
+    assert payload["blocking"]["entries"] == [
+        {"name": "steam", "label": "Steam", "state": "running"},
+        {"name": "discord", "label": None, "state": "unmatched"},
+    ]
+
+
+def test_an_entry_missing_from_the_resolution_is_unknown_not_unmatched():
+    """A partial read must degrade per entry, never spill one entry's verdict
+    onto another."""
+    payload = panel.build(
+        "locked", 2, _cfg(), {}, 0,
+        app_resolution={"steam": {"state": "running", "label": None}},
+    )
+    by_name = {e["name"]: e["state"] for e in payload["blocking"]["entries"]}
+    assert by_name == {"steam": "running", "discord": None}
 
 
 # --- the whole payload -------------------------------------------------------

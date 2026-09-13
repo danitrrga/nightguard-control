@@ -42,7 +42,71 @@ Panel {
   readonly property color track: Style.selectedFillFor(foreground, Color.accent)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
-  readonly property string stateWord: detail ? String(detail.word) : "…"
+  readonly property var blocking: detail && detail.blocking ? detail.blocking : null
+  readonly property var blockedEntries: blocking && blocking.entries ? blocking.entries : []
+  // The mode does not filter one list, it chooses which of two lists governs --
+  // and it inverts what the list MEANS. Naming the section from the mode is the
+  // difference between "these die" and "only these live".
+  readonly property bool allowlistMode: !!blocking && String(blocking.mode) === "allowlist"
+
+  // What this machine actually answers to for one configured entry. A state the
+  // payload could not read renders as a dash: not read is not the same as fine,
+  // and it is not the same as broken, and guessing either way is a lie the user
+  // would act on.
+  // The row's two halves. The left is the name a person recognises, falling
+  // back to the raw identity when no desktop entry claims it. The right is
+  // whichever fact is worth the column: the identity being enforced when all
+  // is well, and the alarm when the entry names nothing on this machine.
+  function entryTitle(entry) {
+    return entry && entry.label ? String(entry.label) : String(entry ? entry.name : "")
+  }
+
+  function entryValue(entry) {
+    if (!entry) return "—"
+    if (String(entry.state) === "unmatched") return "no coincide con nada"
+    if (!entry.state) return "—"
+    return entry.label ? String(entry.name) : root.resolutionWord(entry.state)
+  }
+
+  function entryColor(entry) {
+    return entry && String(entry.state) === "unmatched" ? root.urgent : root.dim
+  }
+
+  function resolutionWord(state) {
+    switch (String(state)) {
+    case "running":   return "activa ahora"
+    case "installed": return "instalada"
+    case "unmatched": return "no coincide con nada"
+    default:          return "—"
+    }
+  }
+
+  function resolutionColor(state) {
+    switch (String(state)) {
+    case "unmatched": return root.urgent
+    case "running":   return root.foreground
+    case "installed": return root.dim
+    default:          return root.dim
+    }
+  }
+
+  // The payload's verdict word is English because the terminal UI and the bar
+  // widget read the same field. This surface is Spanish throughout, so it is
+  // translated here rather than in the payload -- and an unrecognised verdict
+  // falls through to whatever the payload said, so a verdict added later shows
+  // up untranslated instead of vanishing.
+  readonly property string stateWord: {
+    if (!detail) return "…"
+    switch (String(detail.verdict)) {
+    case "locked":          return "CERRADO"
+    case "outside_curfew":  return "ABIERTO"
+    case "grace_active":    return "GRACIA"
+    case "clock_tamper":    return "RELOJ MANIPULADO"
+    case "offline_blocked": return "SIN RED"
+    case "unavailable":     return "NO DISPONIBLE"
+    default:                return String(detail.word)
+    }
+  }
   readonly property bool windowOpen: !!detail && detail.edit_window
                                      && detail.edit_window.open === true
 
@@ -111,6 +175,23 @@ Panel {
   readonly property string dialCaption: {
     if (!detail || nowMinutes < 0) return "hora sin verificar"
     return curfewLocked === 1 ? "hasta que abra" : "hasta el curfew"
+  }
+
+  // The payload describes the window in English because it is also read by
+  // non-Spanish surfaces; this panel is Spanish throughout, so the ordinary
+  // open/closed cases are composed here from the structured minutes. The edge
+  // states (unconfigured, disabled, malformed, clock unverified) keep the
+  // payload's own wording -- those are judgements, not descriptions, and
+  // rewording a judgement is how a panel starts disagreeing with the signer.
+  readonly property string gateDetail: {
+    if (!detail || !detail.edit_window) return "leyendo…"
+    var w = detail.edit_window
+    if (w.configured !== true) return String(w.detail)
+    if (nowMinutes < 0) return String(w.detail)
+    if (windowStartMin < 0 || windowEndMin < 0) return String(w.detail)
+    if (w.open === true)
+      return "abierta hasta las " + w.end + " · quedan " + humanDuration(untilMinutes(windowEndMin))
+    return "se abre a las " + w.start + " · quedan " + humanDuration(untilMinutes(windowStartMin))
   }
 
   // --- pieces ---------------------------------------------------------------
@@ -242,21 +323,6 @@ Panel {
       }
     }
 
-    // 00 / 06 / 12 / 18, so the ring can be read as a clock.
-    Repeater {
-      model: [0, 6, 12, 18]
-      Text {
-        required property int modelData
-        readonly property real a: dial.angleOf(modelData * 60) * Math.PI / 180
-        textFormat: Text.PlainText
-        text: modelData < 10 ? "0" + modelData : String(modelData)
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        x: dial.width / 2 + (dial.ringRadius + Style.space(9)) * Math.cos(a) - width / 2
-        y: dial.height / 2 + (dial.ringRadius + Style.space(9)) * Math.sin(a) - height / 2
-      }
-    }
   }
 
   // Label left, value right — the shell's own row shape.
@@ -265,6 +331,10 @@ Panel {
     property string title: ""
     property string value: ""
     property bool muted: false
+    // A third state exists here that `muted` cannot express: an entry that
+    // matches nothing is neither normal nor de-emphasised, it is wrong. The
+    // colour is a role rather than a boolean so the row stays one component.
+    property color valueColor: infoRow.muted ? root.dim : root.foreground
 
     implicitHeight: Math.max(rowTitle.implicitHeight, rowValue.implicitHeight)
 
@@ -288,7 +358,7 @@ Panel {
       anchors.verticalCenter: parent.verticalCenter
       horizontalAlignment: Text.AlignRight
       text: infoRow.value
-      color: infoRow.muted ? root.dim : root.foreground
+      color: infoRow.valueColor
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall
       elide: Text.ElideRight
@@ -363,17 +433,31 @@ Panel {
                 font.pixelSize: Style.font.display
               }
             }
+
+            // The week's remaining tokens sit with the state rather than in a
+            // section of their own: what you may still spend is part of where
+            // you stand, and it cost a heading and a whole band to say it
+            // twice. The hero reserves this space itself.
+            trailingControl: Component {
+              Row {
+                spacing: Style.space(4)
+
+                Repeater {
+                  model: root.tokensTotal
+                  Rectangle {
+                    required property int index
+                    width: Style.space(22)
+                    height: Style.space(6)
+                    anchors.verticalCenter: parent.verticalCenter
+                    radius: Style.cornerRadius > 0 ? height / 2 : 0
+                    color: index < root.tokensLeft ? Color.accent : root.track
+                  }
+                }
+              }
+            }
           }
 
           PanelSeparator { width: parent.width; foreground: root.foreground }
-
-          // ---------- the day at a glance ----------
-          PanelSectionHeader {
-            width: parent.width
-            text: "EL DÍA"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-          }
 
           DayDial {
             width: parent.width
@@ -385,51 +469,6 @@ Panel {
             headline: root.dialHeadline
             caption: root.dialCaption
             headlineColor: root.curfewLocked === 1 ? root.urgent : root.foreground
-          }
-
-          Row {
-            width: parent.width
-            spacing: Style.space(12)
-
-            Row {
-              spacing: Style.space(5)
-              Rectangle {
-                width: Style.space(8); height: Style.space(8)
-                anchors.verticalCenter: parent.verticalCenter
-                radius: Style.cornerRadius > 0 ? width / 2 : 0
-                color: root.alpha(root.urgent, 0.8)
-              }
-              Text {
-                textFormat: Text.PlainText
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.detail && root.detail.curfew && root.detail.curfew.start
-                      ? "cerrado " + root.detail.curfew.start + "–" + root.detail.curfew.end
-                      : "cerrado"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-              }
-            }
-
-            Row {
-              spacing: Style.space(5)
-              Rectangle {
-                width: Style.space(8); height: Style.space(8)
-                anchors.verticalCenter: parent.verticalCenter
-                radius: Style.cornerRadius > 0 ? width / 2 : 0
-                color: Color.accent
-              }
-              Text {
-                textFormat: Text.PlainText
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.detail && root.detail.edit_window && root.detail.edit_window.start
-                      ? "editable " + root.detail.edit_window.start + "–" + root.detail.edit_window.end
-                      : "editable"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-              }
-            }
           }
 
           // ---------- may the pact be weakened right now ----------
@@ -479,8 +518,7 @@ Panel {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: root.detail && root.detail.edit_window
-                      ? String(root.detail.edit_window.detail) : "leyendo…"
+                text: root.gateDetail
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
@@ -489,88 +527,73 @@ Panel {
             }
           }
 
-          // ---------- weekly tokens ----------
+          // ---------- what dies tonight ----------
+          // Names, not a count. A count cannot say that an entry matches
+          // nothing, and an entry that matches nothing is a pact that is
+          // quietly not being kept. On this machine "discord" named nothing at
+          // all for months -- it is a webapp and runs as chromium -- and the
+          // old "2 · blocklist" row had no way to show it.
           PanelSectionHeader {
             width: parent.width
-            text: "FICHAS DE LA SEMANA"
+            text: root.allowlistMode ? "SOBREVIVEN ESTA NOCHE" : "MUEREN ESTA NOCHE"
             foreground: root.foreground
             fontFamily: root.fontFamily
           }
 
-          Item {
+          Text {
+            textFormat: Text.PlainText
             width: parent.width
-            implicitHeight: Math.max(pipRow.implicitHeight, tokenCount.implicitHeight)
+            visible: root.allowlistMode
+            text: "Todo lo demás muere."
+            color: root.urgent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
 
-            Row {
-              id: pipRow
-              anchors.left: parent.left
-              anchors.verticalCenter: parent.verticalCenter
-              spacing: Style.space(4)
+          Repeater {
+            model: root.blockedEntries
 
-              Repeater {
-                model: root.tokensTotal
-                Rectangle {
-                  required property int index
-                  width: Style.space(26)
-                  height: Style.space(6)
-                  radius: Style.cornerRadius > 0 ? height / 2 : 0
-                  color: index < root.tokensLeft ? Color.accent : root.track
-                }
-              }
-            }
-
-            Text {
-              id: tokenCount
-              textFormat: Text.PlainText
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.tokensTotal > 0 ? root.tokensLeft + " / " + root.tokensTotal : "—"
-              color: root.tokensLeft === 0 ? root.urgent : root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
+            InfoRow {
+              required property var modelData
+              width: column.width
+              // PlainText is load-bearing on both halves: these strings come
+              // from the config, which is user-entered text.
+              title: root.entryTitle(modelData)
+              value: root.entryValue(modelData)
+              valueColor: root.entryColor(modelData)
             }
           }
 
           Text {
             textFormat: Text.PlainText
             width: parent.width
-            visible: !!root.detail && String(root.detail.week_anchor) !== ""
-            text: root.detail ? "Semana desde " + root.detail.week_anchor : ""
-            color: root.dim
+            visible: root.blockedEntries.length === 0
+            // Both empties are dangers, and opposite ones: nothing listed in
+            // blocklist mode means the tool does nothing, and nothing listed in
+            // allowlist mode means nothing survives.
+            text: root.allowlistMode
+                  ? "Ninguna permitida — en este modo no sobreviviría nada."
+                  : "Ninguna aplicación en la lista — no hay nada que terminar."
+            color: root.urgent
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
-          }
-
-          // ---------- what is blocked ----------
-          PanelSectionHeader {
-            width: parent.width
-            text: "BLOQUEADO EN CURFEW"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-          }
-
-          InfoRow {
-            width: parent.width
-            title: "Aplicaciones"
-            value: root.detail && root.detail.blocking
-                   ? (root.detail.blocking.apps + " · " + root.detail.blocking.mode) : "—"
-            muted: !root.detail || !root.detail.blocking || !root.detail.blocking.apps_enabled
-          }
-
-          InfoRow {
-            width: parent.width
-            title: "Sitios web"
-            value: root.detail && root.detail.blocking
-                   ? (root.detail.blocking.sites + " bloqueados") : "—"
-            muted: !root.detail || !root.detail.blocking || !root.detail.blocking.sites_enabled
+            wrapMode: Text.WordWrap
           }
 
           InfoRow {
             width: parent.width
             title: "Juegos"
-            value: root.detail && root.detail.blocking
-                   ? (root.detail.blocking.games ? "detectados solos" : "sin bloquear") : "—"
-            muted: !root.detail || !root.detail.blocking || !root.detail.blocking.games
+            value: root.blocking
+                   ? (root.blocking.games ? "detectados solos" : "sin bloquear") : "—"
+            muted: !root.blocking || !root.blocking.games
+          }
+
+          InfoRow {
+            width: parent.width
+            title: "Sitios web"
+            value: root.blocking ? (root.blocking.sites + " bloqueados") : "—"
+            muted: !root.blocking || !root.blocking.sites_enabled
           }
 
           // ---------- warnings ----------
@@ -620,10 +643,12 @@ Panel {
           // Both open something. Neither changes state: the signer is the only
           // thing that may, and it is reached through the terminal UI.
           Row {
+            width: parent.width
             spacing: Style.space(8)
 
             Button {
               id: tuiButton
+              width: (parent.width - Style.space(8)) / 2
               text: "Abrir ngtui"
               tooltipText: "La interfaz completa — lo único que puede cambiar algo"
               bordered: true
@@ -634,6 +659,7 @@ Panel {
             }
 
             Button {
+              width: (parent.width - Style.space(8)) / 2
               text: "Actualizar"
               tooltipText: "Volver a leer el estado"
               bordered: true

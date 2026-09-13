@@ -105,12 +105,24 @@ def curfew_view(cfg):
     }
 
 
-def blocking_view(cfg):
-    """What the curfew blocks, counted rather than listed.
+def blocking_view(cfg, resolution=None):
+    """What the curfew blocks, named and -- where known -- resolved.
 
-    Counts, not names: the panel sits on the desktop where anyone walking past
-    can read it, and the list of what a person blocks themselves from is more
-    personal than the fact that they do.
+    This used to emit counts only, to keep the list of what a person blocks
+    themselves from off a screen a passer-by can read. The owner weighed that
+    against a panel that says "2" and cannot tell him WHICH two, and chose
+    names: a count cannot show that an entry matches nothing, and an entry that
+    matches nothing is a pact that silently is not kept.
+
+    ``resolution`` maps an entry to ``{"state": ..., "label": ...}`` and is
+    computed outside this pure function (see ``__main__._app_resolution``).
+    ``state`` is what this machine answers with -- "running", "installed" or
+    "unmatched". ``label`` is the human name of the desktop entry that resolves
+    to the same binary, when exactly one does, so the panel can say "Steam"
+    while the config still says "steam". An entry absent from the map, or a
+    ``resolution`` of None, reports ``None`` for both: not read is not the same
+    as fine, and the panel draws it as an em dash rather than guessing in
+    either direction.
     """
     blocking = (cfg or {}).get("blocking") or {}
     native = blocking.get("native_apps") or {}
@@ -119,13 +131,24 @@ def blocking_view(cfg):
     if mode != "allowlist":
         mode = "blocklist"
     listed = native.get("allowlist") if mode == "allowlist" else native.get("blacklist")
+    names = [str(e).strip() for e in (listed or []) if str(e).strip()]
+    urls = [str(u).strip() for u in (browser.get("blocked_urls") or []) if str(u).strip()]
     return {
         "apps_enabled": bool(native.get("enabled")),
         "mode": mode,
         "games": bool(native.get("block_games")),
         "apps": len(listed or []),
+        "entries": [
+            {
+                "name": n,
+                "label": ((resolution or {}).get(n) or {}).get("label"),
+                "state": ((resolution or {}).get(n) or {}).get("state"),
+            }
+            for n in names
+        ],
         "sites_enabled": bool(browser.get("enabled")),
         "sites": len(browser.get("blocked_urls") or []),
+        "site_entries": urls,
     }
 
 
@@ -300,7 +323,7 @@ def style_view(tokens):
 
 
 def build(verdict, tokens_left, cfg, state, now_minutes=None, warnings=None,
-          theme_tokens=None, style_tokens=None):
+          theme_tokens=None, style_tokens=None, app_resolution=None):
     """The whole panel payload. Pure; every input is passed in."""
     from ngtui.backend import WEEKLY_TOKENS
 
@@ -320,7 +343,7 @@ def build(verdict, tokens_left, cfg, state, now_minutes=None, warnings=None,
         # -1 when the clock could not be verified: the strip then draws no "now"
         # marker rather than putting one at midnight.
         "now_minutes": now_minutes if now_minutes is not None else -1,
-        "blocking": blocking_view(cfg),
+        "blocking": blocking_view(cfg, app_resolution),
         "warnings": list(warnings or []),
         "theme": theme_view(theme_tokens),
         "style": style_view(style_tokens),
@@ -341,7 +364,7 @@ UNAVAILABLE = {
                "start_minutes": -1, "end_minutes": -1},
     "now_minutes": -1,
     "blocking": {"apps_enabled": False, "mode": "blocklist", "games": False, "apps": 0,
-                 "sites_enabled": False, "sites": 0},
+                 "entries": [], "sites_enabled": False, "sites": 0, "site_entries": []},
     "warnings": ["the trust stack could not be read"],
     "theme": dict(THEME_FALLBACK),
     "style": dict(STYLE_FALLBACK),
