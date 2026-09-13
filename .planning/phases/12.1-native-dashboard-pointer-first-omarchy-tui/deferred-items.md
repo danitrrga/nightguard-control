@@ -5,7 +5,28 @@ directly caused by the current task's changes are auto-fixed).
 
 ---
 
-## Control 2 is flaky — `test_token_pipeline.py::test_controls_fill_alpha_reaches_the_row`
+## ~~Control 2 is flaky~~ — RESOLVED in plan 12.1-07
+
+`test_token_pipeline.py::test_controls_fill_alpha_reaches_the_row`
+
+**Closed 2026-09-13** by plan 12.1-07 (authorized scope item A). 30/30 consecutive
+passes after the fix, against 17/20 before it. Two corrections to the diagnosis below,
+both measured — see `12.1-07-SUMMARY.md`:
+
+1. **It was the CURSOR read, not the idle one.** Every captured failure was on
+   `rows[0]` (0.42 -> 0.08, the rung the focused row fades TO), not on
+   `rows[1].styles.background`. `rows[1]` is idle and is never animated.
+2. **Textual's own wait helpers do not fix it.** `Animator.start()` sets both
+   `_idle_event` and `_complete_event` unconditionally and runs AFTER the first
+   `_animate`, so `pilot.wait_for_animation()` and
+   `pilot.wait_for_scheduled_animations()` both return immediately for the first
+   animation of an app's life. Measured 23/30 with `wait_for_scheduled_animations`.
+
+The record below is kept verbatim as it was written.
+
+---
+
+### Original entry
 
 **Found during:** plan 12.1-06, Task 3, on the post-task full-suite run.
 **Owner:** plan 12.1-04 (the test is `tests/test_token_pipeline.py:203`).

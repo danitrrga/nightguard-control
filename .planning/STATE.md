@@ -181,7 +181,7 @@ None yet.
 - [Phase 3]: Verify hook-path resolution under Claude Code junctions before wiring (`$PSScriptRoot\..` may resolve to the drifted `~/.claude/nightguard`).
 - [v2.0 P0 — HIGHEST RISK]: the Linux Python trust stack (`ngcommon`/`guard`/control-CLI/`nightguard_watchdog` .py) is absent from disk (only stale `.pyc`) and untracked in git. Blocks 06-02 and all of Phase 7. Restore + commit before any execution.
 - [Phase 8 — DE-RISKED 2026-06-22]: root watchdog reaching the user-owned Hyprland socket (`/run/user/1000/hypr`). Verified feasible — `runuser`-to-user + per-tick `$HIS` discovery (root traverses via CAP_DAC_OVERRIDE; socket node is world-rwx). Full approach + edge cases + live-proof command in `.planning/phases/08-native-blocker/08-NOTES-hyprland-from-root.md`. Not a blocker; implement in Phase 8.
-- 12.1: plan 04's control 2 (test_controls_fill_alpha_reaches_the_row) is flaky at 4/10 runs — it reads the ANIMATED styles.background. Makes 'no new red' unenforceable for plans 07-09. Measurement and fix shape in deferred-items.md
+- [12.1 — RESOLVED 2026-09-13, plan 07]: plan 04's control 2 (test_controls_fill_alpha_reaches_the_row) was flaky at 4/10 runs. Fixed by settling past the fill cross-fade two independent ways (a wait derived from styles.transitions, plus animator.is_being_animated keyed on styles.base). 30/30 consecutive passes; both rung assertions re-armed and seen red. Textual's own pilot.wait_for_animation()/wait_for_scheduled_animations() do NOT work here — Animator.start() sets both wait events after the first _animate.
 
 ### Quick Tasks Completed
 

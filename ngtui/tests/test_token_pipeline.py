@@ -139,6 +139,59 @@ def test_style_variables_is_pure_and_hex_free(omarchy_theme_dir, mutate_theme, m
 
 
 
+async def _settled_background(pilot, row):
+    """``row.styles.background`` once the ``.ctl`` fill cross-fade has finished.
+
+    ``styles.background`` is the **animated** value. ``.ctl`` declares
+    ``transition: background 120ms``, so the row Textual focuses on mount
+    cross-fades from the normal rung to the cursor rung, and a sample taken
+    before the fade ends returns an intermediate frame. ``pilot.pause()`` waits
+    for the message queue; the animator runs on a timer and is not on it.
+
+    **Textual's own two wait helpers do not work here, and that is measured, not
+    assumed.** ``Animator.start()`` sets ``_idle_event`` AND ``_complete_event``
+    unconditionally, and it runs *after* the first ``_animate`` — traced::
+
+        TRACE [('_animate', 'background'), ('start', 1)]
+
+    ``start`` sees one animation already in ``self._animations`` and sets both
+    events over it, so for the first animation of an app's life
+    ``pilot.wait_for_animation()`` and ``pilot.wait_for_scheduled_animations()``
+    both return immediately. Sampled mid-fade with an animation in flight::
+
+        pause        bg=0.2674 anims=1 idle=True complete=True being=True
+        wait_anim    bg=0.2674 anims=1 idle=True complete=True being=True
+        wait_sched   bg=0.1255 anims=1 idle=True complete=True being=True
+
+    So settlement is established two independent ways, and either alone is
+    enough:
+
+    1. **Sleep out the fade, derived from the stylesheet** — the duration comes
+       from ``styles.transitions["background"]``, never typed, so retuning the
+       transition in ``app.tcss`` retunes this wait with it.
+    2. **Ask the animator** — ``is_being_animated`` is keyed on
+       ``styles.base``, which is the object ``Stylesheet.replace_rules`` hands
+       to ``animator.animate``. This is the tight bound and it is also the
+       vacuity guard's opposite number: if the key were wrong and this check
+       were always False, leg 1 has already waited a full fade.
+    """
+    transition = row.styles.transitions.get("background")
+    assert transition is not None, (
+        "%s declares no background transition — this helper exists to settle "
+        "past one, and without it the sample is unguarded" % row.id
+    )
+    fade = transition.duration + transition.delay
+    animator = row.app.animator
+    for _ in range(16):
+        await pilot.pause(fade)
+        if not animator.is_being_animated(row.styles.base, "background"):
+            return row.styles.background
+    raise AssertionError(
+        "the fill cross-fade on %s never settled in %d x %.3fs — the animator "
+        "still reports it in flight" % (row.id, 16, fade)
+    )
+
+
 def test_controls_fill_alpha_reaches_the_row(probe_app, omarchy_theme_dir, monkeypatch):
     """Control 2 — a theme's [controls] fill alpha reaches a RENDERED row.
 
@@ -170,6 +223,31 @@ def test_controls_fill_alpha_reaches_the_row(probe_app, omarchy_theme_dir, monke
 
     Both rungs are asserted because one alone cannot distinguish "the ladder is
     wired" from "every row paints the same fill".
+
+    **The flake, and which assertion it was actually on (fixed 2026-09-13).**
+    This control failed on roughly a fifth of runs — measured at 3/20 in
+    isolation, and plan 12.1-06 measured 4/10 with its own files removed from the
+    tree, so it never depended on anything downstream. ``deferred-items.md``
+    attributed it to the **idle** read, ``rows[1].styles.background``. That was
+    wrong: every captured failure was on the **cursor** read, and the value was
+    always between the two rungs::
+
+        E  AssertionError: the focused row is not on the cursor rung:
+           Color(169, 192, 191, a=0.2206199511291925)
+        E  assert 0.2206 == 0.08
+        E  ... a=0.26817870630649854 / a=0.12513740546205854 on two other runs
+
+    0.42 → 0.08 is exactly the ``.ctl`` fill cross-fade, and 0.22 / 0.27 / 0.13
+    are frames of it. ``rows[1]`` is idle and is never animated, which is why it
+    never flaked. The cause is the one plan 12.1-05 recorded — ``styles.background``
+    is the ANIMATED value and ``pilot.pause()`` does not wait for the animator —
+    but the assertion it lands on is the one that changes rung on mount, not the
+    one that stays put.
+
+    Fixed by :func:`_settled_background`, which settles past the fade two
+    independent ways. Textual's own ``pilot.wait_for_scheduled_animations()``
+    was tried first and measured **insufficient** — 23/30 — for the reason that
+    function's docstring records.
     """
     import asyncio
 
@@ -200,13 +278,13 @@ def test_controls_fill_alpha_reaches_the_row(probe_app, omarchy_theme_dir, monke
 
             expected = style_variables(omarchy_style())
 
-            idle = rows[1].styles.background
+            idle = await _settled_background(pilot, rows[1])
             assert round(idle.a, 4) == 0.42, (
                 "the fixture's normal-fill-alpha did not reach the row: %r" % (idle,)
             )
             assert idle.rgb == Color.parse(expected["ng-color-normal"]).rgb
 
-            cursor = rows[0].styles.background
+            cursor = await _settled_background(pilot, rows[0])
             assert round(cursor.a, 4) == 0.08, (
                 "the focused row is not on the cursor rung: %r" % (cursor,)
             )
