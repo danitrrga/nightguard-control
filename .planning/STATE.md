@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
 status: "Phase 12.1 gate remains OPEN/rejected on the record. Phase 12.2.1 inserted after 12.2 to build the Omarchy shell panel as the full control surface and retire the ngtui terminal app; the polkit-vs-sudo/PTY gate is already proven live on this box. Run /gsd:discuss-phase 12.2.1 next."
-stopped_at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
-last_updated: "2026-09-13T14:03:09.348Z"
+stopped_at: Phase 12.2.1 context gathered
+last_updated: "2026-09-13T14:08:04.275Z"
 last_activity: 2026-09-13
 progress:
   total_phases: 6
@@ -221,9 +221,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-13T11:37:00.041Z
-Stopped at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
-Resume file: None
+Last session: 2026-09-13T14:08:04.261Z
+Stopped at: Phase 12.2.1 context gathered
+Resume file: .planning/phases/12.2.1-omarchy-native-panel/12.2.1-CONTEXT.md
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
 
 ## Deferred Items
