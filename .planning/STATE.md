@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
 status: planning
-stopped_at: Phase 12.1 design contract approved; 12.2 contract in verification; cost-rule direction awaiting the user
-last_updated: "2026-09-12T18:42:02.059Z"
+stopped_at: Both design contracts approved (12.1 and 12.2); three decisions await the user; nothing built yet
+last_updated: "2026-09-12T18:46:15.968Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 5
@@ -183,9 +183,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T18:42:02.049Z
-Stopped at: Phase 12.1 design contract approved; 12.2 contract in verification; cost-rule direction awaiting the user
-Resume file: .planning/phases/12.1-native-dashboard-pointer-first-omarchy-tui/12.1-UI-SPEC.md
+Last session: 2026-09-12T18:46:15.955Z
+Stopped at: Both design contracts approved (12.1 and 12.2); three decisions await the user; nothing built yet
+Resume file: .planning/phases/12.2-blocking-becomes-editable-the-four-frozen-keys/12.2-UI-SPEC.md
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
 
 ## Deferred Items
