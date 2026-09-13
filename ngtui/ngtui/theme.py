@@ -452,6 +452,136 @@ def hypr_rounding(timeout: float = 0.4) -> int:
         return 0
 
 
+# A shell.toml rung's name in the $ng-* namespace. `hover-cursor` is written
+# `cursor` there (UI-SPEC §2.3: $ng-fill-cursor), and the TUI's pointer cursor and
+# the desktop's hover are the same rung — one cursor, shared (UIX-02).
+_RUNG_VARIABLE = {
+    "normal": "normal",
+    "hover-cursor": "cursor",
+    "focus": "focus",
+    "selected": "selected",
+    "pressed": "pressed",
+}
+
+# The six surface variables: $-name -> (style key, STYLE_DEFAULTS key for the last
+# resort). Written out rather than generated because UI-SPEC §2.3 is the only
+# place these names exist, and the next plan's stylesheet references them by name:
+# a variable missing here surfaces as `UnresolvedVariableError: reference to
+# undefined variable '$ng-popup-border'` at stylesheet parse, which kills the app
+# at compose rather than degrading.
+_SURFACE_VARIABLES = (
+    ("ng-popup-bg", "popup_background", "popup_background"),
+    ("ng-popup-text", "popup_text", "popup_text"),
+    ("ng-popup-border", "popup_border", "popup_border"),
+    ("ng-tip-bg", "tooltip_background", "popup_background"),
+    ("ng-tip-text", "tooltip_text", "popup_text"),
+    ("ng-tip-border", "tooltip_border", "popup_border"),
+)
+
+# The border styles §9.2 permits. `panel` and `tall` are excluded on purpose:
+# `panel` is banned outright (six filled strips on one screen), `tall` is unused
+# in 12.1.
+BORDER_STYLES = ("hkey", "vkey", "solid", "round")
+
+
+def style_variables(style: dict) -> dict[str, str]:
+    """The style dict → the ``$ng-*`` CSS variable map (UIX-01, the pure half).
+
+    Pure: Textual-free, no file read, no subprocess. One dict in, one flat
+    dict of **strings** out — the same shape as ``panel.style_view()``, which is
+    the function this copies, including its per-key fallback discipline. Being
+    pure is the point: everything the next plan wires into a running App through
+    ``get_css_variables()`` is proved here without an App.
+
+    **Alphas and border styles are emitted as bare tokens** (``"4%"``,
+    ``"vkey"``, ``"0"``) because Textual substitutes variables at the *token*
+    level — measured. So ``app.tcss`` writes
+    ``background: $ng-color-normal $ng-fill-normal;`` and it resolves.
+
+    **Colours are emitted resolved**, because two installed themes (city-783,
+    dos-moos) pin per-state colours that are not the palette foreground. This is
+    the one place the pipeline legitimately handles a hex: it *produces* one from
+    the live theme at runtime, which is not the same thing as a hex written into
+    ``app.tcss``.
+
+    **Never emit a variable whose value is itself a ``$``-reference.**
+    ``v["ng-fill"] = '$foreground 4%'`` fails with ``StylesheetParseError —
+    Invalid value ('$foreground') for the background property``: substitution is
+    not recursive at that point. That pitfall costs an afternoon, so it is the one
+    thing control 3b asserts structurally.
+
+    **The fixed-alpha roles need no variable at all** and are deliberately absent:
+    ``$foreground 70%`` / ``50%`` / ``12%`` written directly in ``app.tcss``
+    resolves ($ng-text-caption, $ng-text-quiet, $ng-rule). Textual's own
+    ``HelpPanel`` stylesheet does exactly this. Do not add them here.
+
+    Border widths are clamped again on the way out even though ``omarchy_style()``
+    already clamped them: this function's input is an arbitrary dict, and the
+    clamp is a contract of the variable (one cell, D-05) rather than of the parser.
+    """
+    style = style or {}
+
+    def as_percent(value, fallback):
+        try:
+            alpha = float(value)
+        except (TypeError, ValueError):
+            alpha = fallback
+        return "%d%%" % int(round(min(1.0, max(0.0, alpha)) * 100))
+
+    def as_color(value, fallback):
+        text = str(value or "").strip()
+        if text.startswith("#") and len(text) in (4, 7, 9):
+            return text
+        return fallback
+
+    def as_width(value, fallback):
+        try:
+            width = int(float(value))
+        except (TypeError, ValueError):
+            width = fallback
+        return str(min(1, max(0, width)))
+
+    variables: dict[str, str] = {}
+    for rung, name in _RUNG_VARIABLE.items():
+        key = "control_%s" % rung.replace("-", "_")
+        defaults = _RUNG_DEFAULTS[rung] or _RUNG_DEFAULTS[_RUNG_PARENT[rung]]
+        variables["ng-color-%s" % name] = as_color(
+            style.get("%s_color" % key), STYLE_DEFAULTS["control_border"]
+        )
+        variables["ng-border-%s" % name] = as_color(
+            style.get("%s_border" % key), STYLE_DEFAULTS["control_border"]
+        )
+        variables["ng-fill-%s" % name] = as_percent(
+            style.get("%s_fill_alpha" % key), defaults["fill_alpha"]
+        )
+        variables["ng-border-%s-a" % name] = as_percent(
+            style.get("%s_border_alpha" % key), defaults["border_alpha"]
+        )
+        variables["ng-border-%s-w" % name] = as_width(
+            style.get("%s_border_width" % key), defaults["border_width"]
+        )
+
+    variables["ng-fill-selection"] = as_percent(
+        style.get("control_selection_fill_alpha"), 0.35
+    )
+
+    for name, style_key, default_key in _SURFACE_VARIABLES:
+        variables[name] = as_color(style.get(style_key), STYLE_DEFAULTS[default_key])
+
+    try:
+        radius = max(0, int(style.get("corner_radius", 0) or 0))
+    except (TypeError, ValueError):
+        radius = 0
+    variables["ng-radius"] = str(radius)
+    # The radius selects the family, not a hardcoded style (§9.2). At 0 the
+    # hairline set; non-zero is the only case where `round` is permitted, and
+    # softening halfway — a rounded border plus a hairline frame — is the hybrid
+    # the reference explicitly calls a mistake.
+    variables["ng-border-style"] = "hkey" if radius == 0 else "round"
+
+    return variables
+
+
 def _theme_from_colors(c: dict) -> Theme:
     """Build the omarchy ``Theme`` from a parsed ``colors.toml`` dict.
 
