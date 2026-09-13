@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
 status: executing
-stopped_at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
-last_updated: "2026-09-13T10:18:49.350Z"
+stopped_at: Completed 12.1-07-PLAN.md (Wave 5 — the composed home surface)
+last_updated: "2026-09-13T10:58:29.000Z"
 last_activity: 2026-09-13
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 15
+  completed_plans: 16
   percent: 40
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 ## Current Position
 
 Phase: 12.1 (native-dashboard-pointer-first-omarchy-tui) — EXECUTING
-Plan: 7 of 9
+Plan: 8 of 9
 Status: Ready to execute
 Last activity: 2026-09-13
 
@@ -94,6 +94,7 @@ Last activity: 2026-09-13
 | Phase 12.1 P03 | 41 | 3 tasks | 3 files |
 | Phase 12.1 P04 | 17min | 3 tasks | 3 files |
 | Phase 12.1 P06 | 25 | 3 tasks | 3 files |
+| Phase 12.1 P07 | 40 | 5 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -169,6 +170,11 @@ Recent decisions affecting current work:
 - [Phase ?]: 12.1-06: the now marker is painted only when the clock was verified — an unread clock produces no claim about the time
 - [Phase ?]: 12.1-06: a control whose expectations are computed from the function under test cannot catch a uniformly-wrong version of it — measured, then fixed with an independent symmetry property
 - [Phase ?]: 12.1-06: UIX-04 left Pending — the mechanism is finished but nothing composes DayRamp, so the day the user sees is still a number
+- [Phase 12.1, 07]: The home surface is composed from home_controls()'s registry inside one #frame, landing exactly on UI-SPEC 7.2's 46 rows with the audit ledger as the only 1fr region (7 rows against a floor of 4 — the 3 rows of slack are 12.2's seam). Header and Footer are gone and e/r/l/q were measured firing with no Footer mounted; the help chip mounts a HelpPanel listing all four descriptions it replaced, and escape closes it because show_help_panel is not a toggle.
+- [Phase 12.1, 07]: The j/k cursor walk moved to a shared base class, widgets/cursorstop.py::CursorStop, so it visits the DayRamp (stop 1 of 16) as well as the ControlRows. Its own module rather than controlrow.py because controlrow.py reaches the trust stack through widgets/edit.py and hero.py's pure helpers must stay importable without it.
+- [Phase 12.1, 07]: DayRamp gave up h/l — l is one of the four single-key bindings pinned to NightguardApp (ledger) and the ramp holds the cursor on mount, so the ledger toggle was unreachable from the screen's opening state. left/right carry the read-out.
+- [Phase 12.1, 07]: backend.py was NOT touched (the plan's own stop condition), so eight of home_controls()'s nine machine facts have no reader and degrade to their documented defaults in _machine_facts(). The WEAK MODE header alarm is raised only when enforcement was actually READ, never by the unread default.
+- [Phase 12.1, 07]: A row budget needs three independent claims — measured: with one extra row, max_scroll_y stayed 0 because the 1fr ledger absorbed it. Assert that it fits, that exactly one region is flexible, AND that the flexible one keeps its slack. Plan 08's overflow control inherits the same blindness.
 
 ### Pending Todos
 
@@ -205,7 +211,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-13T10:18:28.854Z
+Last session: 2026-09-13T10:58:29.000Z
 Stopped at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
