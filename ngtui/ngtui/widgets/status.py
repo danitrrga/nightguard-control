@@ -7,9 +7,32 @@ math (T-10-05). The TUI holds no key and recomputes no HMAC (PORT-03); displayed
 hmacs come verbatim from ``state`` and are truncated for layout (T-10-08).
 
 The load-bearing logic lives in PURE helpers (``verdict_display``, ``token_meter``,
-``ledger_rows``) so it unit-tests headless without a running App; the Textual
+``ledger_rows``, ``tracked``, ``verdict_caption``, ``verdict_meta``,
+``duration_words``) so it unit-tests headless without a running App; the Textual
 widgets only compose those helpers. Colour is applied via ``$``-variable role
 classes defined in ``app.tcss`` — no hardcoded hex (D-04, omarchy-native).
+
+**The composition is a device frame, not a stack of boxes** (UI-SPEC §7.1). One
+root ``#frame`` carries four per-edge hairlines and a 2-column inner gutter; every
+region below it is separated by a ``Rule`` keyline and one blank row, and **no
+region draws its own outline**. That is what replaces the six drawn rectangles this
+screen used to have, and it is why nothing else here needs a box.
+
+**Exactly one region is flexible** — the audit ledger, ``height: 1fr``, the screen's
+only scroller. Everything else is a fixed row height, which is what makes UI-SPEC
+§7.2's 46-row budget checkable rather than hopeful.
+
+**No framework chrome** (D-16, OD-2). Textual's ``Header`` and ``Footer`` are both
+gone. The bindings the Footer used to print are unaffected — they are owned by
+``NightguardApp`` and by this screen, and the Footer only *rendered* the legend.
+Discoverability moves to the ``help`` chip, which opens Textual's own ``HelpPanel``.
+No bracket hint appears anywhere on this composition.
+
+**Every changeable value is a ``ControlRow``** built from ``home_controls()``'s
+16-stop registry, in the registry's order, which is also the cursor order (UIX-03,
+UI-SPEC §8.6). The registry is the single source of both what a row says and where
+the cursor goes; this module composes it and routes its two messages, and decides
+nothing about what may be edited.
 
 Accessibility (UI-SPEC "no color alone"): every status carries glyph + word +
 colour together, so meaning survives a monochrome terminal.
@@ -18,13 +41,18 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from dataclasses import replace
+
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal, VerticalScroll
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Static
+from textual.widgets import Digits, Footer, Rule, Static
 
 from ngtui import backend
 from ngtui.backend import WEEKLY_TOKENS  # signer's constant (WR-03), never a local literal
+from ngtui.theme import theme_name
+from ngtui.widgets.controlrow import ControlRow, home_controls, read_dotted
+from ngtui.widgets.hero import DayRamp, window_allows
 
 # Verdict string -> (glyph, word, colour_role, caption). Glyph + word + colour are
 # always present together (UI-SPEC Accessibility). Colour role is a $-variable name.
@@ -112,6 +140,120 @@ def ledger_rows(state: dict) -> list[str] | str:
     return rows
 
 
+#: UI-SPEC §10.1's six section labels, and the ONLY strings on this surface that
+#: carry tracking. Tracking is emulated by interleaving spaces because Textual has
+#: no ``letter_spacing`` property (enumerated on the installed package), and it
+#: costs ``2n - 1`` cells — which is affordable on six short labels and nowhere
+#: else. Held as a tuple so the row budget's "six tracked labels" is countable.
+SECTION_LABELS = (
+    "THE DAY",
+    "STATE",
+    "THIS WEEK",
+    "BLOCKING",
+    "INTEGRITY",
+    "AUDIT LEDGER",
+)
+
+
+def tracked(label: str) -> str:
+    """A section label with one space of tracking. Section labels only (UI-SPEC §5).
+
+    Letters within a word are separated by one space and words by two, so
+    ``AUDIT LEDGER`` reads as two words rather than one long run — which is what
+    single-spacing everything would produce. Costs ``2n - 1`` cells per word.
+    """
+    return "  ".join(" ".join(word) for word in label.split())
+
+
+def duration_words(seconds: int) -> str:
+    """``7H 38M`` / ``18M 32S`` — the meta line's duration, uppercase (UI-SPEC §10.2).
+
+    Two units, never three: the contract's own examples are ``7H 38M REMAINING``
+    and ``18M 32S REMAINING``, so hours suppress seconds and minutes show them.
+    A non-positive duration is ``0M``, not a negative — the guard decides when a
+    window closes, and a countdown that ran past zero must not claim negative time.
+    """
+    seconds = max(0, int(seconds))
+    hours, rest = divmod(seconds, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return "%dH %dM" % (hours, minutes)
+    return "%dM %dS" % (minutes, secs)
+
+
+def verdict_caption(verdict: str, fixed: str, curfew_end: str, window_open: bool) -> str:
+    """The verdict's caption, exactly UI-SPEC §10.2's table.
+
+    ``fixed`` is whatever ``verdict_display`` already carries — the tamper and
+    offline captions, which are properties of the verdict and not of the config.
+    When it is set it wins, unchanged. The other three are filled here because they
+    need the config (``curfew_end``) or the signed edit window (``window_open``),
+    which the map deliberately does not have.
+
+    An unknown verdict falls through to the ``locked`` caption, matching
+    ``verdict_display``'s own fail-closed default: the two must not disagree about
+    what state the screen is in.
+    """
+    if fixed:
+        return fixed
+    if verdict == "outside_curfew":
+        return "the clock window is open" if window_open else "house open, window shut"
+    if verdict == "grace_active":
+        return "daily bypass running"
+    return "curfew until %s" % curfew_end if curfew_end else ""
+
+
+def verdict_meta(
+    verdict: str,
+    *,
+    remaining_seconds: int | None = None,
+    curfew_start: str = "",
+    window_end: str = "",
+    window_open: bool = False,
+) -> str:
+    """The uppercase meta line that travels with the verdict (UI-SPEC §10.2).
+
+    Glyph, word, role, caption and this line are one unit — the contract lists them
+    in one row of one table for that reason, and a surface that shows four of the
+    five is a surface where one channel can quietly disagree with the rest.
+
+    Pure: every input is handed in. ``remaining_seconds`` is ``None`` when the
+    screen could not compute one, and the line then drops the duration rather than
+    printing a guess.
+    """
+    if verdict == "clock_tamper":
+        return "CLOCK TAMPER · LOCKED"
+    if verdict == "offline_blocked":
+        return "TIME UNVERIFIED · LOCKED"
+    if verdict == "grace_active":
+        if remaining_seconds is None:
+            return "GRACE · RUNNING"
+        return "GRACE · %s REMAINING" % duration_words(remaining_seconds)
+    if verdict == "outside_curfew":
+        if window_open and window_end:
+            return "OPEN · MAY WEAKEN UNTIL %s" % window_end
+        if curfew_start:
+            return "OPEN · CURFEW STARTS %s" % curfew_start
+        return "OPEN"
+    # locked, and every unknown verdict — fail closed, same as verdict_display.
+    if remaining_seconds is None:
+        return "CURFEW · LOCKED"
+    return "CURFEW · %s REMAINING" % duration_words(remaining_seconds)
+
+
+def header_meta(theme: str, tz: str, clock: str) -> str:
+    """``{theme} · {signed tz} · {HH:MM}`` — UI-SPEC §10.1's header right.
+
+    The timezone is the **signed** one, read from the sanctioned config, never the
+    system's. A screen that printed the box's timezone beside a curfew the signer
+    evaluates in another one would be describing a different day than the guard is.
+
+    An unreadable theme name degrades to the two remaining segments rather than to
+    an empty one — the separator carries no information on its own.
+    """
+    return " · ".join(part for part in (theme, tz, clock) if part)
+
+
 # --- Textual widgets (compose the pure helpers) ------------------------------
 
 
@@ -134,85 +276,311 @@ class StatusScreen(Screen):
     ]
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        """The 46-row budget of UI-SPEC §7.2, composed top-down.
+
+        Read order matters and is not incidental: every value is pulled from
+        ``backend`` **once, here**, and handed down to the regions. Nothing below
+        re-reads the guard, so no two cells on one paint can disagree about the
+        verdict (T-12.1-24), and no region can cache a value across a repaint —
+        ``action_refresh`` replaces the whole screen rather than patching it.
+        """
         state = backend.read_state()
         cfg = backend.sanctioned_config()
 
         if not state or not cfg:
-            # Not initialized (guard.json / sanctioned config absent).
+            # Not initialized (guard.json / sanctioned config absent). A full-screen
+            # message rather than a frame around a hero with nothing in it.
             yield Static(
                 "nightguard is not initialized on this machine",
                 id="not-initialized",
             )
             yield Static("run nightguard_ctl.py init", classes="dim hint")
-            yield Footer()
             return
 
-        glyph, word, role, caption = verdict_display(
-            backend.live_verdict(cfg, state)
-        )
+        paint = self._read(cfg, state)
 
-        with Container(id="hero"):
-            yield Static(f"{glyph} {word}", id="status-word", classes=role)
-            yield Static(self._countdown_text(), id="countdown")
-            yield Static(self._hero_caption(cfg, caption), classes="dim", id="hero-caption")
+        with Container(id="frame"):
+            yield from self._header(paint)                      # row 2
+            yield Rule()                                        # row 3
+            yield Static("", classes="blank")                   # row 4
+            yield from self._section("THE DAY", paint["caption"])  # row 5
+            yield Static("", classes="blank")                   # row 6
 
-        # Tokens + grace rows.
-        with Horizontal(classes="kv-row"):
-            yield Static("TOKENS", classes="kv-label")
-            yield Static(
-                token_meter(backend.tokens_left(), _next_monday(state.get("week_anchor", ""))),
-                classes="kv-value",
+            # Rows 7-10 — the hero. Four rows of one instrument, the last of them
+            # the reserved read-out, so hovering it costs no reflow (UIX-05). It is
+            # never dropped by any degradation class: it is the screen's one idea.
+            yield DayRamp(
+                cfg=cfg,
+                window=paint["window"],
+                now_minutes=paint["now_minutes"],
+                id="ctl-ramp",
             )
-        with Horizontal(classes="kv-row"):
-            yield Static("GRACE", classes="kv-label")
-            yield Static(self._grace_text(state), classes="kv-value dim")
+            yield Static("", classes="blank")                   # row 11
 
-        # Integrity panel — non-secret hmacs, dim, truncated.
-        with Container(id="integrity", classes="panel"):
-            yield Static("integrity", classes="panel-title")
-            yield Static(self._integrity_text(state), classes="dim")
+            yield from self._band(paint)                        # rows 12-17
+            yield Static("", classes="blank")                   # row 18
 
-        # Audit ledger — read-only, scrollable.
-        with VerticalScroll(id="ledger", classes="panel"):
-            yield Static("audit ledger", classes="panel-title")
-            rows = ledger_rows(state)
-            if isinstance(rows, str):
-                yield Static(rows, classes="dim")
-            else:
-                for row in rows:
-                    yield Static(row)
+            # --- the lower surface, still as Wave 2 left it (Task 2 replaces it) ---
+            with Container(id="integrity", classes="panel"):
+                yield Static("integrity", classes="panel-title")
+                yield Static(self._integrity_text(paint["state"]), classes="dim")
 
-        # Advisory caption — the TUI cannot verify hmacs; verdict is advisory.
-        yield Static(
-            "status reflects what the guard will enforce", classes="dim advisory"
+            with VerticalScroll(id="ledger", classes="panel"):
+                yield Static("audit ledger", classes="panel-title")
+                rows = ledger_rows(paint["state"])
+                if isinstance(rows, str):
+                    yield Static(rows, classes="dim")
+                else:
+                    for row in rows:
+                        yield Static(row)
+
+            yield Static(
+                "status reflects what the guard will enforce", classes="dim advisory"
+            )
+            yield Footer()
+
+    # --- the read, done once ---
+
+    def _read(self, cfg: dict, state: dict) -> dict:
+        """Every value the composition needs, read from ``backend`` in one place.
+
+        Returned as a plain dict rather than kept on the screen. A region that
+        reached back into ``backend`` for its own copy is how a token count and a
+        verdict rendered in the same frame end up describing different moments.
+        """
+        verdict = backend.live_verdict(cfg, state)
+        glyph, word, role, fixed = verdict_display(verdict)
+        window = backend.edit_window()
+        now_minutes = backend.cache_only_now_minutes(cfg)
+        window_open = (
+            window_allows(now_minutes, window) if now_minutes is not None else False
         )
-        yield Footer()
+        curfew = cfg.get("curfew") or {}
+        remaining = self._remaining_seconds(verdict, cfg, state)
+        facts = self._machine_facts(cfg)
+        controls = {
+            control.key: control for control in home_controls(cfg, facts)
+        }
+        return {
+            "cfg": cfg,
+            "state": state,
+            "facts": facts,
+            "verdict": verdict,
+            "glyph": glyph,
+            "word": word,
+            "role": role,
+            "window": window,
+            "now_minutes": now_minutes,
+            "window_open": window_open,
+            "remaining": remaining,
+            "controls": controls,
+            "caption": verdict_caption(
+                verdict, fixed, curfew.get("end") or "", window_open
+            ),
+            "meta": verdict_meta(
+                verdict,
+                remaining_seconds=remaining,
+                curfew_start=curfew.get("start") or "",
+                window_end=(window or {}).get("end") or "",
+                window_open=window_open,
+            ),
+        }
+
+    def _machine_facts(self, cfg: dict) -> dict:
+        """What the machine knows that the config does not — as far as it is READ.
+
+        ``home_controls(cfg, facts)`` takes nine optional keys: ``enforcement``,
+        ``watchdog``, ``games``, ``game_blocking``, ``browsers``,
+        ``policy_restored``, ``blocked_sites``, ``always_allowed`` and
+        ``unmatched_apps``. Exactly **one** of them has a read in this phase.
+
+        ``blocked_sites`` is not a machine fact at all — it is
+        ``blocking.browser_extension.blocked_urls``, a signed config key
+        (``nightguard_ctl.py`` FIELD_TABLE), so it is read from the config the
+        caller already has.
+
+        The other eight have **no reader**, and this plan's stop condition forbids
+        adding one to ``backend.py``. They are therefore left unsupplied, and
+        ``home_controls`` degrades each to its own documented honest default: an
+        empty list reads as the finding it is, and ``enforcement`` falls to
+        ``WEAK``. That default is deliberately pessimistic — claiming STRONG on an
+        unread fact is the one direction this product may never fail in.
+
+        **What is NOT done here, on purpose:** the ``WEAK MODE`` alarm tag in the
+        header is raised only when ``enforcement`` was actually supplied and read
+        weak, never by the unread default. "Enforcement is weak" and "enforcement
+        was not read" are different claims, and only the first earns an alarm — an
+        alarm that is always on is an alarm nobody reads on the night it is true.
+        """
+        return {
+            "blocked_sites": read_dotted(cfg, "blocking.browser_extension.blocked_urls")
+            or [],
+        }
+
+    # --- the regions ---
+
+    def _header(self, paint: dict) -> ComposeResult:
+        """Row 2. Wordmark + the accent dot, the meta, and the alarm tag if it applies.
+
+        ``theme_name()`` is called **here, at paint time**, and is deliberately not
+        cached on the screen. ``omarchy-theme-set`` writes ``theme.name`` about
+        440 ms *after* it renames the theme directory, so a watcher that fires on
+        the theme files can read the previous name — and then keep showing it
+        forever, because it has already consumed the event. Re-reading on every
+        paint is what makes that self-healing rather than sticky.
+        """
+        with Horizontal(id="header"):
+            yield Static("󰂲 NIGHTGUARD", id="wordmark")
+            # Accent reserve item (a), one of exactly two permitted places.
+            yield Static("●", id="wordmark-dot")
+            yield Static(
+                header_meta(
+                    theme_name(),
+                    # The SIGNED timezone, straight off the config this paint
+                    # already read — not `backend._tzname` (a private) and not the
+                    # system's. The guard evaluates the curfew in this zone; a
+                    # header printing another one would describe a different day.
+                    str((paint["cfg"] or {}).get("timezone") or ""),
+                    datetime.now().strftime("%H:%M"),
+                ),
+                id="header-meta",
+            )
+            if self._weak_mode(paint):
+                yield Static(" WEAK MODE ", id="weak-tag")
+
+    @staticmethod
+    def _weak_mode(paint: dict) -> bool:
+        """Is the enforcement mode KNOWN to be weak? Unread is not weak (see above)."""
+        facts = paint.get("facts") or {}
+        return str(facts.get("enforcement", "")).upper() == "WEAK"
+
+    def _section(self, label: str, right: str = "", role: str = "dim") -> ComposeResult:
+        """One section-label row: the tracked label left, its caption right.
+
+        The six labels in :data:`SECTION_LABELS` are the only tracked strings on the
+        surface; :func:`tracked` is called here so no caller can track anything else
+        by accident.
+        """
+        assert label in SECTION_LABELS, (
+            "%r is not one of the six tracked section labels — tracking is permitted "
+            "for those only (UI-SPEC §5)" % label
+        )
+        with Horizontal(classes="section"):
+            yield Static(tracked(label), classes="section-label")
+            yield Static(right, classes="section-right %s" % role)
+
+    def _band(self, paint: dict) -> ComposeResult:
+        """Rows 12-17. ``S T A T E`` | keyline | ``T H I S  W E E K``, split 62 | 1 | 1fr.
+
+        The two stops that live in the band — ``curfew`` (stop 2) and ``may weaken``
+        (stop 3) — are rendered as ``ControlRow``s from the registry, so the whole
+        row is the click target and the cursor walks them in registry order like
+        every other control (UIX-03).
+
+        Their **detail** cells are filled here, with ``dataclasses.replace``. The
+        registry is pure and has no verdict, no clock and no remaining time; the
+        contract's ``CURFEW · 7H 38M REMAINING`` meta line and the window's
+        ``open now`` / ``shut now`` are exactly that. Key, order, route and refusal
+        are untouched, so the 12.2 seam is unaffected.
+        """
+        state = paint["state"]
+        controls = paint["controls"]
+
+        with Horizontal(id="band"):
+            with Vertical(id="state-col"):
+                yield from self._section("STATE")
+                with Horizontal(classes="kv-row verdict-row"):
+                    # Glyph, word, colour and caption travel together, always.
+                    yield Static(
+                        "%s %s" % (paint["glyph"], paint["word"]),
+                        id="status-word",
+                        classes=paint["role"],
+                    )
+                    yield Static(paint["caption"], classes="dim", id="hero-caption")
+                # The screen's one `display`-mass element, and the THIN set: a
+                # `text-style: bold` here switches Textual to DIGITS3X3_BOLD, which
+                # reads as terminal art rather than as the desktop this imitates.
+                # Its character set includes `:`, so HH:MM:SS is safe.
+                yield Digits(
+                    self._countdown_text(), id="countdown", classes=paint["role"]
+                )
+                yield ControlRow(
+                    replace(controls["curfew"], detail=paint["meta"])
+                )
+
+            yield Rule(orientation="vertical")
+
+            with Vertical(id="week-col"):
+                yield from self._section("THIS WEEK")
+                with Horizontal(classes="kv-row"):
+                    yield Static("tokens", classes="kv-label")
+                    yield Static(
+                        token_meter(
+                            backend.tokens_left(),
+                            _next_monday(state.get("week_anchor", "")),
+                        ),
+                        classes="kv-value",
+                    )
+                yield ControlRow(
+                    replace(
+                        controls["may-weaken"],
+                        detail="open now" if paint["window_open"] else "shut now",
+                        detail_role="success" if paint["window_open"] else "error",
+                    )
+                )
+                with Horizontal(classes="kv-row"):
+                    yield Static("grace", classes="kv-label")
+                    yield Static(self._grace_text(state), classes="kv-value dim")
+                yield Static("", classes="blank")
 
     # --- countdown (the only tick-refreshed cell) ---
 
+    def _remaining_seconds(self, verdict: str, cfg: dict, state: dict) -> int | None:
+        """Seconds left on whatever boundary this verdict is counting down to.
+
+        ONE source for both the ``Digits`` countdown and the meta line's
+        ``7H 38M REMAINING``. They are two renderings of one number, and computing
+        it twice is how they come to disagree by a second and read as a glitch.
+
+        ``None`` when there is nothing to count — an open house is not counting
+        down to anything, and neither is a boundary that could not be parsed.
+        """
+        if verdict == "grace_active":
+            grace = state.get("grace") or {}
+            return self._seconds_to(grace.get("window_end"))
+        if verdict in ("locked", "clock_tamper", "offline_blocked"):
+            return self._seconds_to_hhmm((cfg.get("curfew") or {}).get("end"))
+        return None
+
+    @staticmethod
+    def _hhmmss(seconds: int | None) -> str:
+        """``HH:MM:SS`` for the ``Digits`` cell — always three fields, never two.
+
+        Digits renders at a fixed cell width per glyph, so a countdown that dropped
+        the hours field at 59:59 would change the element's WIDTH mid-tick. The
+        reserved shape is what keeps the one tick-refreshed cell from reflowing its
+        neighbours (UIX-05).
+        """
+        if seconds is None:
+            return ""
+        seconds = max(0, int(seconds))
+        hours, rest = divmod(seconds, 3600)
+        minutes, secs = divmod(rest, 60)
+        return "%02d:%02d:%02d" % (hours, minutes, secs)
+
     def _countdown_text(self) -> str:
-        """The hero countdown line. Recomputed each tick; the status word is not."""
+        """The countdown cell's text. Recomputed each tick; the status word is not."""
         state = backend.read_state()
         cfg = backend.sanctioned_config()
         if not state or not cfg:
             return ""
         verdict = backend.live_verdict(cfg, state)
-        if verdict == "grace_active":
-            grace = state.get("grace") or {}
-            end = grace.get("window_end")
-            remaining = self._remaining_to(end)
-            return f"{remaining} remaining" if remaining else ""
-        if verdict in ("locked", "clock_tamper", "offline_blocked"):
-            end = (cfg.get("curfew") or {}).get("end")
-            remaining = self._remaining_to_hhmm(end)
-            return remaining or ""
-        return ""
+        return self._hhmmss(self._remaining_seconds(verdict, cfg, state))
 
-    def _remaining_to(self, when) -> str:
-        """MM:SS (or HH:MM:SS) remaining to an ISO/epoch boundary, "" if unknown."""
+    def _seconds_to(self, when) -> int | None:
+        """Seconds remaining to an ISO/epoch boundary, ``None`` when unreadable."""
         if not when:
-            return ""
+            return None
         try:
             if isinstance(when, (int, float)):
                 target = datetime.fromtimestamp(when, tz=timezone.utc)
@@ -221,31 +589,22 @@ class StatusScreen(Screen):
                 target = datetime.fromisoformat(str(when))
                 now = datetime.now(tz=target.tzinfo)
         except (ValueError, TypeError, OSError):
-            return ""
-        delta = target - now
-        secs = int(delta.total_seconds())
-        if secs <= 0:
-            return "00:00"
-        h, rem = divmod(secs, 3600)
-        m, s = divmod(rem, 60)
-        return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+            return None
+        return max(0, int((target - now).total_seconds()))
 
-    def _remaining_to_hhmm(self, end_hhmm) -> str:
-        """Countdown to the next occurrence of a ``HH:MM`` curfew-end wall time."""
+    def _seconds_to_hhmm(self, end_hhmm) -> int | None:
+        """Seconds to the next occurrence of a ``HH:MM`` curfew-end wall time."""
         if not end_hhmm:
-            return ""
+            return None
         try:
             eh, em = (int(x) for x in str(end_hhmm).split(":"))
         except (ValueError, TypeError):
-            return ""
+            return None
         now = datetime.now()
         target = now.replace(hour=eh, minute=em, second=0, microsecond=0)
         if target <= now:
             target += timedelta(days=1)
-        secs = int((target - now).total_seconds())
-        h, rem = divmod(secs, 3600)
-        m, s = divmod(rem, 60)
-        return f"{h:02d}:{m:02d}:{s:02d}"
+        return max(0, int((target - now).total_seconds()))
 
     def refresh_countdown(self) -> None:
         """Update ONLY the countdown cell (called from the app's 1s tick).
@@ -255,7 +614,10 @@ class StatusScreen(Screen):
         1s-refreshed cell).
         """
         try:
-            self.query_one("#countdown", Static).update(self._countdown_text())
+            # Queried WITHOUT a type: the cell is a `Digits`, and pinning the type
+            # here would turn a composition change into a silent `except Exception`
+            # rather than a visible one.
+            self.query_one("#countdown").update(self._countdown_text())
         except Exception:
             # Not-initialized screen has no countdown cell — nothing to tick.
             pass
@@ -269,12 +631,6 @@ class StatusScreen(Screen):
         panel.toggle_class("collapsed")
 
     # --- caption / value builders ---
-
-    def _hero_caption(self, cfg: dict, fixed_caption: str) -> str:
-        if fixed_caption:
-            return fixed_caption
-        end = (cfg.get("curfew") or {}).get("end")
-        return f"curfew until {end}" if end else ""
 
     def _grace_text(self, state: dict) -> str:
         """GRACE row text. Only claims "active" while the window is still open (WR-05).

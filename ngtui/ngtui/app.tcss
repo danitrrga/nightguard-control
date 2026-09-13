@@ -156,7 +156,7 @@ Screen {
 /* Section labels are the caption channel: 70% ink, UPPERCASE with one space of
  * tracking. Tracking is interleaved into the STRING (Textual has no
  * letter-spacing) and is permitted for section labels only. */
-.section-label { color: $foreground 70%; }
+.section-label { width: auto; color: $foreground 70%; }
 
 /* --- chips ---------------------------------------------------------------
  * Outline chips, one row tall, spine on both sides. Exactly one chip on the
@@ -214,19 +214,42 @@ Tooltip {
     padding: 2 1;
 }
 
-/* --- hero (status band) ---
- * The box is gone: no region draws its own outline (UI-SPEC 7.1), and the one it
- * used to draw was also a reserve breach. */
-#hero {
-    height: auto;
-    padding: 0 1;
-    margin: 1 1 0 1;
-    content-align: center top;
-}
+/* --- the header (UI-SPEC 7.2 row 2, 10.1) ---------------------------------
+ * One row: the wordmark and its accent dot left, the meta right, and the alarm
+ * tag right of the meta when it applies. Every cell has an explicit width —
+ * measured on textual 8.2.7, a cell with none resolves to 1fr against the row's
+ * FULL width rather than the remainder and starves its siblings. */
+#header      { height: 1; width: 1fr; }
+#wordmark    { width: auto; text-style: bold; color: $foreground; }
+/* The accent reserve, item (a) of exactly two. The ONLY accent on this surface
+ * besides a GRACE verdict. */
+#wordmark-dot { width: auto; padding: 0 1; color: $accent; }
+#header-meta { width: 1fr; color: $foreground 70%; content-align: right middle; }
+/* Reverse video, so the alarm survives a monochrome terminal as an attribute
+ * rather than as a colour (UI-SPEC 11). */
+#weak-tag    { width: auto; text-style: reverse bold; color: $error; }
+
+/* --- blank rows and section-label rows ------------------------------------
+ * A blank row is a real row in the budget, not a margin: margins do not appear
+ * in a row count and are exactly how a 46-row budget stops being checkable. */
+.blank         { height: 1; width: 1fr; }
+.section       { height: 1; width: 1fr; }
+.section-right { width: 1fr; content-align: right middle; }
+
+/* --- the band (UI-SPEC 7.2 rows 12-17, 7.3) -------------------------------
+ * Six rows, split 62 | 1 keyline | 1fr. `#frame.-narrow #band` above restacks it
+ * vertically; that is the only place this row count changes. */
+#band      { height: 6; width: 1fr; }
+#state-col { width: 62; height: 1fr; }
+#week-col  { width: 1fr; height: 1fr; }
+
+/* --- the verdict: glyph + word + colour + caption, on one row -------------- */
+.verdict-row { height: 1; }
 
 #status-word {
+    width: auto;
     text-style: bold;
-    content-align: center middle;
+    content-align: left middle;
 }
 
 /* Status-word colour roles (glyph + word + colour — never colour alone). */
@@ -235,20 +258,32 @@ Tooltip {
 #status-word.accent  { color: $accent; }   /* the GRACE word — reserve item (b) */
 #status-word.warning { color: $warning; }
 
-#countdown {
-    text-style: bold;
-    color: $primary;                 /* the GRACE countdown — reserve item (b) */
-    content-align: center middle;
-}
-
 #hero-caption {
-    content-align: center middle;
+    width: 1fr;
+    padding: 0 0 0 2;
+    content-align: left middle;
 }
 
-/* --- tokens / grace key-value rows --- */
+/* The screen's one `display`-mass element, three rows of DIGITS3X3.
+ *
+ * NO `text-style: bold`. Textual swaps the glyph set on it — DIGITS3X3_BOLD —
+ * and the heavier set reads as terminal art rather than as the desktop this is
+ * imitating (UI-SPEC 5). The colour follows the VERDICT role; the glyphs carry
+ * no accent of their own, and `color: $primary` (which this rule used to set
+ * unconditionally) was an accent-reserve breach on every non-GRACE verdict. */
+#countdown         { height: 3; width: 1fr; color: $foreground; }
+#countdown.error   { color: $error; }
+#countdown.success { color: $success; }
+#countdown.accent  { color: $accent; }     /* the GRACE countdown — reserve (b) */
+#countdown.warning { color: $warning; }
+
+/* --- key/value rows inside the band ---------------------------------------
+ * `margin: 1 1 0 1` is gone: spacing is now explicit blank ROWS, which are
+ * countable against the budget in a way margins are not. */
 .kv-row {
     height: 1;
-    margin: 1 1 0 1;
+    width: 1fr;
+    margin: 0;
 }
 
 .kv-label {
