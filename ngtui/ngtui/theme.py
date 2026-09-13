@@ -426,8 +426,14 @@ def hypr_rounding(timeout: float = 0.4) -> int:
     return code is checked *before* the JSON is parsed. Measured on this box:
     outside Hyprland, ``HYPRLAND_INSTANCE_SIGNATURE not set! (is hyprland
     running?)`` arrives on stdout with rc 1; a stale socket gives rc 4 on stdout.
-    Parsing either without the rc check raises ``JSONDecodeError`` instead of
-    returning — which is the negative control this function's test demonstrates.
+    Parsing either without the rc check raises ``JSONDecodeError`` — but note what
+    that does *not* prove. ``json.JSONDecodeError`` **is a ``ValueError``**, so the
+    parse ``except`` below already catches it and the function still returns 0 with
+    the rc check deleted (measured 2026-09-13). What the rc check actually buys is
+    the case where a failure's stdout *parses*: a non-zero return code means the
+    answer is untrustworthy even when it is well-formed JSON, which is T-12.1-08.
+    ``test_hypr_rounding_fails_closed``'s mode 4 is the assertion that holds it —
+    the other three modes stay green with the check removed.
 
     Never raises: every failure path returns 0. The exception tuples are the
     narrow ones the rest of this module uses rather than ``except Exception`` —
@@ -706,33 +712,63 @@ def load_omarchy_theme(path: str | None = None) -> Theme:
 class ThemeWatch:
     """Live-watch primitive for D-05 repaint-on-theme-change (stdlib mtime poll).
 
-    Stores the last-seen mtime of the watched ``colors.toml`` (0 on ``OSError``,
-    e.g. file absent). ``changed()`` re-stats and returns ``True`` iff the mtime
-    differs from the stored value, updating the stored mtime so each change fires
-    exactly once. Driven from the app's existing 1s tick — no new dependency.
+    Watches **both** theme files, ``colors.toml`` and ``shell.toml``. A theme can
+    change one without the other — a re-theme that rewrites only the structural
+    tokens is a real change the TUI must repaint for, and a watch on the palette
+    alone would sleep through it. ``changed()`` re-stats both and returns ``True``
+    iff either mtime moved, updating the stored pair so each change fires exactly
+    once. Driven from the app's existing 1s tick — no new dependency.
+
+    Missing files stat as 0.0 rather than raising, so an Omarchy 3 box (which ships
+    no ``shell.toml``) watches the one file it has and the pair still works.
     """
 
     def __init__(self, path: str | None = None) -> None:
         self._fixed_path = path
-        self._mtime = self._stat()
+        self._mtimes = self._stat()
 
     @property
     def path(self) -> str:
-        """Re-resolved on every read, so a theme change that also moves the
-        directory (an omarchy 3 to 4 upgrade under a running TUI) is still seen.
-        An mtime poll by path is what makes that safe: unlike an inotify watch on
-        the inner file, re-stat'ing follows the directory omarchy swapped in."""
+        """The ``colors.toml`` being watched.
+
+        Re-resolved on every read, so a theme change that also moves the directory
+        (an omarchy 3 to 4 upgrade under a running TUI) is still seen. An mtime
+        poll by path is what makes that safe: unlike an inotify watch on the inner
+        file, re-stat'ing follows the directory omarchy swapped in — which is the
+        property that survives ``omarchy-theme-set`` doing
+        ``rm -rf current/theme; mv next-theme current/theme``.
+
+        Kept as the single-path accessor beside ``paths`` because two tests pin it
+        by name, and because "which palette file am I on" is a question worth
+        being able to ask.
+        """
         return self._fixed_path if self._fixed_path is not None else colors_path()
 
-    def _stat(self) -> float:
-        try:
-            return os.stat(self.path).st_mtime
-        except OSError:
-            return 0.0
+    @property
+    def paths(self) -> tuple[str, ...]:
+        """Both watched files, re-resolved per read for the reason ``path`` gives.
+
+        When a fixed path is given (tests), its ``shell.toml`` sibling is watched
+        too — the two files always live in the same directory, which is precisely
+        why omarchy can swap them atomically as one.
+        """
+        colors = self.path
+        if self._fixed_path is None:
+            return (colors, shell_path())
+        return (colors, os.path.join(os.path.dirname(colors), "shell.toml"))
+
+    def _stat(self) -> tuple[float, ...]:
+        mtimes = []
+        for path in self.paths:
+            try:
+                mtimes.append(os.stat(path).st_mtime)
+            except OSError:
+                mtimes.append(0.0)
+        return tuple(mtimes)
 
     def changed(self) -> bool:
         m = self._stat()
-        if m != self._mtime:
-            self._mtime = m
+        if m != self._mtimes:
+            self._mtimes = m
             return True
         return False

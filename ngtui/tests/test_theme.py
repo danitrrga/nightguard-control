@@ -7,6 +7,7 @@ exercised without touching the live omarchy theme.
 from __future__ import annotations
 
 import os
+import subprocess
 
 from ngtui.theme import ThemeWatch, load_omarchy_theme
 
@@ -211,3 +212,137 @@ def test_the_watch_follows_a_directory_move(tmp_path, monkeypatch):
     (new_dir / "colors.toml").write_text("background = '#111111'", encoding="utf-8")
     assert watch.path == str(new_dir / "colors.toml")
     assert watch.changed() is True
+
+
+# --- the compositor's live rounding, and the watcher's second file -------------
+
+def test_hypr_rounding_fails_closed(monkeypatch):
+    """Asking a compositor that is not there must degrade, not crash.
+
+    ``hypr_rounding()`` feeds ``$ng-radius``, which selects the border-style
+    family for the whole stylesheet. A raise here would take the app down at
+    construction — ``omarchy_style()`` is called from ``get_css_variables()``,
+    which Textual calls from ``App.__init__``.
+
+    **The trap this pins:** hyprctl writes its errors to **stdout** with a
+    non-zero return code (measured: ``HYPRLAND_INSTANCE_SIGNATURE not set! (is
+    hyprland running?)`` on stdout with rc 1 outside Hyprland; rc 4 on stdout for
+    a stale socket). So ``json.loads(out.stdout)`` without checking ``returncode``
+    first raises ``JSONDecodeError`` on the single most likely failure — running
+    this TUI anywhere but Hyprland.
+
+    **The prescribed negative control does not fire, and mode 4 is why this test
+    has one.** Measured 2026-09-13: with the ``returncode`` check deleted, mode 2
+    still returns ``0`` and this test still passes. The reason is structural —
+    ``json.JSONDecodeError`` **is a ``ValueError``**, so the parse ``except``
+    already catches exactly the raise the return-code check exists to prevent::
+
+        >>> json.loads("HYPRLAND_INSTANCE_SIGNATURE not set! (is hyprland running?)")
+        json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+        >>> issubclass(json.JSONDecodeError, ValueError)
+        True
+
+    So the three "returns 0" modes prove the function never raises, but **none of
+    them can tell whether the return code is read at all**. What discriminates is
+    a failure whose stdout *parses*: mode 4 is rc 4 (the measured stale-socket
+    code) carrying well-formed JSON. With the check deleted it returns ``12``::
+
+        E       AssertionError: a non-zero return code means the answer is not
+                trustworthy even when it parses
+        E       assert 12 == 0
+
+    That is T-12.1-08 — unvalidated hyprctl stdout — and mode 4 is the assertion
+    that holds it. Restored and re-run green.
+
+    Four modes, all must yield the stated value. No test here invokes hyprctl —
+    ``subprocess.run`` is monkeypatched, which is what keeps this module's "no
+    App, no TTY, no trust stack" header true.
+    """
+    from ngtui import theme as theme_mod
+
+    def _mode(fake):
+        monkeypatch.setattr(theme_mod.subprocess, "run", fake)
+        return theme_mod.hypr_rounding()
+
+    # 1. hyprctl not on PATH. FileNotFoundError is an OSError.
+    assert _mode(
+        lambda *_a, **_k: (_ for _ in ()).throw(FileNotFoundError("hyprctl"))
+    ) == 0
+
+    # 2. Running outside Hyprland: rc 1, and the error text on STDOUT.
+    assert _mode(
+        lambda *_a, **_k: subprocess.CompletedProcess(
+            args=["hyprctl"],
+            returncode=1,
+            stdout="HYPRLAND_INSTANCE_SIGNATURE not set! (is hyprland running?)\n\n",
+        )
+    ) == 0
+
+    # 3. A valid call whose output does not parse.
+    assert _mode(
+        lambda *_a, **_k: subprocess.CompletedProcess(
+            args=["hyprctl"], returncode=0, stdout="not json"
+        )
+    ) == 0
+
+    # 4. THE DISCRIMINATING MODE. A non-zero return code whose stdout happens to
+    # parse. The three above pass with the returncode check deleted (JSONDecodeError
+    # is a ValueError, so the parse except already swallows them); only this one
+    # can tell whether the return code is read. rc 4 is the measured stale-socket
+    # code (T-12.1-08).
+    assert _mode(
+        lambda *_a, **_k: subprocess.CompletedProcess(
+            args=["hyprctl"],
+            returncode=4,
+            stdout='{"option": "decoration:rounding", "int": 12, "set": true }',
+        )
+    ) == 0, "a non-zero return code means the answer is not trustworthy even when it parses"
+
+    # And the success path still reads the value, so the zeros above are the
+    # failure handling and not a function that always returns 0.
+    assert _mode(
+        lambda *_a, **_k: subprocess.CompletedProcess(
+            args=["hyprctl"],
+            returncode=0,
+            stdout='{"option": "decoration:rounding", "int": 8, "set": true }',
+        )
+    ) == 8
+
+
+def test_watch_sees_shell_toml(tmp_path):
+    """A theme change that rewrites only shell.toml must wake the repaint.
+
+    ``shell.toml`` carries the structural half of the theme — the control fills,
+    the border alphas, the spacing scale. A watcher on ``colors.toml`` alone sleeps
+    through a re-theme that moves only those, and the TUI keeps painting the old
+    borders while the desktop has moved.
+
+    **Negative control, run 2026-09-13.** With ``ThemeWatch`` reverted to stat
+    ``colors.toml`` only, the post-bump assertion below failed::
+
+        E       assert False is True
+
+    The ``os.utime`` bump is load-bearing for the same reason
+    ``test_theme_watch_detects_mtime_change`` bumps: a rewrite this fast can land
+    on the same mtime, and the poll would then report no change with the watcher
+    working.
+    """
+    colors = _write(str(tmp_path / "colors.toml"), COLORS_TOML)
+    shell = _write(str(tmp_path / "shell.toml"), "[controls]\nnormal-fill-alpha = 0.04\n")
+    watch = ThemeWatch(colors)
+
+    assert watch.path == colors
+    assert shell in watch.paths, "the sibling shell.toml must be watched too"
+
+    # A stable pair -> no change.
+    assert watch.changed() is False
+
+    # Bump ONLY shell.toml. colors.toml is untouched.
+    before = os.stat(colors).st_mtime
+    st = os.stat(shell)
+    os.utime(shell, (st.st_atime + 5, st.st_mtime + 5))
+    assert os.stat(colors).st_mtime == before
+
+    assert watch.changed() is True
+    # Consumed exactly once, as the single-file case already pins.
+    assert watch.changed() is False
