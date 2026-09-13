@@ -9,12 +9,18 @@ theme at ``~/.config/omarchy/current/theme/colors.toml`` and parsed into a Textu
 Pure module: imports only ``tomllib`` (stdlib) and ``textual.theme.Theme`` so the
 loader and watcher are unit-testable headless (no App, no TTY).
 
-Role map (RESEARCH Pattern 4, schema verified on this box / everforest):
-    accent      -> Theme.primary + Theme.accent
-    background  -> Theme.background
-    foreground  -> Theme.foreground
-    color0      -> Theme.surface   (fallback: background)
-    color1      -> Theme.error     color2 -> Theme.success   color3 -> Theme.warning
+Role map — per-role **pick chains**, first declared key wins (D-09). Measured over
+all 27 installed themes: most declare ``red``/``green``/``yellow`` and no ANSI
+``color1/2/3``, so a single-vocabulary map collapsed the three verdict colours into
+one. See ``_theme_from_colors`` for the measurement and why the unreached rungs stay.
+    accent                  -> Theme.primary + Theme.accent
+    background              -> Theme.background
+    foreground              -> Theme.foreground
+    color1 red urgent       -> Theme.error
+    color2 green            -> Theme.success
+    color3 yellow orange    -> Theme.warning
+    color0 lighter_background selection dark_background background -> Theme.surface
+    lighter_background selection surface                           -> Theme.panel
 
 If ``colors.toml`` is absent (some themes ship only ``alacritty.toml`` until
 ``omarchy-theme-set`` generates one — Pitfall 6) the loader falls back to
@@ -235,17 +241,67 @@ def omarchy_style() -> dict:
 
 
 def _theme_from_colors(c: dict) -> Theme:
-    """Build the omarchy ``Theme`` from a parsed ``colors.toml`` dict."""
+    """Build the omarchy ``Theme`` from a parsed ``colors.toml`` dict.
+
+    **The bug this fixes (D-09).** Until now every role was a single
+    ``c.get(key, c["accent"])`` over the ANSI key vocabulary only — ``color1`` /
+    ``color2`` / ``color3``, falling back to ``accent``. Measured 2026-09-13 by
+    loading every installed ``colors.toml`` through this loader: **25 of the 27
+    installed themes collapsed ``error``, ``success``, ``warning`` and ``accent``
+    to one colour**, because 25 of them declare ``red`` / ``green`` / ``yellow``
+    and no ``color1/2/3`` at all. LOCKED, OPEN and GRACE therefore all painted the
+    same hue. That inverts the product's accessibility contract — glyph, word and
+    colour are supposed to travel together so a monochrome terminal loses nothing,
+    and the colour channel was the monochrome one.
+
+    The fix is ``pick()``: per-role chains, first declared key wins, so a theme
+    that ships a partial palette loses one colour rather than the whole thing.
+
+    **The later rungs are deliberate insurance, not dead code.** ``urgent``,
+    ``orange``, ``selection`` and ``dark_background`` were reached by **none** of
+    the 27 themes on this box — every one resolves at ``color1/2/3`` or
+    ``red/green/yellow``, and ``surface`` at ``color0`` or ``lighter_background``.
+    They are here for a theme that is not on this box. Do not delete them for
+    being uncovered.
+
+    ``primary``, ``background``, ``foreground`` and ``accent`` keep their direct
+    reads: a ``KeyError`` here is what makes ``load_omarchy_theme`` fall through
+    to ``alacritty.toml``, and a chain would swallow it.
+    """
+
+    def pick(*names):
+        """First name whose value is a ``#``-prefixed colour that parses."""
+        for name in names:
+            value = c.get(name)
+            if not isinstance(value, str):
+                continue
+            value = value.strip()
+            if not value.startswith("#") or len(value) not in (4, 7, 9):
+                continue
+            try:
+                int(value[1:], 16)
+            except ValueError:
+                continue
+            return value
+        return None
+
+    accent = c["accent"]
+    surface = pick(
+        "color0", "lighter_background", "selection", "dark_background", "background"
+    ) or c["background"]
     return Theme(
         name="omarchy",
-        primary=c["accent"],
+        primary=accent,
         background=c["background"],
         foreground=c["foreground"],
-        surface=c.get("color0", c["background"]),
-        accent=c["accent"],
-        success=c.get("color2", c["accent"]),
-        warning=c.get("color3", c["accent"]),
-        error=c.get("color1", c["accent"]),
+        surface=surface,
+        # panel's tail rung is the *resolved* surface, so it is never unset even
+        # on a theme declaring neither key.
+        panel=pick("lighter_background", "selection", "surface") or surface,
+        accent=accent,
+        success=pick("color2", "green") or accent,
+        warning=pick("color3", "yellow", "orange") or accent,
+        error=pick("color1", "red", "urgent") or accent,
         dark=True,
     )
 
