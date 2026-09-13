@@ -273,6 +273,14 @@ class StatusScreen(Screen):
         ("r", "refresh", "Refresh"),
         ("l", "ledger", "Ledger"),
         ("q", "quit", "Quit"),
+        # Escape closes the help panel, and that is not a nicety. The `help` chip
+        # is the only discoverability left after the Footer's legend went (D-16),
+        # and `App.action_show_help_panel` is NOT a toggle — pressing Enter on the
+        # chip again just re-shows it. Textual binds nothing to escape here either
+        # (its only escape special-case is minimizing a maximized widget). Without
+        # this the panel is a ONE-WAY DOOR from the keyboard: opened with a key,
+        # closeable only with the pointer. UIX-03 names Escape in as many words.
+        ("escape", "close_help", "Close help"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -469,6 +477,16 @@ class StatusScreen(Screen):
             return
         if control.route:
             await self.app.run_action("edit")
+
+    def action_close_help(self) -> None:
+        """Escape: close the help panel if it is open, otherwise do nothing.
+
+        There is nothing else to escape FROM on the home surface — it is the root
+        screen and it opens nothing modal. Making escape unconditionally pop a
+        screen here would make it a way out of the app, which is `q`'s job and is
+        not a thing a stray keypress should do.
+        """
+        self.app.action_hide_help_panel()
 
     def on_control_row_refused(self, message: ControlRow.Refused) -> None:
         """A frozen control was activated. Surface the reason and stop.

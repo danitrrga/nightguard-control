@@ -265,9 +265,29 @@ def test_the_help_chip_opens_the_panel_that_replaced_the_legend(ng_data_dir):
                 "the help panel does not list the bindings it replaced: %s" % listed
             )
 
-            await app.run_action("hide_help_panel")
+            # Closed by ESCAPE, not by calling the action. `show_help_panel` is not
+            # a toggle — pressing Enter on the chip again only re-shows the panel —
+            # and Textual binds nothing to escape by itself, so without a binding
+            # the panel is a one-way door from the keyboard: opened with a key and
+            # closeable only with a pointer. UIX-03 names Escape outright.
+            await pilot.press("escape")
             await pilot.pause()
-            assert panels() == [], "hiding the panel did not remove it"
+            assert panels() == [], "escape did not close the help panel"
+
+            # And the chip is not a toggle, which is why escape has to exist. Stated
+            # rather than assumed: if `show_help_panel` ever became a toggle this
+            # assertion says so instead of the escape binding quietly becoming dead.
+            chip.focus()
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert len(panels()) == 1
+            await pilot.press("enter")
+            await pilot.pause()
+            assert len(panels()) == 1, (
+                "the help chip has become a toggle — escape is now redundant and "
+                "this control should be rewritten rather than left asserting both"
+            )
 
     asyncio.run(_body())
 
