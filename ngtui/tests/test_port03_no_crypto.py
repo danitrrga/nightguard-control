@@ -7,6 +7,23 @@ This is a structural guard test that verifies no Python source file under
 ngtui/ngtui/ (the published package — NOT spike/ or tests/) calls read_key(),
 imports the hmac or hashlib modules, or calls hexdigest/digest on any object.
 It is designed to FAIL if any of those patterns appear in the source.
+
+**Measured 2026-09-13, phase 12.1 plan 09 (the control audit).** ``NGTUI_SRC`` read
+``__file__.parent.parent / "ngtui" / "ngtui"``, which resolves to
+``<repo>/ngtui/ngtui/ngtui`` — a directory that does not exist. ``rglob`` over a
+missing directory yields nothing, so all three tests below were scanning **zero
+files** and had passed vacuously for the whole of their life. Armed with
+``import hmac`` in ``widgets/status.py``, the scan stayed green. One
+``parent.parent`` too many: the tests moved into ``ngtui/tests/`` after this path
+was written, and nothing noticed because a scan that finds nothing looks exactly
+like a scan that finds nothing wrong.
+
+Two changes follow from that. The path is corrected, and ``_iter_py_files`` now
+carries a **vacuity guard** — because the corrected path alone is not enough:
+re-pointed at ``ngtui/nosuch`` the fixed version still reported ``3 passed``. A
+guard test that cannot fail is not a guard, and the only thing that catches the
+silent-zero is asserting the scan reached something. Same shape as the vacuity
+guards in ``test_no_fixed_hex.py`` and ``test_dashboard_budget.py``.
 """
 from __future__ import annotations
 
@@ -18,12 +35,37 @@ from typing import Generator
 
 # The ngtui package source root — never spike/ (the spike may freely import
 # subprocess for its exercise, but the production package must not touch crypto).
-NGTUI_SRC = pathlib.Path(__file__).parent.parent / "ngtui" / "ngtui"
+# ngtui/tests/ -> ngtui/ -> ngtui/ngtui/. ONE dirname level then the package
+# name, not two: this file lives in ``ngtui/tests/``, a sibling of the package,
+# not in a top-level ``tests/`` beside the project root. Resolved so the value is
+# printable in the vacuity guard's message rather than being a relative fiction.
+NGTUI_SRC = (pathlib.Path(__file__).parent.parent / "ngtui").resolve()
+
+# The package's floor. Any real ngtui holds at least these; the count is a floor
+# and not an equality so adding a module does not turn this into a chore.
+_ANCHORS = ("__init__.py", "app.py", "backend.py", "theme.py", "panel.py")
 
 
 def _iter_py_files() -> Generator[pathlib.Path, None, None]:
-    """Yield every .py file under the ngtui package source directory."""
-    for p in NGTUI_SRC.rglob("*.py"):
+    """Yield every .py file under the ngtui package source directory.
+
+    Fails loudly if the scan reaches nothing, or reaches something that is not
+    the ngtui package. Without this the three tests below are green whenever the
+    path is wrong — which is the state they shipped in until the 12.1 audit.
+    """
+    found = sorted(NGTUI_SRC.rglob("*.py"))
+    assert found, (
+        "PORT-03 SCAN IS VACUOUS — no .py file under %s. The scan is not looking "
+        "at the ngtui package, so it would pass with a HMAC computed in every "
+        "module. Fix the path; do not relax the assertion." % NGTUI_SRC
+    )
+    names = {p.name for p in found}
+    missing = [a for a in _ANCHORS if a not in names]
+    assert not missing, (
+        "PORT-03 SCAN IS LOOKING AT THE WRONG TREE — %s holds %d .py file(s) but "
+        "is missing %r. That is not the ngtui package." % (NGTUI_SRC, len(found), missing)
+    )
+    for p in found:
         yield p
 
 
