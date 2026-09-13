@@ -75,6 +75,13 @@ Item {
   property string catalogError: ""
   property string filter: ""
 
+  // Two views, one window. The roster and the clock are different questions —
+  // "what dies tonight" and "when is tonight" — and putting them in one scroll
+  // made the clock look like a footnote to the app list. A rail rather than
+  // tabs because the rail can carry counts, and a count is the fastest way to
+  // see that a list is empty when it should not be.
+  property string view: "apps"
+
   readonly property var blocking: detail && detail.blocking ? detail.blocking : null
   readonly property string signedMode: !!blocking && String(blocking.mode) === "allowlist"
     ? "allowlist" : "blocklist"
@@ -290,6 +297,38 @@ Item {
     return "Mueren sólo las de esta lista. Las demás siguen abiertas."
   }
 
+  // --- the schedule -----------------------------------------------------
+  //
+  // Every reader below answers with the value the config WOULD have once
+  // applied, not the value on disk. A field that snapped back to the signed
+  // value while the change sat in the pending list would read as the edit
+  // having failed.
+  readonly property var curfew: root.detail && root.detail.curfew ? root.detail.curfew : null
+  readonly property var editWindow: root.detail && root.detail.edit_window
+    ? root.detail.edit_window : null
+
+  function stagedBool(key, fallback) {
+    return writer.stagedValue(key, fallback) === true
+  }
+
+  function stagedText(key, fallback) {
+    var v = writer.stagedValue(key, fallback)
+    return v === undefined || v === null ? "" : String(v)
+  }
+
+  function setTime(key, value, label) {
+    var text = String(value).trim()
+    // Refused here as well as in the CLI, because the CLI's refusal arrives as
+    // a red line under a field the user has already left. The signer reads an
+    // unparseable time as "no window", so a malformed edit window does not
+    // fail — it silently stops gating.
+    if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(text)) return false
+    var parts = text.split(":")
+    var normalised = (parts[0].length === 1 ? "0" : "") + parts[0] + ":" + parts[1]
+    writer.stage(key, "set", normalised, label + " " + normalised)
+    return true
+  }
+
   function isListed(identity) {
     for (var i = 0; i < root.listedRows.length; i++)
       if (root.listedRows[i].name === identity) return true
@@ -377,6 +416,64 @@ Item {
       color: modeChip.on ? root.foreground : root.dim
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
+    }
+  }
+
+  // One editable line of the schedule: a label, the thing you change, and a
+  // sentence saying what it means. The sentence is not decoration — "05:30" is
+  // not a fact anybody can act on until something says it is when the door
+  // opens.
+  component FieldRow: Rectangle {
+    id: fieldRow
+    property string label: ""
+    property string note: ""
+    property bool staged: false
+    default property alias control: controlSlot.data
+
+    implicitHeight: Math.max(fieldCol.implicitHeight, Style.space(34)) + Style.space(14)
+    radius: Style.cornerRadius
+    color: Style.normalFillFor(root.foreground, Color.accent)
+    border.width: Style.normalBorderWidth
+    border.color: fieldRow.staged ? Color.accent
+                                  : Style.normalBorderFor(root.foreground, Color.accent)
+
+    Column {
+      id: fieldCol
+      x: Style.spacing.rowPaddingX
+      y: Style.space(7)
+      width: parent.width - Style.spacing.rowPaddingX * 2 - controlSlot.width - Style.space(12)
+      spacing: Style.space(2)
+
+      Text {
+        textFormat: Text.PlainText
+        width: parent.width
+        text: fieldRow.label
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        elide: Text.ElideRight
+      }
+      Text {
+        textFormat: Text.PlainText
+        width: parent.width
+        visible: fieldRow.note !== ""
+        text: fieldRow.note
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WordWrap
+      }
+    }
+
+    Item {
+      id: controlSlot
+      anchors.right: parent.right
+      anchors.rightMargin: Style.spacing.rowPaddingX
+      anchors.verticalCenter: parent.verticalCenter
+      implicitWidth: childrenRect.width
+      implicitHeight: childrenRect.height
+      width: implicitWidth
+      height: implicitHeight
     }
   }
 
@@ -614,6 +711,7 @@ Item {
         }
 
         Item {
+          id: middle
           x: layout.contentX
           width: layout.contentWidth
           anchors.top: headerBlock.bottom
@@ -621,10 +719,256 @@ Item {
           anchors.bottom: footerBlock.top
           anchors.bottomMargin: Style.space(12)
 
+          // --- the rail ----------------------------------------------------
+          Column {
+            id: rail
+            width: Style.space(150)
+            height: parent.height
+            spacing: Style.spacing.xs
+
+            Repeater {
+              model: [
+                { id: "apps",     label: "Qué muere",  count: root.listedRows.length + root.siteRows.length },
+                { id: "schedule", label: "El horario", count: -1 },
+              ]
+
+              Rectangle {
+                required property var modelData
+                readonly property bool on: root.view === modelData.id
+                width: rail.width
+                implicitHeight: railLabel.implicitHeight + Style.space(14)
+                radius: Style.cornerRadius
+                color: on ? Style.selectedFillFor(root.foreground, Color.accent)
+                          : (railMouse.containsMouse
+                             ? Style.normalFillFor(root.foreground, Color.accent)
+                             : "transparent")
+
+                MouseArea {
+                  id: railMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.view = parent.modelData.id
+                }
+
+                Text {
+                  id: railLabel
+                  textFormat: Text.PlainText
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.spacing.rowPaddingX
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: parent.modelData.label
+                  color: parent.on ? root.foreground : root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.spacing.rowPaddingX
+                  anchors.verticalCenter: parent.verticalCenter
+                  visible: parent.modelData.count >= 0
+                  text: String(parent.modelData.count)
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+              }
+            }
+          }
+
+          // --- the schedule ------------------------------------------------
+          Flickable {
+            visible: root.view === "schedule"
+            x: rail.width + Style.space(16)
+            width: parent.width - rail.width - Style.space(16)
+            height: parent.height
+            contentWidth: width
+            contentHeight: scheduleColumn.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            Column {
+              id: scheduleColumn
+              width: parent.width
+              spacing: Style.space(8)
+
+              PanelSectionHeader {
+                width: parent.width
+                text: "EL CURFEW"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              FieldRow {
+                width: parent.width
+                label: "Curfew activo"
+                note: root.stagedBool("curfew.enabled", !!root.curfew && root.curfew.enabled === true)
+                      ? "La casa se cierra todas las noches."
+                      : "Apagado. No se cierra nada, a ninguna hora."
+                staged: writer.staged("curfew.enabled", "set", true)
+                        || writer.staged("curfew.enabled", "set", false)
+                ToggleSwitch {
+                  checked: root.stagedBool("curfew.enabled",
+                                           !!root.curfew && root.curfew.enabled === true)
+                  foreground: root.foreground
+                  onToggled: writer.stage("curfew.enabled", "set", !checked,
+                                          checked ? "Apagar el curfew" : "Encender el curfew")
+                }
+              }
+
+              FieldRow {
+                width: parent.width
+                label: "Se cierra a las"
+                note: "A partir de esta hora mueren las de la lista."
+                staged: root.stagedText("curfew.start", "") !== ""
+                        && writer.stagedValue("curfew.start", null) !== null
+                TextField {
+                  width: Style.space(90)
+                  text: root.stagedText("curfew.start", root.curfew ? root.curfew.start : "")
+                  foreground: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  horizontalAlignment: Text.AlignHCenter
+                  onEditingFinished: root.setTime("curfew.start", text, "Cerrar a las")
+                }
+              }
+
+              FieldRow {
+                width: parent.width
+                label: "Se abre a las"
+                note: "A esta hora vuelven a poder abrirse."
+                TextField {
+                  width: Style.space(90)
+                  text: root.stagedText("curfew.end", root.curfew ? root.curfew.end : "")
+                  foreground: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  horizontalAlignment: Text.AlignHCenter
+                  onEditingFinished: root.setTime("curfew.end", text, "Abrir a las")
+                }
+              }
+
+              PanelSectionHeader {
+                width: parent.width
+                text: "CUÁNDO PUEDES DEBILITARLO"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Fuera de estas horas, aflojar el pacto se rechaza antes de mirar siquiera las fichas. Existe porque una cuota semanal limita cuántas veces cedes, no a qué hora — y la hora en que peor juzgas es exactamente cuando vas a por la ficha."
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
+              }
+
+              FieldRow {
+                width: parent.width
+                label: "Puerta activa"
+                note: root.stagedBool("edit_window.enabled",
+                                      !!root.editWindow && root.editWindow.enabled === true)
+                      ? "Sólo se puede aflojar dentro de la franja."
+                      : "Apagada. Se puede aflojar a cualquier hora — sólo cuesta ficha."
+                ToggleSwitch {
+                  checked: root.stagedBool("edit_window.enabled",
+                                           !!root.editWindow && root.editWindow.enabled === true)
+                  foreground: root.foreground
+                  onToggled: writer.stage("edit_window.enabled", "set", !checked,
+                                          checked ? "Quitar la puerta de edición"
+                                                  : "Poner la puerta de edición")
+                }
+              }
+
+              FieldRow {
+                width: parent.width
+                label: "Abre a las"
+                TextField {
+                  width: Style.space(90)
+                  text: root.stagedText("edit_window.start",
+                                        root.editWindow ? root.editWindow.start : "")
+                  foreground: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  horizontalAlignment: Text.AlignHCenter
+                  onEditingFinished: root.setTime("edit_window.start", text, "Puerta abre a las")
+                }
+              }
+
+              FieldRow {
+                width: parent.width
+                label: "Cierra a las"
+                TextField {
+                  width: Style.space(90)
+                  text: root.stagedText("edit_window.end",
+                                        root.editWindow ? root.editWindow.end : "")
+                  foreground: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  horizontalAlignment: Text.AlignHCenter
+                  onEditingFinished: root.setTime("edit_window.end", text, "Puerta cierra a las")
+                }
+              }
+
+              PanelSectionHeader {
+                width: parent.width
+                text: "LAS DEFENSAS"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              FieldRow {
+                width: parent.width
+                label: "Comprobar el reloj"
+                note: "Sin esto, mover la hora del sistema abre la noche."
+                ToggleSwitch {
+                  checked: root.stagedBool("clock_protection.enabled", true)
+                  foreground: root.foreground
+                  onToggled: writer.stage("clock_protection.enabled", "set", !checked,
+                                          checked ? "Dejar de comprobar el reloj"
+                                                  : "Comprobar el reloj")
+                }
+              }
+
+              FieldRow {
+                width: parent.width
+                label: "Vigilante activo"
+                note: "Es lo que deshace una edición a mano de la configuración."
+                ToggleSwitch {
+                  checked: root.stagedBool("watchdog.enabled", true)
+                  foreground: root.foreground
+                  onToggled: writer.stage("watchdog.enabled", "set", !checked,
+                                          checked ? "Parar el vigilante" : "Arrancar el vigilante")
+                }
+              }
+
+              FieldRow {
+                width: parent.width
+                label: "Bloqueo de aplicaciones"
+                note: "El interruptor maestro de todo lo de la otra pestaña."
+                ToggleSwitch {
+                  checked: root.stagedBool("blocking.native_apps.enabled",
+                                           !!root.blocking && root.blocking.apps_enabled === true)
+                  foreground: root.foreground
+                  onToggled: writer.stage("blocking.native_apps.enabled", "set", !checked,
+                                          checked ? "Apagar el bloqueo de aplicaciones"
+                                                  : "Encender el bloqueo de aplicaciones")
+                }
+              }
+            }
+          }
+
           // --- left: the catalog -------------------------------------------
           Column {
             id: leftColumn
-            width: (parent.width - Style.space(16)) * 0.56
+            visible: root.view === "apps"
+            x: rail.width + Style.space(16)
+            width: (parent.width - rail.width - Style.space(32)) * 0.56
             height: parent.height
             spacing: Style.space(8)
 
@@ -734,8 +1078,9 @@ Item {
 
           // --- right: the two lists ----------------------------------------
           Flickable {
+            visible: root.view === "apps"
             anchors.right: parent.right
-            width: (parent.width - Style.space(16)) * 0.44
+            width: (parent.width - rail.width - Style.space(32)) * 0.44
             height: parent.height
             contentWidth: width
             contentHeight: rightColumn.implicitHeight

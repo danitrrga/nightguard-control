@@ -299,3 +299,36 @@ def test_only_the_governing_list_carries_resolution():
     assert all(isinstance(n, str) for n in blocking["blacklist"]), (
         "the plain lists are names, never objects with a state attached"
     )
+
+
+def test_the_gate_reports_whether_it_exists_separately_from_whether_it_is_open():
+    """Two different questions, and the editor needs both.
+
+    ``open`` is "may the pact be weakened at this minute"; ``enabled`` is "is
+    there a gate at all". A surface that inferred one from the other would draw
+    the switch OFF on every night the gate is doing its job — which reads as
+    "you can weaken this at any hour", the one wrong answer that invites the
+    user to try.
+    """
+    closed = panel.edit_window_view(_cfg(start="05:30", end="14:00"), 2 * 60)
+    assert closed["open"] is False and closed["enabled"] is True
+
+    inside = panel.edit_window_view(_cfg(start="05:30", end="14:00"), 10 * 60)
+    assert inside["open"] is True and inside["enabled"] is True
+
+    off = panel.edit_window_view(_cfg(enabled=False), 2 * 60)
+    assert off["open"] is True and off["enabled"] is False, (
+        "a disabled window is permanently open, and that is the ONLY case where "
+        "open and enabled disagree in this direction"
+    )
+
+    absent = panel.edit_window_view(_cfg(with_window=False), 2 * 60)
+    assert absent["configured"] is False and absent["enabled"] is False
+
+
+def test_a_malformed_or_unverified_window_is_still_an_enabled_one():
+    """Refusing because the clock is unreadable is the gate WORKING. Reporting
+    it as disabled would say the opposite of what is happening."""
+    for view in (panel.edit_window_view(_cfg(start="half past five"), 10 * 60),
+                 panel.edit_window_view(_cfg(), None)):
+        assert view["open"] is False and view["enabled"] is True
