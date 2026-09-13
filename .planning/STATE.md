@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
-status: executing
+status: completed
 stopped_at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
-last_updated: "2026-09-13T11:17:49.569Z"
+last_updated: "2026-09-13T11:37:40.431Z"
 last_activity: 2026-09-13
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 18
-  completed_plans: 16
-  percent: 40
+  completed_plans: 18
+  percent: 60
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 
 ## Current Position
 
-Phase: 12.1 (native-dashboard-pointer-first-omarchy-tui) — EXECUTING
+Phase: 12.1 (native-dashboard-pointer-first-omarchy-tui) — AWAITING PHASE GATE
 Plan: 9 of 9
-Status: Ready to execute
+Status: All nine plans executed and the control ledger is closed. The phase is NOT complete: 12.1-09 Task 2 (the live walkthrough — two real `omarchy theme set` switches with the app open, a real mouse, and the user's verdict on whether it reads as a native Omarchy application) has not been performed. The `ngtui` shim is already reinstalled from this tree, so the walkthrough will test this phase's UI.
 Last activity: 2026-09-13
 
 ## Performance Metrics
@@ -96,6 +96,7 @@ Last activity: 2026-09-13
 | Phase 12.1 P06 | 25 | 3 tasks | 3 files |
 | Phase 12.1 P07 | 40 | 5 tasks | 9 files |
 | Phase 12.1 P08 | 48 | 2 tasks | 4 files |
+| Phase 12.1 P09 | 25 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -178,6 +179,9 @@ Recent decisions affecting current work:
 - [Phase 12.1, 07]: A row budget needs three independent claims — measured: with one extra row, max_scroll_y stayed 0 because the 1fr ledger absorbed it. Assert that it fits, that exactly one region is flexible, AND that the flexible one keeps its slack. Plan 08's overflow control inherits the same blindness.
 - [Phase 12.1, 12.1-08]: The ledger's min-height: 4 is enforced in app.tcss rather than stated: measured, the degradation ladder runs out of things to drop at 31 rows and the audit record was the region that kept shrinking — 3 rows at a 30-row terminal, 1 at 24.
 - [Phase 12.1, 12.1-08]: The window budget is three claims, each armed to a different bug: max_scroll_y, the frame's own region, and every widget's bottom edge. Claims 1-2 are blind to a 1-3 row overrun the ledger absorbs; test_dashboard_home's ledger-slack claim catches those.
+- [Phase ?]: [Phase 12.1, 12.1-09]: The no-crypto scan (PORT-03) had been scanning zero files — NGTUI_SRC resolved one parent.parent too deep, to a directory that does not exist. Fixed with a path correction plus a vacuity guard AND a wrong-tree guard, because the corrected path alone still reported 3 passed when re-pointed at a missing directory.
+- [Phase ?]: [Phase 12.1, 12.1-09]: UIX-01 stays Pending after nine plans. Measured: omarchy_style() parses 31 spacing_* keys and font_base, style_variables() emits no variable for either, and the only reader in the tree is panel.py (out of bounds). The [controls] half, the rounding and the live-restyle path are proved; [spacing] and [font] have no path at all.
+- [Phase ?]: [Phase 12.1, 12.1-09]: Feedback-latency budget revised 4 s to 45 s. Full suite measures 42.75 s (was 3.01 s) because the phase added 22 Pilot integration tests; five registry/ladder sweeps cost 24 s of it. The sign-off box is left UNTICKED rather than its number edited.
 
 ### Pending Todos
 
@@ -191,6 +195,8 @@ None yet.
 - [v2.0 P0 — HIGHEST RISK]: the Linux Python trust stack (`ngcommon`/`guard`/control-CLI/`nightguard_watchdog` .py) is absent from disk (only stale `.pyc`) and untracked in git. Blocks 06-02 and all of Phase 7. Restore + commit before any execution.
 - [Phase 8 — DE-RISKED 2026-06-22]: root watchdog reaching the user-owned Hyprland socket (`/run/user/1000/hypr`). Verified feasible — `runuser`-to-user + per-tick `$HIS` discovery (root traverses via CAP_DAC_OVERRIDE; socket node is world-rwx). Full approach + edge cases + live-proof command in `.planning/phases/08-native-blocker/08-NOTES-hyprland-from-root.md`. Not a blocker; implement in Phase 8.
 - [12.1 — RESOLVED 2026-09-13, plan 07]: plan 04's control 2 (test_controls_fill_alpha_reaches_the_row) was flaky at 4/10 runs. Fixed by settling past the fill cross-fade two independent ways (a wait derived from styles.transitions, plus animator.is_being_animated keyed on styles.base). 30/30 consecutive passes; both rung assertions re-armed and seen red. Textual's own pilot.wait_for_animation()/wait_for_scheduled_animations() do NOT work here — Animator.start() sets both wait events after the first _animate.
+- [12.1 — OPEN 2026-09-13, plan 09]: the phase gate. The live walkthrough has NOT been performed: two real `omarchy theme set` switches with the app open (city-783 for the hand-written shell.toml, one generated-shell.toml theme for the other branch of the variable map), the real-mouse hover-then-j continuation, and the user's verdict on whether it reads as a native Omarchy application. The shim is already reinstalled from this tree (uv tool install --python 3.14 . --force; packaged app.tcss diff-identical to the repo's), so the walkthrough will test this phase's UI and not the old one. Nothing in 12.1-VALIDATION.md claims this was done.
+- [12.1 — OPEN 2026-09-13, plan 09]: UIX-01 is the phase's one incomplete requirement. [spacing] and [font] are named in its text, parsed by omarchy_style() as 31 spacing_* keys plus font_base, and style_variables() emits no variable for either — the only reader in the tree is panel.py, which the scope fence puts out of bounds. Either wire them or amend the requirement's text to match what a character grid can express; do not close it silently.
 
 ### Quick Tasks Completed
 
@@ -214,7 +220,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-13T11:17:36.352Z
+Last session: 2026-09-13T11:37:00.041Z
 Stopped at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).

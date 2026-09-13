@@ -42,7 +42,7 @@ Package the existing `ngtui` Textual TUI as a first-class omarchy desktop app �
 
 - [x] Phase 11: Global Install + Status Subcommand (3 plans) — `uv tool install` exposes a global `ngtui`; key-less `ngtui status --json` emits Waybar JSON — DESK-01, DESK-02
 - [x] Phase 12: Launcher + Waybar Presence — floating-terminal `.desktop` + brand icon + Hyprland windowrule; `custom/nightguard` bar module (left-click open, right-click read-only menu, signal refresh) — DESK-03, DESK-04, BAR-01..04 (completed 2026-07-04)
-- [ ] Phase 12.1: Native dashboard — the TUI restyled from the live theme's structural tokens and driven by one cursor shared between pointer and keyboard — UIX-01..06
+- [ ] Phase 12.1: Native dashboard — the TUI restyled from the live theme's structural tokens and driven by one cursor shared between pointer and keyboard — UIX-02..06 complete, **UIX-01 still Pending**; all 9 plans executed 2026-09-13, phase gate (the live walkthrough) OPEN
 - [ ] Phase 12.2: Blocking becomes editable — the four keys the signer classifies but the editor never exposed, at one token per list — BLK-01..05
 - [ ] Phase 13: Autostart + AUR Packaging — optional login autostart (module, not window) + publish-ready PKGBUILD/README that declares (never vendors) the trust stack — DESK-05, DESK-06
 
@@ -146,11 +146,13 @@ Plans:
 
 **Wave 6**
 
-- [ ] 12.1-08-PLAN.md — edit.py chrome removal + on_resize degradation + the window and accent budgets (controls 9/10)
+- [x] 12.1-08-PLAN.md — edit.py chrome removal + on_resize degradation + the window and accent budgets (controls 9/10)
 
 **Wave 7**
 
-- [ ] 12.1-09-PLAN.md — control-ledger close-out + trust-path diff audit + live walkthrough checkpoint
+- [x] 12.1-09-PLAN.md — control-ledger close-out + trust-path diff audit + live walkthrough checkpoint
+      - Task 1 closed: 20 control rows, each with its verbatim failure message, zero blank. Found and fixed a control that could not fail — the no-crypto scan (PORT-03) resolved its root one `parent.parent` too deep and had been scanning **zero** files.
+      - Task 2 OPEN: the live walkthrough is a human gate and was not auto-approved. The `ngtui` shim is reinstalled from this tree, so it will test this phase's UI.
 
 ### Phase 12.2: Blocking becomes editable — the four frozen keys (INSERTED)
 
@@ -200,6 +202,6 @@ Plans:
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
 | 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete    | 2026-06-25 |
 | 12. Launcher + Waybar Presence | v2.1 | 6/6 | Complete    | 2026-07-04 |
-| 12.1 Native dashboard | v2.1 | 7/9 | In Progress|  |
+| 12.1 Native dashboard | v2.1 | 9/9 | Complete   | 2026-09-13 |
 | 12.2 Blocking editable | v2.1 | 0/? | Not started | — |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |
