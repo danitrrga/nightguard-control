@@ -1,9 +1,21 @@
 """The token pipeline — shell.toml's structural tokens to the $ng-* variable map.
 
-This module's Pilot-driven controls (2, 3 — consumption and live restyle) arrive
-with the plan that wires ``get_css_variables()``. Control 3b lands first and
-deliberately needs none of that: ``style_variables()`` is pure, so the whole
-hex-free guarantee can be asserted on a dict with no App, no TTY and no repaint.
+Three controls, deliberately at three different depths:
+
+- **3b** (``test_style_variables_is_pure_and_hex_free``) is pure. No App, no TTY,
+  no repaint — ``style_variables()`` is a dict in, a dict out, so the whole
+  hex-free guarantee is assertable one layer below the thing it protects.
+- **2** (``test_controls_fill_alpha_reaches_the_row``) runs a real app and asks
+  whether a theme's fill alpha reached a *rendered* row. It is the first test
+  that can fail because of ``app.tcss``.
+- **3** (``test_live_restyle_changes_the_border_style``) asks whether a *running*
+  app follows a theme change — and asks it about a border STYLE, because a
+  colour-only pipeline passes a colour-only test.
+
+None of the three reads the live desktop theme: all take ``omarchy_theme_dir``,
+which monkeypatches ``theme.OMARCHY_THEME_DIRS`` at the module attribute. A
+control that read the live omarchy state directory would be rewritten out from
+under itself by ``omarchy-theme-set`` (T-12.1-02).
 """
 from __future__ import annotations
 
@@ -124,3 +136,205 @@ def test_style_variables_is_pure_and_hex_free(omarchy_theme_dir, mutate_theme, m
     # selected-border-width = 0 must survive as 0, or "fill only" becomes
     # unexpressible.
     assert clamped["ng-border-selected-w"] == "0"
+
+
+
+def test_controls_fill_alpha_reaches_the_row(probe_app, omarchy_theme_dir, monkeypatch):
+    """Control 2 — a theme's [controls] fill alpha reaches a RENDERED row.
+
+    The fixture pins ``normal-fill-alpha = 0.42``, a value no real theme ships,
+    so a pipeline that ignored ``[controls]`` would land on the ``0.04`` default
+    and be caught here rather than passing on a rounding difference. The
+    assertion is on the widget's **resolved** ``styles.background``, never on the
+    theme file's text — Textual's colour system shifts some values on the way in.
+
+    **Negative control, measured 2026-09-13.** With ``style_variables`` passing
+    ``None`` instead of ``style.get("%s_fill_alpha")`` — i.e. the colour-only
+    pipeline, ``[controls]`` ignored — this fires exactly as the plan predicted::
+
+        E  AssertionError: the fixture's normal-fill-alpha did not reach the row:
+           Color(169, 192, 191, a=0.04)
+        E  assert 0.04 == 0.42
+
+    ``theme.py`` was restored byte-identical afterwards (``diff -q`` empty).
+
+    **The rung matters, and the plan's recipe picks the wrong row.** Textual
+    focuses the first focusable widget when a screen mounts, so ``rows[0]``
+    carries the cursor and paints ``$ng-fill-cursor``. Asserting the idle rung on
+    ``rows[0]`` fails with ``assert 0.08 == 0.42`` **on a fully working
+    pipeline** — a red that reads like a broken pipeline and is really a broken
+    test. That was measured before this docstring was written, which is why the
+    idle assertion is on ``rows[1]`` and the ``app.focused is rows[0]`` guard is
+    above it: if the harness ever stops focusing on mount, this test says so
+    instead of quietly changing which rung it measures.
+
+    Both rungs are asserted because one alone cannot distinguish "the ladder is
+    wired" from "every row paints the same fill".
+    """
+    import asyncio
+
+    from textual.color import Color
+
+    from test_ui_harness import SANCTIONED_SIZE
+
+    from ngtui import theme as theme_mod
+
+    monkeypatch.setattr(theme_mod, "hypr_rounding", lambda *_a, **_k: 0)
+
+    async def _body():
+        app = probe_app(rows=3)
+        async with app.run_test(size=SANCTIONED_SIZE) as pilot:
+            await pilot.pause()
+
+            # Query through app.screen, never app: App.query is scoped to the
+            # DEFAULT screen and returns 0 after a push_screen, which would make
+            # an "assert every row..." control pass over nothing.
+            rows = list(app.screen.query(".ctl"))
+            assert len(rows) == 3, "the probe composition collapsed: %r" % rows
+
+            # The harness contract: Textual focuses the first focusable widget on
+            # mount, so rows[0] carries the cursor and rows[1] is idle. Asserting
+            # the idle rung on rows[0] measures the CURSOR rung instead and fails
+            # with `assert 0.08 == 0.42` on a working pipeline.
+            assert app.focused is rows[0], "the cursor is not where the harness puts it"
+
+            expected = style_variables(omarchy_style())
+
+            idle = rows[1].styles.background
+            assert round(idle.a, 4) == 0.42, (
+                "the fixture's normal-fill-alpha did not reach the row: %r" % (idle,)
+            )
+            assert idle.rgb == Color.parse(expected["ng-color-normal"]).rgb
+
+            cursor = rows[0].styles.background
+            assert round(cursor.a, 4) == 0.08, (
+                "the focused row is not on the cursor rung: %r" % (cursor,)
+            )
+            assert round(cursor.a, 4) != round(idle.a, 4)
+
+    asyncio.run(_body())
+
+
+def test_live_restyle_changes_the_border_style(
+    probe_app, omarchy_theme_dir, mutate_theme, monkeypatch
+):
+    """Control 3 — a live restyle moves a border STYLE on a running app.
+
+    Assert on the **style**, not the colour: a colour-only pipeline passes a
+    colour-only test, which is the entire reason this control exists. The style
+    family is ``$ng-border-style``, driven by the compositor's live
+    ``decoration:rounding`` — ``hkey`` at radius 0, ``round`` above it — so
+    ``hypr_rounding`` is the seam that moves it, not a ``shell.toml`` key.
+    (The plan's recipe says to move ``[controls] normal-border`` to a different
+    border style. That token is a **colour**: ``omarchy_style`` resolves it
+    through ``_resolve_border`` / ``_color_word`` and no ``*-border-style`` key
+    is read anywhere. Moving it can only change a colour, so that recipe cannot
+    assert what it set out to assert.)
+
+    All three halves of the pipeline are moved in one repaint — the structural
+    file read, the compositor read, and the palette — because each is carried by
+    a different statement of ``_apply_omarchy_theme`` and an end-to-end assertion
+    over all three cannot say which one rotted.
+
+    **Negative control, measured 2026-09-13 — the shipped no-op reproduced.**
+    With ``_apply_omarchy_theme`` reverted to its shipped two-statement body
+    (``register_theme(...)`` + ``self.theme = "omarchy"``, no ``refresh_css``),
+    nothing moved::
+
+        BEFORE border=('hkey', Color(169, 192, 191, a=0.12))
+               fill=Color(169, 192, 191, a=0.42) accent='#7FC9C4'
+        AFTER  border=('hkey', Color(169, 192, 191, a=0.12))
+               fill=Color(169, 192, 191, a=0.42) accent='#7FC9C4'
+        changed? border=False fill=False accent=False
+
+        E  AssertionError: the border STYLE did not move — a colour-only pipeline
+           passes a colour-only test, which is the entire reason this control
+           asserts on style: 'hkey'
+        E  assert 'hkey' != 'hkey'
+
+    All three legs stay put, which is why the first assertion short-circuiting
+    the other two costs nothing here.
+
+    **Each statement was armed separately, so none of the four is redundant:**
+
+    - drop ``self._style = omarchy_style()``: ``border=False fill=False
+      accent=True`` — the structural half goes stale while the palette still
+      moves. That is precisely the colour-only failure this control is for, and
+      the border assertion catches it.
+    - drop ``self.register_theme(...)``: dies loudly with
+      ``textual.app.InvalidThemeError: Theme 'omarchy' has not been registered``
+      on the FIRST call. Worth knowing: that exception is NOT in
+      ``_apply_omarchy_theme``'s four-exception tuple, so it propagates rather
+      than degrading.
+    - drop ``self.refresh_css(animate=False)``: the triple above.
+
+    Restored, the same run gives ``border=True fill=True accent=True``:
+    ``hkey`` -> ``round``, ``a=0.42`` -> ``a=0.61``, ``#7FC9C4`` -> ``#123456``.
+    ``app.py`` was restored byte-identical after every arming.
+    """
+    import asyncio
+    import re
+
+    from textual.widgets import Static
+
+    from test_ui_harness import SANCTIONED_SIZE
+
+    from ngtui import theme as theme_mod
+
+    radius = {"value": 0}
+    monkeypatch.setattr(theme_mod, "hypr_rounding", lambda *_a, **_k: radius["value"])
+
+    async def _body():
+        app = probe_app(rows=3)
+        async with app.run_test(size=SANCTIONED_SIZE) as pilot:
+            await pilot.pause()
+
+            # The probe screen composes only .ctl rows, and a .ctl row's spine is
+            # a LITERAL vkey by design — D-05 reserves the same one-column border
+            # in every state, so its style must never move. The style FAMILY seam
+            # is $ng-border-style, and the shipped rule that consumes it is
+            # `.panel`. Mount one rather than assert on a widget that cannot move.
+            region = Static("region", classes="panel")
+            await app.screen.mount(region)
+            await pilot.pause()
+
+            before_style = region.styles.border.top[0]
+            before_fill = round(list(app.screen.query(".ctl"))[1].styles.background.a, 4)
+            before_accent = app.theme_variables["accent"]
+            assert before_style == "hkey", "radius 0 is the hairline family: %r" % (
+                region.styles.border.top,
+            )
+            assert before_fill == 0.42
+
+            # Move all three halves of the pipeline at once: the structural file
+            # read ([controls] fill alpha), the compositor read (the radius, which
+            # selects the border-style FAMILY) and the palette (colors.toml).
+            mutate_theme(omarchy_theme_dir, "controls", normal_fill_alpha=0.61)
+            radius["value"] = 8
+            colors = omarchy_theme_dir / "colors.toml"
+            text = colors.read_text(encoding="utf-8")
+            moved = re.sub(r'(?m)^accent\s*=.*$', 'accent = "#123456"', text)
+            assert moved != text, "the fixture colors.toml has no accent line to move"
+            colors.write_text(moved, encoding="utf-8")
+
+            app._apply_omarchy_theme()
+            await pilot.pause()
+
+            after_style = region.styles.border.top[0]
+            after_fill = round(list(app.screen.query(".ctl"))[1].styles.background.a, 4)
+            after_accent = app.theme_variables["accent"]
+
+            assert after_style != before_style, (
+                "the border STYLE did not move — a colour-only pipeline passes a "
+                "colour-only test, which is the entire reason this control asserts "
+                "on style: %r" % (after_style,)
+            )
+            assert after_style == "round", (
+                "a non-zero radius selects the round family: %r" % (after_style,)
+            )
+            assert after_fill == 0.61, "the fill alpha did not re-read: %r" % after_fill
+            assert after_accent != before_accent, (
+                "the palette did not re-read: %r" % after_accent
+            )
+
+    asyncio.run(_body())
