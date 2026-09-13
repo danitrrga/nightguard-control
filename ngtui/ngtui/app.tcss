@@ -328,6 +328,14 @@ Tooltip {
     width: 1fr;
     overflow-y: auto;
     overflow-x: hidden;
+    /* The floor, and it is load-bearing rather than decorative (UI-SPEC 7.2,
+     * T-12.1-32). Measured without it: the degradation ladder runs out of things
+     * to drop at 31 rows, and from 30 rows down the ledger simply kept shrinking
+     * -- 3 rows, then 1. This is the audit record; a record squeezed out of the
+     * way to make room for everything else is the one region that must not give.
+     * Below 31 rows `#frame` scrolls instead, which is visible. Inert at the
+     * sanctioned 135x46, where the ledger gets 7. */
+    min-height: 4;
 }
 
 #ledger.collapsed {

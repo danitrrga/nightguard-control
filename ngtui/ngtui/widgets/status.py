@@ -43,6 +43,7 @@ from datetime import datetime, timedelta, timezone
 
 from dataclasses import replace
 
+from textual import events
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
@@ -53,6 +54,21 @@ from ngtui.backend import WEEKLY_TOKENS  # signer's constant (WR-03), never a lo
 from ngtui.theme import theme_name
 from ngtui.widgets.controlrow import ControlRow, home_controls, read_dotted
 from ngtui.widgets.hero import DayRamp, window_allows
+
+# --- UI-SPEC §7.4, the degradation thresholds ----------------------------------
+#
+# The sanctioned window is 135 x 46 (the `size 875 600` windowrule at the live
+# terminal font). `ngtui` can be run in any tiled terminal though, so below that
+# the composition sheds rows in ONE fixed order rather than looking broken.
+# Textual has no media queries, which is why this is a resize handler toggling
+# classes on `#frame` and not a stylesheet feature.
+#
+# These are the TRIGGERS. What each class actually drops lives in `app.tcss`
+# (`#frame.-compact`, `#frame.-tiny`, `#frame.-narrow`), so the order and the
+# effect are written down once each.
+SANCTIONED_ROWS = 46      # full composition at or above this
+TINY_ROWS = 43            # below this the blanks and the integrity row go too
+NARROW_COLUMNS = 80       # below this the band stacks, costing 5 rows
 
 # Verdict string -> (glyph, word, colour_role, caption). Glyph + word + colour are
 # always present together (UI-SPEC Accessibility). Colour role is a $-variable name.
@@ -487,6 +503,54 @@ class StatusScreen(Screen):
         not a thing a stray keypress should do.
         """
         self.app.action_hide_help_panel()
+
+    # --- degradation below the sanctioned window (UI-SPEC §7.4) ---
+
+    def on_resize(self, event: events.Resize) -> None:
+        """Toggle the degradation classes on ``#frame`` to fit the actual terminal.
+
+        Textual has no media queries. The three classes and what each one drops are
+        declared in ``app.tcss``; this decides only WHEN each applies, so the
+        trigger and the effect are each written down exactly once.
+
+        The order is fixed and is the contract's, not a preference:
+
+          * ``-compact`` (43-45 rows) drops the advisory line, folds the read-out
+            row into the tooltip, then drops the hour axis;
+          * ``-tiny`` (< 43 rows) additionally drops the blank rows and the
+            integrity row. It only ever ADDS to ``-compact``, which is why the
+            handler sets both;
+          * ``-narrow`` (< 80 columns) stacks the band's two halves, which costs 5
+            rows and therefore forces ``-compact`` regardless of the height.
+
+        **The hero is never dropped** at any size. It is the screen's one idea, and
+        a degradation path that takes it has degraded into a different screen. The
+        ledger is likewise never taken below 4 rows — it is the audit record, and a
+        record silently truncated to fit is worse than one that is missing.
+        """
+        self._apply_degradation(event.size.width, event.size.height)
+
+    def _apply_degradation(self, width: int, height: int) -> None:
+        """Set the three classes from one measurement. Pure given the frame.
+
+        Split out from the handler so the mapping from a size to a class set can be
+        exercised without a resize event, and so there is ONE place that decides it.
+        ``set_class`` rather than ``add_class``/``remove_class``: growing back is the
+        same path as shrinking, so a window that is resized up cannot keep a class
+        it no longer earns.
+        """
+        try:
+            frame = self.query_one("#frame")
+        except Exception:
+            # The not-initialized screen composes no frame — nothing to degrade.
+            return
+        narrow = width < NARROW_COLUMNS
+        tiny = height < TINY_ROWS
+        # `-narrow` forces `-compact` because the stacked band costs 5 rows, and
+        # `-tiny` implies it arithmetically (43 < 46).
+        frame.set_class(height < SANCTIONED_ROWS or narrow, "-compact")
+        frame.set_class(tiny, "-tiny")
+        frame.set_class(narrow, "-narrow")
 
     def on_control_row_refused(self, message: ControlRow.Refused) -> None:
         """A frozen control was activated. Surface the reason and stop.

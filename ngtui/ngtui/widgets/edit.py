@@ -38,7 +38,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Footer, Header, Input, Static
+from textual.widgets import Input, Static
 
 from ngtui import backend, lineedit
 from ngtui.backend import WEEKLY_TOKENS  # signer's constant (WR-03), never a local literal
@@ -447,13 +447,28 @@ class EditScreen(Screen):
     # --- compose ---
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        """The editor, with no framework chrome (D-16, OD-2).
+
+        Textual's ``Header`` and ``Footer`` used to bracket this composition and are
+        both gone, on the same grounds as on the home surface: they are the two
+        things that most make a Textual app read as a terminal form. **The bindings
+        are unaffected** — ``BINDINGS`` is owned by this screen and the ``Footer``
+        only ever *rendered* the legend; ``tests/test_port01_single_key_bindings.py``
+        is the standing control that they survive.
+
+        What does NOT survive is this screen's on-screen legend. The home surface
+        traded its legend for the ``help`` chip and an ``escape`` that closes the
+        panel; the editor has no chip strip, so ``c`` / ``u`` / ``escape`` now have
+        no affordance here at all. That is a real gap, recorded in
+        ``deferred-items.md`` rather than closed by adding a help binding — ``escape``
+        is already this screen's cancel, and a help panel that escape both opens out
+        of and closes is a rework of the edit flow, which phase 12.1 does not own.
+        """
         if not self._base_cfg or not self._base_text:
             yield Static(
                 "nightguard is not initialized on this machine", id="not-initialized"
             )
             yield Static("run nightguard_ctl.py init", classes="dim hint")
-            yield Footer()
             return
         # The door's state, above the fields, before the first keystroke.
         yield Static("", id="edit-window-banner")
@@ -468,7 +483,6 @@ class EditScreen(Screen):
         # The per-field preview line — the load-bearing anti-impulse signal.
         yield Static("", id="edit-preview")
         yield Static("", id="edit-status", classes="dim")
-        yield Footer()
 
     def on_mount(self) -> None:
         self._highlight_focus()
