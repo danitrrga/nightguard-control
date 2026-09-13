@@ -426,27 +426,51 @@ class ControlRow(Static, can_focus=True):
     ControlRow { layout: horizontal; }
     """
 
+    # Every binding is show=False: no bracket hint appears on this surface, and the
+    # legend lives in the help chip instead (UIX-03, OD-2). The walk keys are on the
+    # WIDGET rather than on a screen because the cursor is a property of the control
+    # strip, not of whatever composition happens to host it — a screen-local binding
+    # would have to be re-declared, and eventually mis-declared, on every surface
+    # that grows a control.
     BINDINGS = [
         Binding("enter", "activate", "Activate", show=False),
         Binding("space", "activate", "Activate", show=False),
+        Binding("j,down", "cursor_down", "Next control", show=False),
+        Binding("k,up", "cursor_up", "Previous control", show=False),
     ]
 
     class Activated(Message):
-        """A reachable control was activated. Carries the stop, not a decision."""
+        """A reachable control was activated. Carries the stop, not a decision.
 
-        def __init__(self, row: "ControlRow", control: Control) -> None:
+        ``model`` is the row model, not ``control``: ``Message.control`` is Textual's
+        own property for "the widget this message is about", and shadowing it with the
+        data raised ``AttributeError: property 'control' of 'ControlRow.Activated'
+        object has no setter`` the first time a row was activated. The property is
+        honoured rather than worked around, so ``message.control`` means what a
+        Textual reader expects it to mean.
+        """
+
+        def __init__(self, row: "ControlRow", model: Control) -> None:
             self.row = row
-            self.control = control
+            self.model = model
             super().__init__()
+
+        @property
+        def control(self) -> "ControlRow":
+            return self.row
 
     class Refused(Message):
         """A frozen control was activated. The row states why; nothing else happens."""
 
-        def __init__(self, row: "ControlRow", control: Control) -> None:
+        def __init__(self, row: "ControlRow", model: Control) -> None:
             self.row = row
-            self.control = control
-            self.reason = control.refusal or ""
+            self.model = model
+            self.reason = model.refusal or ""
             super().__init__()
+
+        @property
+        def control(self) -> "ControlRow":
+            return self.row
 
     def __init__(self, control: Control, **kwargs) -> None:
         self.control = control
@@ -547,6 +571,19 @@ class ControlRow(Static, can_focus=True):
         if event.chain > 1:
             return
         self.activate()
+
+    def action_cursor_down(self) -> None:
+        """``j`` / ``down`` — the next control, and nothing but controls.
+
+        Filtered to ``ControlRow`` so the walk visits the registered order rather
+        than every focusable widget that happens to be mounted. Textual's focus chain
+        IS the cursor here, so this moves the one cursor the pointer also moves.
+        """
+        self.screen.focus_next(ControlRow)
+
+    def action_cursor_up(self) -> None:
+        """``k`` / ``up`` — the previous control."""
+        self.screen.focus_previous(ControlRow)
 
     def action_activate(self) -> None:
         """Keyboard activation: paint the pressed rung, then do what a click does."""

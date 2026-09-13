@@ -133,7 +133,13 @@ Screen {
  * not a spacing token: a grid aligns by column count (UI-SPEC 4, exceptions). */
 .row-label  { width: 18; text-style: bold; color: $foreground; }
 .row-value  { width: 1fr; color: $foreground; }
-.row-detail { color: $foreground 50%; content-align: right middle; }
+/* `width: auto` is load-bearing, not tidiness. Measured on textual 8.2.7: a cell
+ * with NO declared width in a horizontal row resolves to 1fr against the row's FULL
+ * width rather than the remainder, so the detail cell took all 132 columns and
+ * starved the 1fr value cell down to ONE — which then wrapped its text to 10 lines
+ * inside a height:1 row. The row still reported content_size (132,1) throughout, so
+ * the no-reflow control could not have caught it. */
+.row-detail { width: auto; color: $foreground 50%; content-align: right middle; }
 
 /* Role classes on the two variable cells. ControlRow carries colour as a ROLE
  * NAME and never as a value (D-12), so these are where the names land. Without
