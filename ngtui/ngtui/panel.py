@@ -130,8 +130,13 @@ def blocking_view(cfg, resolution=None):
     mode = str(native.get("mode") or "blocklist").strip().lower()
     if mode != "allowlist":
         mode = "blocklist"
+    def _names(source):
+        return [str(e).strip() for e in (source or []) if str(e).strip()]
+
+    blacklist = _names(native.get("blacklist"))
+    allowlist = _names(native.get("allowlist"))
     listed = native.get("allowlist") if mode == "allowlist" else native.get("blacklist")
-    names = [str(e).strip() for e in (listed or []) if str(e).strip()]
+    names = allowlist if mode == "allowlist" else blacklist
     urls = [str(u).strip() for u in (browser.get("blocked_urls") or []) if str(u).strip()]
     return {
         "apps_enabled": bool(native.get("enabled")),
@@ -146,6 +151,14 @@ def blocking_view(cfg, resolution=None):
             }
             for n in names
         ],
+        # BOTH lists, always. The mode does not filter one list, it chooses
+        # which of two governs -- and the picker has to be able to show the
+        # other one the moment a mode change is STAGED, before anything is
+        # signed. Only the governing list carries resolution: nobody asked this
+        # machine what the inert list resolves to, and reporting a state nobody
+        # read is the one thing this payload never does.
+        "blacklist": blacklist,
+        "allowlist": allowlist,
         "sites_enabled": bool(browser.get("enabled")),
         "sites": len(browser.get("blocked_urls") or []),
         "site_entries": urls,
@@ -377,7 +390,8 @@ UNAVAILABLE = {
                "start_minutes": -1, "end_minutes": -1},
     "now_minutes": -1,
     "blocking": {"apps_enabled": False, "mode": "blocklist", "games": False, "apps": 0,
-                 "entries": [], "sites_enabled": False, "sites": 0, "site_entries": []},
+                 "entries": [], "blacklist": [], "allowlist": [],
+                 "sites_enabled": False, "sites": 0, "site_entries": []},
     "warnings": ["the trust stack could not be read"],
     "theme": dict(THEME_FALLBACK),
     "style": dict(STYLE_FALLBACK),

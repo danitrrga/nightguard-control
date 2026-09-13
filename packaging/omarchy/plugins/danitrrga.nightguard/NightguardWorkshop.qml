@@ -76,13 +76,30 @@ Item {
   property string filter: ""
 
   readonly property var blocking: detail && detail.blocking ? detail.blocking : null
-  readonly property bool allowlistMode: !!blocking && String(blocking.mode) === "allowlist"
-  // Which list the mode actually enforces. Adding to it is the ordinary act in
-  // both modes -- what changes is the DIRECTION, and the cost line says so
-  // because the signer said so.
+  readonly property string signedMode: !!blocking && String(blocking.mode) === "allowlist"
+    ? "allowlist" : "blocklist"
+
+  // The mode a click WOULD put us in. Everything downstream reads this and not
+  // the signed one, because a staged mode change has to take effect on screen
+  // the instant it is staged: the whole point of the switch is to SEE what the
+  // other mode would mean before paying for it.
+  readonly property string mode: String(writer.stagedValue("blocking.native_apps.mode", root.signedMode))
+  readonly property bool allowlistMode: root.mode === "allowlist"
+  readonly property bool modeStaged: root.mode !== root.signedMode
+
+  // Which list the mode enforces. Adding to it is the ordinary act in both
+  // modes -- what changes is the DIRECTION, and the cost line says so because
+  // the signer said so.
   readonly property string governingKey: allowlistMode
     ? "blocking.native_apps.allowlist" : "blocking.native_apps.blacklist"
   readonly property string governingList: allowlistMode ? "allowlist" : "blacklist"
+
+  // How many programs this machine would actually end tonight under the mode
+  // currently on screen. The signer can say "tightens"; it cannot say "and that
+  // is a hundred and eighty more deaths", and that number is the entire reason
+  // this switch needs a warning at all. Only the catalog knows it.
+  readonly property int survivorCount: root.listedRows.length
+  readonly property int casualtyCount: Math.max(0, root.items.length - root.listedRows.length)
 
   function reload() {
     if (!appsProc.running) appsProc.running = true
@@ -214,11 +231,23 @@ Item {
   // rather than recomputed here, plus whatever is staged on top.
   readonly property var listedRows: {
     var rows = []
-    var entries = root.blocking && root.blocking.entries ? root.blocking.entries : []
+    // `entries` carries the resolution, but only for the list the SIGNED mode
+    // governs. Once a mode change is staged the governing list is the other
+    // one, and nobody asked this machine what it resolves to -- so those rows
+    // render as plain names. An unread state must never be drawn as a state.
+    var entries = root.modeStaged
+      ? (root.blocking && root.blocking[root.governingList] ? root.blocking[root.governingList] : [])
+      : (root.blocking && root.blocking.entries ? root.blocking.entries : [])
     for (var i = 0; i < entries.length; i++) {
-      var name = String(entries[i].name)
+      var entry = entries[i]
+      var name = String(root.modeStaged ? entry : entry.name)
       if (writer.staged(root.governingKey, "remove", name)) continue
-      rows.push({ name: name, label: entries[i].label, state: entries[i].state, pending: false })
+      rows.push({
+        name: name,
+        label: root.modeStaged ? null : entry.label,
+        state: root.modeStaged ? null : entry.state,
+        pending: false,
+      })
     }
     for (var k = 0; k < writer.ops.length; k++) {
       var op = writer.ops[k]
@@ -241,6 +270,24 @@ Item {
         rows.push({ name: String(op.value), pending: true })
     }
     return rows
+  }
+
+  readonly property string modeConsequence: {
+    if (!root.blocking) return ""
+    var survivors = root.survivorCount
+    var casualties = root.casualtyCount
+    if (root.allowlistMode) {
+      var head = root.modeStaged ? "Si aplicas esto: sólo " : "Sólo "
+      return head + "sobreviven estas " + survivors
+           + (survivors === 1 ? " aplicación. Todo lo demás muere — unas "
+                              : " aplicaciones. Todo lo demás muere — unas ")
+           + casualties + " de las que tienes, tus terminales incluidas si no están en la lista."
+    }
+    if (root.modeStaged)
+      return "Si aplicas esto: sólo mueren estas " + survivors
+           + (survivors === 1 ? " aplicación." : " aplicaciones.")
+           + " Las otras " + casualties + " se salvan."
+    return "Mueren sólo las de esta lista. Las demás siguen abiertas."
   }
 
   function isListed(identity) {
@@ -291,6 +338,46 @@ Item {
     else
       writer.stage("blocking.browser_extension.blocked_urls", "add", host,
                    "Bloquear " + host)
+  }
+
+  // One of the two modes, as a thing you press. Not a dropdown: there are
+  // exactly two and they are opposites, so both belong on screen at once with
+  // the live one visibly holding.
+  component ModeChip: Rectangle {
+    id: modeChip
+    property string label: ""
+    property string value: ""
+    readonly property bool on: root.mode === modeChip.value
+    signal picked()
+
+    implicitWidth: chipLabel.implicitWidth + Style.space(20)
+    implicitHeight: chipLabel.implicitHeight + Style.space(12)
+    radius: Style.cornerRadius
+    color: modeChip.on ? Style.selectedFillFor(root.foreground, Color.accent)
+                       : (chipMouse.containsMouse
+                          ? Style.normalFillFor(root.foreground, Color.accent)
+                          : "transparent")
+    border.width: Style.normalBorderWidth
+    border.color: modeChip.on ? Color.accent
+                              : Style.normalBorderFor(root.foreground, Color.accent)
+
+    MouseArea {
+      id: chipMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: modeChip.picked()
+    }
+
+    Text {
+      id: chipLabel
+      textFormat: Text.PlainText
+      anchors.centerIn: parent
+      text: modeChip.label
+      color: modeChip.on ? root.foreground : root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+    }
   }
 
   component CatalogRow: Rectangle {
@@ -668,12 +755,37 @@ Item {
                 fontFamily: root.fontFamily
               }
 
+              // The two modes do not filter one list. They choose which of two
+              // lists governs, and both keep existing whichever is picked --
+              // nothing is deleted by switching. What DOES invert is the cost
+              // of every future edit, and that is the part that must not be
+              // learned by accident.
+              Row {
+                width: parent.width
+                spacing: Style.space(6)
+
+                ModeChip {
+                  label: "Lista de bloqueo"
+                  value: "blocklist"
+                  onPicked: writer.stage("blocking.native_apps.mode", "set", "blocklist",
+                                         "Cambiar a lista de bloqueo")
+                }
+                ModeChip {
+                  label: "Sólo permitidas"
+                  value: "allowlist"
+                  onPicked: writer.stage("blocking.native_apps.mode", "set", "allowlist",
+                                         "Cambiar a sólo permitidas")
+                }
+              }
+
+              // What the mode on screen actually costs, in programs. The signer
+              // can say "tightens"; it cannot say "and that is 93 more deaths",
+              // because only the catalog knows how many things are installed.
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                visible: root.allowlistMode
-                text: "Todo lo demás muere."
-                color: root.urgent
+                text: root.modeConsequence
+                color: root.modeStaged ? root.urgent : root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
                 wrapMode: Text.WordWrap

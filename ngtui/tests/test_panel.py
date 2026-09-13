@@ -266,3 +266,36 @@ def test_an_empty_empower_group_is_not_a_warning():
 def test_a_missing_empower_group_is_not_a_warning():
     assert panel.empower_warning(None) is None
     assert panel.empower_warning("") is None
+
+
+def test_both_lists_are_in_the_payload_whatever_the_mode():
+    """The mode chooses which of two lists governs; it does not delete the other.
+
+    The picker has to show the inert one the moment a mode change is STAGED --
+    before anything is signed -- and it cannot ask for it separately without
+    reading a config the panel already read.
+    """
+    payload = panel.build("locked", 2, _cfg(native={
+        "enabled": True, "mode": "allowlist",
+        "blacklist": ["steam", "discord"], "allowlist": ["zen-bin"], "block_games": False,
+    }), {}, 0)
+    blocking = payload["blocking"]
+    assert blocking["blacklist"] == ["steam", "discord"]
+    assert blocking["allowlist"] == ["zen-bin"]
+    assert [e["name"] for e in blocking["entries"]] == ["zen-bin"], (
+        "entries stays the GOVERNING list -- it is the one with resolution on it"
+    )
+
+
+def test_only_the_governing_list_carries_resolution():
+    """Nobody asked this machine what the inert list resolves to, and reporting
+    a state nobody read is the one thing this payload never does."""
+    payload = panel.build(
+        "locked", 2, _cfg(), {}, 0,
+        app_resolution={"steam": {"state": "running", "label": "Steam"}},
+    )
+    blocking = payload["blocking"]
+    assert blocking["allowlist"] == []
+    assert all(isinstance(n, str) for n in blocking["blacklist"]), (
+        "the plain lists are names, never objects with a state attached"
+    )
