@@ -15,7 +15,12 @@ from __future__ import annotations
 
 from textual.app import App
 
-from ngtui.theme import ThemeWatch, load_omarchy_theme
+from ngtui.theme import (
+    ThemeWatch,
+    load_omarchy_theme,
+    omarchy_style,
+    style_variables,
+)
 from ngtui.widgets.edit import EditScreen
 from ngtui.widgets.status import StatusScreen
 
@@ -26,8 +31,16 @@ class NightguardApp(App):
     TITLE = "Nightguard Control"
     CSS_PATH = "app.tcss"
 
-    # Bindings live on StatusScreen (the home surface); kept here too so the
-    # app-level Footer legend is populated before the screen mounts.
+    # Omarchy's kit uses `ToolTip { delay: 400 }` (Ui/Button.qml). Textual's
+    # default is 0.5, which is close enough to look deliberate if it is missed —
+    # which is exactly why it is set explicitly rather than left to the default
+    # (D-15, UI-SPEC §8.5).
+    TOOLTIP_DELAY = 0.4
+
+    # Bindings live on StatusScreen (the home surface); kept here too because
+    # `tests/test_port01_single_key_bindings.py:29-50` reads `app.BINDINGS`
+    # directly — that test is what pins them to this class. It never touches the
+    # Footer, so the bindings stay valid when the Footer goes (OD-2).
     BINDINGS = [
         ("e", "edit", "Edit a field"),
         ("r", "refresh", "Refresh"),
@@ -36,9 +49,41 @@ class NightguardApp(App):
     ]
 
     def __init__(self) -> None:
+        # BEFORE super().__init__(), and that order is load-bearing rather than
+        # stylistic. `App.__init__` builds the stylesheet with
+        # `Stylesheet(variables=self.get_css_variables())` (textual/app.py:729),
+        # so any state `get_css_variables()` reads must already exist by then.
+        # Assigning `_style` after the super call — the natural order, and the
+        # order this file used until now — raises
+        # `AttributeError: 'NightguardApp' object has no attribute '_style'`
+        # during construction, before any screen exists, so it reads as an
+        # import-time crash rather than a styling problem (RESEARCH Pitfall 3).
+        self._style = omarchy_style()
         super().__init__()
-        # Watch the live omarchy colours.toml for desktop-theme swaps (D-05).
+        # Watch the live omarchy colours.toml + shell.toml for desktop-theme
+        # swaps (D-05). Either file moving is a restyle signal.
         self._theme_watch = ThemeWatch()
+
+    def get_css_variables(self) -> dict[str, str]:
+        """Textual's own extension point — the `$ng-*` structural tokens (UIX-01).
+
+        This is called during `App.__init__` and again from every
+        `refresh_css()`, which is what makes it the right seam: the tokens exist
+        on the FIRST stylesheet parse, so `app.tcss` can reference `$ng-*`
+        without the app dying at compose.
+
+        The naive route — registering a `Theme` in `on_mount` and referencing
+        `$ng-*` from `app.tcss` — does not work: the stylesheet is parsed before
+        `on_mount` runs and raises `UnresolvedVariableError: reference to
+        undefined variable '$ng-border-normal'`. Do not wire it that way.
+
+        `style_variables()` is pure and Textual-free; everything it guarantees
+        (every value a plain string, never a `$`-reference — substitution is not
+        recursive) is asserted in `tests/test_token_pipeline.py` without an App.
+        """
+        variables = super().get_css_variables()
+        variables.update(style_variables(self._style))
+        return variables
 
     def on_mount(self) -> None:
         """Register the live omarchy theme, show StatusScreen, start the 1s tick."""
@@ -50,16 +95,47 @@ class NightguardApp(App):
     # --- theme (D-04/D-05) ---
 
     def _apply_omarchy_theme(self) -> None:
-        """(Re-)register the omarchy theme and (re)assign App.theme to repaint.
+        """Re-read the desktop's structure AND palette, then repaint — four statements.
 
-        Re-registering the same name overwrites the prior definition, so reassigning
-        the ``theme`` reactive forces Textual to refresh every ``$variable`` and
-        repaint (RESEARCH Pattern 4, A3). If the live theme files are unreadable,
-        keep Textual's default rather than crash (T-10-07 — cosmetic, low impact).
+        **Re-assigning `App.theme` repaints nothing**, and the claim that it does
+        (which this docstring used to make) was measured false on the installed
+        Textual. `App.theme` is a plain `Reactive` with `always_update` unset
+        (textual/app.py:560), so assigning the same string never fires
+        `_watch_theme` — and `_watch_theme` is the ONLY caller of `refresh_css`.
+        Measured across a theme swap using the old two-statement body: the border
+        stayed ``('hkey', Color(169, 192, 191, a=0.4))``, the fill stayed
+        ``a=0.04`` and the accent stayed ``#7FC9C4``. All three unchanged.
+
+        The order below is the measured minimum, and each line earns its place:
+
+        1. `omarchy_style()` — re-read the structure. Without it the refresh
+           re-runs `get_css_variables()` over a stale `_style`.
+        2. `register_theme(...)` — re-read the palette. Must come BEFORE the
+           refresh: with `refresh_css` alone the accent stayed at its old value.
+        3. `self.theme = "omarchy"` — a no-op after the first call, kept for the
+           first, where it is what selects the theme at all.
+        4. `refresh_css(animate=False)` — the statement that does the work. It
+           internally runs set_variables(get_css_variables()) -> a stylesheet
+           re-parse -> a stylesheet update over the app -> a screen layout
+           refresh -> that same update for every OTHER screen in the stack.
+           Calling any of those by hand instead would skip the other-screens
+           pass, so this file has exactly one repaint call site and nothing
+           else. `animate=False` matches Textual's own `_watch_theme` and avoids
+           cross-fading the whole surface on a swap.
+
+        `refresh_css()` re-parses the entire stylesheet, so this must stay gated
+        on `ThemeWatch.changed()` in `_tick` and never run per tick (T-12.1-12).
+
+        If the live theme files are unreadable, keep the current styling rather
+        than crash (T-10-07 — cosmetic, low impact). `refresh_css` reparses into
+        a fresh `Stylesheet` and keeps the old one on error, so a malformed theme
+        degrades rather than taking the app down.
         """
         try:
+            self._style = omarchy_style()
             self.register_theme(load_omarchy_theme())
             self.theme = "omarchy"
+            self.refresh_css(animate=False)
         except (FileNotFoundError, OSError, KeyError, ValueError):
             # No omarchy theme on this box, or it is malformed mid-swap
             # (tomllib.TOMLDecodeError is a ValueError) — default theme stands.
