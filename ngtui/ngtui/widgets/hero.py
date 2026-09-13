@@ -320,3 +320,290 @@ def readout(
         else "a loosening is refused here"
     )
     return "%s   %s · %s" % (minutes_to_hhmm(minute), state, permission)
+
+
+# --- Textual widgets (compose the pure helpers) ------------------------------
+
+from textual.app import ComposeResult  # noqa: E402
+from textual.binding import Binding  # noqa: E402
+from textual.color import Color  # noqa: E402
+from textual.content import Content, Span  # noqa: E402
+from textual.events import MouseMove, Resize  # noqa: E402
+from textual.style import Style as TStyle  # noqa: E402
+from textual.widgets import Static  # noqa: E402
+
+# The greyscale ladder, as alphas over the RESOLVED foreground. UI-SPEC §12:
+# `0.30 + 0.055 x d`, with every hour inside the curfew pinned to 0.92 instead.
+#
+# The pinned value is not `0.30 + 0.055 x 9` (0.795). The curfew is the one band the
+# eye must find without counting glyphs, and the gap between 8 and 9 is what makes the
+# curfew's edge visible as an edge. Density still carries the meaning on its own; this
+# only makes the already-densest band easier to land on.
+RAMP_ALPHA_BASE = 0.30
+RAMP_ALPHA_STEP = 0.055
+RAMP_ALPHA_INSIDE = 0.92
+
+# UI-SPEC §10.5. What the instrument IS, not what the column under the pointer says —
+# the per-column value has its own destination, and it is reachable without a pointer.
+RAMP_TOOLTIP = (
+    "density is hours until the curfew · the underline marks the hours a loosening "
+    "is accepted · the bright cell is now"
+)
+
+
+class DayRamp(Static, can_focus=True):
+    """The day as one full-width instrument: ramp, permission channel, axis, read-out.
+
+    Four rows, in the order UI-SPEC §12 fixes them: the density ramp, the permission
+    channel directly beneath it, the hour axis, and the reserved read-out row. The
+    read-out row is reserved rather than created on demand — that is what makes hovering
+    the ramp cost zero reflow (UIX-05), and a row that appears when the pointer arrives
+    would push every control below it down by one.
+
+    **Width is measured at paint time, never assumed.** All four rows are ``1fr`` in
+    ``app.tcss`` and every glyph is generated from the width the widget actually got.
+    The reason is arithmetical and was measured: ``column_minute`` is width-dependent, so
+    the same column index resolves to a different hour at every width — at a ramp 120
+    columns wide, column 107 reads 21:30 (the curfew start), and at the real content
+    width of 129 that same column reads 20:00 while the curfew's first column is 116. A
+    constant is what silently breaks the instrument when the frame, the gutter or the
+    terminal font changes, and it binds the *test* as hard as the widget (RESEARCH
+    Pitfall 7).
+
+    **Colour: greyscale, computed from the resolved foreground.** The alpha ladder is
+    applied to ``app.theme_variables["foreground"]`` — the *resolved* runtime value, not
+    the theme file's text, because Textual's colour system shifts some roles
+    (RESEARCH Pitfall 8). That read is a resolved runtime value rather than a literal, so
+    it does not trip the hex scan, and it is the one place a widget in this codebase
+    legitimately touches a colour at all.
+
+    **The alpha must never reach ``rich``.** Measured: ``Color.with_alpha(0.355).hex``
+    on a parsed foreground produces an **eight-digit** hex, and ``rich``'s own style
+    parser rejects it — ``StyleSyntaxError: unable to parse '<8 digits>' as color`` — so
+    the ``rich`` ``Text`` route dies at first paint (T-12.1-22). This widget takes
+    Textual's own :class:`~textual.content.Content` with :class:`~textual.style.Style`,
+    which keeps the alpha inside Textual's compositor and blends it against the widget's
+    real background; nothing here ever renders a colour to a string. (The measured hexes
+    themselves are in the SUMMARY rather than here: a literal colour in a widget module
+    is exactly what ``tests/test_no_fixed_hex.py`` bans, and it caught this docstring.)
+
+    **The now marker is exactly one cell**, ``█``, bold, at full foreground strength —
+    and it is painted only when the clock was *verified*. An unverified clock produces no
+    marker rather than a plausible one: the product's whole premise is that the clock can
+    be lied to, so the marker must not assert a time nobody checked.
+
+    **The read-out has two inputs and one destination.** ``on_mouse_move`` maps the
+    widget-relative ``x`` to a column; ``h``/``l`` walk the same column index. Both call
+    :func:`readout` and write the same Static. Keyboard parity is mandatory, which is why
+    the read-out cannot be tooltip-only — a tooltip is unreachable without a pointer.
+
+    **Values are handed in, never read here.** ``cfg``/``window``/``now_minutes`` follow
+    ``home_controls(cfg, facts)``'s shape: when a caller supplies ``cfg`` the widget uses
+    only what it was given, so a test runs with no App-visible guard state and no live
+    trust stack (T-12.1-01). With no ``cfg`` it falls back to ``backend``'s existing
+    public reads — the *signed* config, the sanctioned edit window and the cache-only
+    clock. No new backend function, no signature change, nothing reaching ``commit()``.
+
+    Activating the ramp does nothing. It is a read instrument, and it carries the cursor
+    for the ``h``/``l`` read-out, not for an action.
+    """
+
+    DEFAULT_CSS = """
+    DayRamp {
+        layout: vertical;
+        height: auto;
+        width: 1fr;
+    }
+    """
+
+    # show=False everywhere: no bracket hint appears on this surface and the legend
+    # lives in the help chip (UIX-03, OD-2). h/l rather than left/right because the
+    # ramp is a horizontal instrument and the cursor keys belong to the control walk.
+    BINDINGS = [
+        Binding("h", "readout_left", "Earlier hour", show=False),
+        Binding("l", "readout_right", "Later hour", show=False),
+        Binding("left", "readout_left", "Earlier hour", show=False),
+        Binding("right", "readout_right", "Later hour", show=False),
+    ]
+
+    def __init__(
+        self,
+        cfg: dict | None = None,
+        window: dict | None = None,
+        now_minutes: int | None = None,
+        **kwargs,
+    ) -> None:
+        self._cfg = cfg
+        self._window = window
+        self._now_minutes = now_minutes
+        self._handed_in = cfg is not None
+        self._column: int | None = None
+        self._width = 0
+        super().__init__("", **kwargs)
+
+    # --- the values, resolved once ---
+
+    def _resolve_sources(self) -> None:
+        """Fill cfg / window / now from ``backend``, unless the caller handed them in.
+
+        Deferred import on purpose: ``ngtui.backend`` puts the LifeOS trust stack on
+        ``sys.path`` at import time, and the pure helpers above the divider must stay
+        importable without it. Every read here is one of ``backend``'s existing public
+        reads — ``sanctioned_config``, ``edit_window`` and ``cache_only_now_minutes``,
+        the last of which is the non-blocking clock the edit preview already uses.
+        """
+        if self._handed_in:
+            return
+        from ngtui import backend  # noqa: PLC0415  (defers the trust-stack import)
+
+        self._cfg = backend.sanctioned_config()
+        if self._window is None:
+            self._window = backend.edit_window()
+        if self._now_minutes is None:
+            self._now_minutes = backend.cache_only_now_minutes(self._cfg)
+
+    @property
+    def curfew_bounds(self) -> tuple[int | None, int | None]:
+        """``(start, end)`` as minutes-of-day, from the SIGNED config. ``None`` if unread."""
+        curfew = (self._cfg or {}).get("curfew") or {}
+        return parse_hhmm(curfew.get("start")), parse_hhmm(curfew.get("end"))
+
+    @property
+    def readout_column(self) -> int | None:
+        """The column both inputs currently point at, or ``None`` before either has."""
+        return self._column
+
+    # --- composition ---
+
+    def compose(self) -> ComposeResult:
+        yield Static("", id="ramp")
+        yield Static("", id="permission")
+        yield Static("", id="hour-axis")
+        yield Static("", id="readout")
+
+    def on_mount(self) -> None:
+        self._resolve_sources()
+        self.tooltip = RAMP_TOOLTIP
+        self.call_after_refresh(self._paint)
+
+    def on_resize(self, event: Resize) -> None:
+        """Repaint from the width the widget actually got, whenever it changes.
+
+        ``call_after_refresh`` rather than painting inline: the four cells are laid out
+        after this handler returns, so reading their size here would measure the
+        previous frame — or zero, on the first one.
+        """
+        self.call_after_refresh(self._paint)
+
+    # --- paint ---
+
+    def _measured_width(self) -> int:
+        """The ramp row's own content width. Never a constant, never this widget's."""
+        try:
+            ramp = self.query_one("#ramp", Static)
+        except Exception:
+            return 0
+        return ramp.content_size.width or self.content_size.width
+
+    def _foreground(self) -> Color:
+        """The RESOLVED runtime foreground — not the theme file's text (Pitfall 8)."""
+        return Color.parse(self.app.theme_variables["foreground"])
+
+    def _paint(self) -> None:
+        width = self._measured_width()
+        if width <= 0:
+            return
+        self._width = width
+        start, end = self.curfew_bounds
+
+        if start is None:
+            # The curfew bounds did not parse. Density is not guessed: the ramp paints
+            # the quiet floor and the read-out says "open", which is what the signed
+            # config actually supports. Inventing a curfew here would be the TUI
+            # asserting a lock nobody signed.
+            indices = [1] * width
+        else:
+            indices = density_indices(width, start, end)
+
+        glyphs = [RAMP_CHARS[index] for index in indices]
+        foreground = self._foreground()
+        spans = [
+            Span(
+                position,
+                position + 1,
+                TStyle(foreground=foreground.with_alpha(self._alpha(index))),
+            )
+            for position, index in enumerate(indices)
+        ]
+
+        marker = now_column(self._now_minutes, width)
+        if marker is not None:
+            glyphs[marker] = NOW_GLYPH
+            spans[marker] = Span(
+                marker, marker + 1, TStyle(foreground=foreground, bold=True)
+            )
+
+        self.query_one("#ramp", Static).update(Content("".join(glyphs), spans))
+        self.query_one("#permission", Static).update(
+            permission_channel(width, self._window)
+        )
+        self.query_one("#hour-axis", Static).update(hour_axis(width))
+
+        if self._column is None and marker is not None:
+            # The read-out starts where the instrument already points, so the reserved
+            # row is informative on arrival and `h`/`l` continue from now rather than
+            # from an arbitrary edge. With no verified clock it stays empty — the row
+            # is reserved either way, so nothing reflows when it fills.
+            self._column = marker
+        self._write_readout()
+
+    @staticmethod
+    def _alpha(index: int) -> float:
+        return (
+            RAMP_ALPHA_INSIDE
+            if index == _INSIDE_INDEX
+            else RAMP_ALPHA_BASE + RAMP_ALPHA_STEP * index
+        )
+
+    # --- the read-out: two inputs, one destination ---
+
+    def _write_readout(self) -> None:
+        """The single call site of :func:`readout`. Both inputs arrive here.
+
+        There is deliberately no second formatter. A pointer path and a keyboard path
+        that each build their own string are two code paths that agree until one of them
+        is edited; control 11c asserts the rendered strings are identical, and this
+        method is the reason they can be.
+        """
+        cell = self.query_one("#readout", Static)
+        if self._column is None or self._width <= 0:
+            cell.update("")
+            return
+        start, end = self.curfew_bounds
+        cell.update(
+            readout(self._column, self._width, start, end, self._window)
+        )
+
+    def _set_column(self, column: int) -> None:
+        if self._width <= 0:
+            return
+        self._column = max(0, min(self._width - 1, int(column)))
+        self._write_readout()
+
+    def on_mouse_move(self, event: MouseMove) -> None:
+        """Pointer input: the widget-relative ``x`` IS the column.
+
+        The four cells share this widget's left edge and are all ``1fr``, so a move over
+        any of them carries the same column — hovering the permission channel reads out
+        the same hour the ramp above it does, which is what a reader expects of one
+        instrument drawn in four rows.
+        """
+        self._set_column(event.offset.x)
+
+    def action_readout_left(self) -> None:
+        """``h`` — one column earlier. Keyboard parity, and the reason it is not a tooltip."""
+        self._set_column(0 if self._column is None else self._column - 1)
+
+    def action_readout_right(self) -> None:
+        """``l`` — one column later."""
+        self._set_column(0 if self._column is None else self._column + 1)
