@@ -6,8 +6,10 @@ theme at ``~/.config/omarchy/current/theme/colors.toml`` and parsed into a Textu
 ``Theme`` (D-04). The running TUI repaints when the desktop theme changes (D-05) —
 ``ThemeWatch`` is the stdlib mtime-poll primitive driven from the app's 1s tick.
 
-Pure module: imports only ``tomllib`` (stdlib) and ``textual.theme.Theme`` so the
-loader and watcher are unit-testable headless (no App, no TTY).
+Pure module: stdlib only (``tomllib``, ``json``, ``subprocess``, ``os``) plus
+``textual.theme.Theme``, so the loader, the watcher and the whole structural-token
+half of the pipeline are unit-testable headless (no App, no TTY). ``style_variables``
+is the pure end of it: one dict in, one dict of strings out, no I/O at all.
 
 Role map — per-role **pick chains**, first declared key wins (D-09). Measured over
 all 27 installed themes: most declare ``red``/``green``/``yellow`` and no ANSI
@@ -29,7 +31,9 @@ the caller keeps Textual's default theme rather than crashing (T-10-07, cosmetic
 """
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import tomllib
 
 from textual.theme import Theme
@@ -117,6 +121,74 @@ STYLE_DEFAULTS = {
 }
 
 
+# The [controls] state ladder, in Style.qml's own order. Named once so the parser,
+# the defaults table and the $ng-* namespace map cannot drift apart.
+CONTROL_RUNGS = ("normal", "hover-cursor", "focus", "selected", "pressed")
+
+# Which rung a rung inherits from when the theme pins nothing for it. Exactly the
+# two the design contract (UI-SPEC §2.3) specifies: hover-cursor-color falls back
+# to normal-color, and every focus-* token falls back to the *resolved*
+# hover-cursor one -- so a theme that moves the cursor rung moves focus with it.
+# `selected` and `pressed` are deliberately NOT in here: they carry their own
+# constants below, because inheriting them from `normal` would flatten the ladder
+# to one fill on any theme that pins only `normal`.
+_RUNG_PARENT = {"hover-cursor": "normal", "focus": "hover-cursor"}
+
+# Omarchy's own per-rung numeric defaults (shell/Commons/Style.qml), used per token
+# so a partial shell.toml loses one rung's alpha rather than the whole ladder.
+# `focus` is None on purpose -- see _RUNG_PARENT. `pressed`'s border row is not in
+# UI-SPEC §2.3 (only its fill is); width 0 gives it the selected rung's shape,
+# fill-only, which is the conservative reading rather than an invented border.
+_RUNG_DEFAULTS = {
+    "normal":       {"fill_alpha": 0.04, "border_alpha": 0.40, "border_width": 1},
+    "hover-cursor": {"fill_alpha": 0.08, "border_alpha": 0.25, "border_width": 1},
+    "focus":        None,
+    "selected":     {"fill_alpha": 0.18, "border_alpha": 1.00, "border_width": 0},
+    "pressed":      {"fill_alpha": 0.22, "border_alpha": 1.00, "border_width": 0},
+}
+
+# Quattro's own [spacing] defaults in px, read off the shipped template
+# (/usr/share/omarchy/default/themed/shell.toml.tpl, every token commented out).
+# A theme overriding four of them (dos-moos pins xs/md/control-padding-y/
+# panel-padding) must lose only those four, which is why this is a table and not a
+# scale factor. The px -> cell conversion is the consumer's job (UI-SPEC §4), not
+# this parser's: the cell size is a function of the terminal, not of the theme.
+SPACING_DEFAULTS = {
+    "xxs": 2, "xs": 3, "sm": 4, "md": 6, "lg": 8, "xl": 10, "xxl": 12,
+    "xxxl": 14, "huge": 18,
+    "control-gap": 8, "control-padding-x": 10, "control-padding-y": 6,
+    "input-padding-y": 7, "control-height": 28, "popup-row-height": 28,
+    "row-gap": 8, "row-padding-x": 12, "label-gap": 4,
+    "panel-gap": 14, "panel-padding": 18, "popup-padding": 14,
+    "dropdown-width": 240, "searchable-dropdown-width": 260,
+    "number-field-width": 120, "searchable-popup-min-height": 220,
+}
+
+
+def _color_word(value, colors):
+    """Resolve a ``[controls]`` colour that is a *word* rather than a hex.
+
+    ``Style.qml:70-75`` (``resolveStateColor`` at ``:115``) lets a ``*-color`` be
+    the literal word ``foreground``, ``accent`` or ``urgent``, resolved against
+    ``colors.toml``. This is not an edge case: omarchy's generated template writes
+    **every** ``[controls]`` colour as ``{{ foreground }}``, and 26 of the 28
+    installed themes get that generated file -- so the word is the common path and
+    the hex is the exception (city-783, dos-moos).
+
+    Any key the palette declares is accepted, not just those three: the rule is
+    "not a hex, so look it up", and a word the palette does not declare returns
+    ``None`` so the caller falls back. Returns ``None`` rather than raising, which
+    is what keeps a junk value costing one token instead of the whole style.
+    """
+    text = str(value or "").strip()
+    if text.startswith("#"):
+        return text if len(text) in (4, 7, 9) else None
+    candidate = str((colors or {}).get(text, "") or "").strip()
+    if candidate.startswith("#") and len(candidate) in (4, 7, 9):
+        return candidate
+    return None
+
+
 def _resolve_border(value, hyprland):
     """Resolve a border token, which may name a Hyprland-derived colour.
 
@@ -163,32 +235,49 @@ def theme_mode(tokens=None) -> str:
     return "light" if str((tokens or {}).get("mode", "")).strip().lower() == "light" else "dark"
 
 
-def omarchy_style() -> dict:
-    """The structural tokens Omarchy's own popups are built from.
+def omarchy_style(shell: dict | None = None, colors: dict | None = None) -> dict:
+    """The structural tokens Omarchy's own popups and controls are built from.
 
-    Colour alone was not enough to make a third-party panel look native: the
+    Colour alone was not enough to make a third-party surface look native: the
     corner radius, the border weight, the translucent control fills and the
     spacing/type scale are what actually carry the family resemblance. Reading
-    them here rather than hardcoding means a theme change moves the panel too.
+    them here rather than hardcoding means a theme change moves the TUI too.
 
-    The surface colours are taken from the generated ``[popups]`` section rather
-    than derived from the palette, which is what makes light themes work without
-    a second code path: omarchy has already decided what text colour reads on
-    what background for that theme, in whichever mode, and this inherits that
-    decision instead of re-making it.
+    ``shell`` / ``colors`` default to the live ``raw_shell()`` / ``raw_tokens()``.
+    Passing them is the injection seam ``theme_mode(tokens=None)`` and
+    ``load_omarchy_theme(path=None)`` already use in this file: it lets the whole
+    structural half of the token pipeline be unit-tested against a fixture with no
+    desktop theme on disk, while the zero-argument live behaviour every existing
+    caller uses is unchanged.
+
+    The surface colours are taken from the generated ``[popups]`` / ``[tooltip]``
+    sections rather than derived from the palette, which is what makes light
+    themes work without a second code path: omarchy has already decided what text
+    colour reads on what background for that theme, in whichever mode, and this
+    inherits that decision instead of re-making it.
 
     When ``shell.toml`` is absent (an Omarchy 3 box, or a half-staged theme) the
     surface tokens fall back to the palette's own background/foreground/accent —
     the same three omarchy generates them from — rather than to a fixed set,
-    because a fixed set is a dark theme's set and would invert a light box.
+    because a fixed set is a dark theme's set and would invert a light box. The
+    fallback is **per token**: a partial ``shell.toml`` loses one token, never the
+    whole style.
 
-    Corner radius is deliberately absent: it mirrors Hyprland's
-    ``decoration:rounding``, which is a live compositor value rather than a
-    theme file, so the panel asks hyprctl for it directly.
+    **Sections deliberately NOT consumed**, so a later reader does not wire them
+    "for completeness": ``[bar]``, ``[menu]``, ``[launcher]``, ``[lock]``,
+    ``[polkit]``, ``[notifications]``, ``[image-picker]``. The TUI is not a bar, a
+    menu or a lock screen.
+
+    **Corner radius is here now, and it is the one value that is not a file
+    read.** It mirrors Hyprland's ``decoration:rounding``, a live compositor value
+    rather than a theme token, so ``hypr_rounding()`` asks hyprctl for it. That
+    subprocess is why this function must be called once at construction and once
+    per *detected* theme change — never per tick (T-12.1-07).
     """
-    shell = raw_shell()
-    colors = raw_tokens()
+    shell = raw_shell() if shell is None else shell
+    colors = raw_tokens() if colors is None else colors
     popups = shell.get("popups") or {}
+    tooltip = shell.get("tooltip") or {}
     controls = shell.get("controls") or shell.get("style") or {}
     hyprland = shell.get("hyprland") or {}
     spacing = shell.get("spacing") or {}
@@ -219,7 +308,69 @@ def omarchy_style() -> dict:
         except (KeyError, TypeError, ValueError):
             return STYLE_DEFAULTS[fallback_key]
 
-    return {
+    def rung_number(rung, suffix, fallback):
+        """One ``[controls]`` number, falling back to an already-resolved value.
+
+        Separate from ``number()`` because a rung's fallback is not always a
+        constant: ``focus-*`` falls back to the *resolved* ``hover-cursor-*``,
+        which is a value and not a ``STYLE_DEFAULTS`` key.
+        """
+        try:
+            return float(controls["%s-%s" % (rung, suffix)])
+        except (KeyError, TypeError, ValueError):
+            return fallback
+
+    # --- the [controls] state ladder -----------------------------------------
+    # Resolved in CONTROL_RUNGS order so a rung can read its parent's *resolved*
+    # value rather than re-deriving the chain (UI-SPEC §2.3).
+    foreground = derived["control_border"] or STYLE_DEFAULTS["control_border"]
+    ladder: dict[str, dict] = {}
+    for rung in CONTROL_RUNGS:
+        parent = ladder.get(_RUNG_PARENT.get(rung) or "")
+        defaults = _RUNG_DEFAULTS[rung] or {}
+        raw_border = controls.get("%s-border" % rung)
+
+        color = (
+            _color_word(controls.get("%s-color" % rung), colors)
+            or (parent or {}).get("color")
+            or foreground
+        )
+        # A *-border may be "hyprland.active-border" (dereferenced, gradient
+        # rejected — _resolve_border), a word like "foreground" (the generated
+        # template's shape), or absent entirely (dos-moos ships no *-border key
+        # at all). Last resort is the rung's own colour, never a fixed hex.
+        border = (
+            _resolve_border(raw_border, hyprland)
+            or _color_word(raw_border, colors)
+            or (parent or {}).get("border")
+            or color
+        )
+        fill_alpha = rung_number(
+            rung, "fill-alpha",
+            defaults.get("fill_alpha", (parent or {}).get("fill_alpha", 0.0)),
+        )
+        border_alpha = rung_number(
+            rung, "border-alpha",
+            defaults.get("border_alpha", (parent or {}).get("border_alpha", 0.0)),
+        )
+        # Clamped to one cell at the point it is read. A character grid has no
+        # sub-cell borders and D-05 forbids a state growing the box, so city-783's
+        # focus-border-width = 2 must become 1 rather than reflow the row.
+        raw_width = rung_number(
+            rung, "border-width",
+            defaults.get("border_width", (parent or {}).get("border_width", 1)),
+        )
+        border_width = min(1, max(0, int(raw_width)))
+
+        ladder[rung] = {
+            "color": color,
+            "border": border,
+            "fill_alpha": fill_alpha,
+            "border_alpha": border_alpha,
+            "border_width": border_width,
+        }
+
+    style = {
         "mode": theme_mode(colors),
         "name": theme_name(),
         "popup_background": hexval(popups, "background", "popup_background"),
@@ -227,17 +378,78 @@ def omarchy_style() -> dict:
         "popup_border": (_resolve_border(popups.get("border"), hyprland)
                          or derived["popup_border"] or STYLE_DEFAULTS["popup_border"]),
         "popup_background_alpha": number(popups, "background-alpha", "spacing_scale"),
-        "control_border": (_resolve_border(controls.get("normal-border"), hyprland)
-                           or derived["control_border"] or STYLE_DEFAULTS["control_border"]),
-        "control_fill_alpha": number(controls, "normal-fill-alpha", "control_fill_alpha"),
-        "control_border_alpha": number(controls, "normal-border-alpha", "control_border_alpha"),
-        "control_border_width": int(number(controls, "normal-border-width", "control_border_width")),
+        "tooltip_background": hexval(tooltip, "background", "popup_background"),
+        "tooltip_text": hexval(tooltip, "text", "popup_text"),
+        "tooltip_border": (_resolve_border(tooltip.get("border"), hyprland)
+                           or derived["popup_border"] or STYLE_DEFAULTS["popup_border"]),
+        "tooltip_background_alpha": number(tooltip, "background-alpha", "spacing_scale"),
+        # The three legacy control_* keys panel.style_view reads. Sourced from the
+        # resolved `normal` rung rather than re-parsed, so the bar panel and the
+        # TUI can never disagree about what the normal rung is.
+        "control_border": ladder["normal"]["border"],
+        "control_fill_alpha": ladder["normal"]["fill_alpha"],
+        "control_border_alpha": ladder["normal"]["border_alpha"],
+        "control_border_width": ladder["normal"]["border_width"],
+        "corner_radius": hypr_rounding(),
         "font_base": int(number(font, "base-size", "font_base")),
         "spacing_scale": number(spacing, "scale", "spacing_scale"),
         "spacing_scale_with_font": bool(
             spacing.get("scale-with-font", STYLE_DEFAULTS["spacing_scale_with_font"])
         ),
+        # Text selection inside an Input — a control-wide token rather than a rung.
+        "control_selection_fill_alpha": rung_number("selection", "fill-alpha", 0.35),
     }
+
+    for rung, values in ladder.items():
+        prefix = "control_%s" % rung.replace("-", "_")
+        for field, value in values.items():
+            style["%s_%s" % (prefix, field)] = value
+
+    for token, default in SPACING_DEFAULTS.items():
+        try:
+            style["spacing_%s" % token.replace("-", "_")] = float(spacing[token])
+        except (KeyError, TypeError, ValueError):
+            style["spacing_%s" % token.replace("-", "_")] = float(default)
+
+    return style
+
+
+def hypr_rounding(timeout: float = 0.4) -> int:
+    """Hyprland's live ``decoration:rounding``, or 0 when it cannot be asked.
+
+    ``0`` is the safe default, not a guess: square is what the reference aesthetic
+    wants and what this box reports. It selects the border-style *family*
+    (UI-SPEC §9.2) — at 0 the hairline ``hkey``/``vkey``/``solid`` set, non-zero
+    permits ``round``.
+
+    **hyprctl writes its errors to STDOUT with a non-zero return code**, so the
+    return code is checked *before* the JSON is parsed. Measured on this box:
+    outside Hyprland, ``HYPRLAND_INSTANCE_SIGNATURE not set! (is hyprland
+    running?)`` arrives on stdout with rc 1; a stale socket gives rc 4 on stdout.
+    Parsing either without the rc check raises ``JSONDecodeError`` instead of
+    returning — which is the negative control this function's test demonstrates.
+
+    Never raises: every failure path returns 0. The exception tuples are the
+    narrow ones the rest of this module uses rather than ``except Exception`` —
+    that breadth is acceptable for a fire-and-forget side effect (``backend.py``'s
+    waybar nudge), not for a value-returning function. Every measured failure mode
+    returns in about 10 ms, so ``timeout`` is a ceiling rather than a cost — but
+    call this from ``omarchy_style()`` only, which runs once at construction and
+    once per *detected* theme change, never per tick (T-12.1-07).
+    """
+    try:
+        out = subprocess.run(
+            ["hyprctl", "getoption", "-j", "decoration:rounding"],
+            capture_output=True, text=True, timeout=timeout, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):  # FileNotFoundError, TimeoutExpired
+        return 0
+    if out.returncode != 0:
+        return 0
+    try:
+        return max(0, int(json.loads(out.stdout).get("int", 0)))
+    except (ValueError, TypeError, AttributeError):  # JSONDecodeError is a ValueError
+        return 0
 
 
 def _theme_from_colors(c: dict) -> Theme:
