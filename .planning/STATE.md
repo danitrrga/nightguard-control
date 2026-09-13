@@ -248,3 +248,23 @@ Tech-debt carried forward (from v2.0-MILESTONE-AUDIT.md): NBLK descoped (native-
 ## Operator Next Steps
 
 - Start the next milestone with /gsd-new-milestone
+
+## Phase 12.1 — gate rejected
+
+The nine plans all executed and the automated ledger is complete, but the live
+walkthrough verdict on 2026-09-13 was **not approved**: the surface still reads as a
+terminal form, not as a native Omarchy dashboard, and worse than what it replaced.
+
+Phase verification was NOT run and the roadmap was NOT advanced. Do not treat 12.1 as
+complete. The next move is an iterative design session, not a gap-closure pass — the
+problem is the visual language, not a missing control.
+
+Open items carried out of the phase:
+- The structural-token keystone (UIX-01) is still Pending: the style reader parses 31
+  spacing keys and the base font, and the variable emitter emits no variable for either.
+  No path exists, not merely no consumer.
+- Ten of the 34 style variables have no consumer; five structurally cannot have one.
+- The stated "under 4 seconds" validation latency is false — measured 42.75 s.
+- Deferred, not defects at 135x46: the editor has no on-screen legend since the footer was
+  removed (and nothing is bound to f1 in textual 8.2.7); resize keys on the screen size, so
+  a tiled split narrows the surface without the narrow class firing.
