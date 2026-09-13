@@ -433,9 +433,16 @@ Panel {
     // The footer is pinned, so its height is part of what the popup must be
     // tall enough for -- leaving it out let the scroll area eat the apply
     // button whenever the content was long, which is exactly when it matters.
+    //
+    // The cap is a last resort and not the real limit: `fittedContentHeight`
+    // already clamps to `availableCardHeight`, which is the screen. A cap of
+    // 660 was a number picked when the roster was two entries long, and it bit
+    // first the moment it was seven -- the sites card and the buttons under it
+    // were simply cut off, with the scroll area sized to hide that they were
+    // there at all.
     contentHeight: panel.fittedContentHeight(
       column.implicitHeight + (footer.visible ? footer.implicitHeight + Style.space(10) : 0),
-      Style.space(660))
+      Style.space(900))
 
     // Overlays the whole popup. The gate between a click and an authentication
     // dialog: it states the consequence in one sentence, in the user's own
