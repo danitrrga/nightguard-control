@@ -37,8 +37,13 @@ import asyncio
 from textual import events
 from textual.screen import Screen
 
-from ngtui.widgets.controlrow import Control, ControlRow, home_controls
+from ngtui.widgets.controlrow import PRESS_FLASH, Control, ControlRow, home_controls
 from tests.test_ui_harness import SANCTIONED_SIZE
+
+# Comfortably past the stylesheet's 120ms fill cross-fade. Derived from the widget's
+# own constant rather than typed, so a change to the transition cannot leave this
+# sampling the middle of the fade.
+SETTLE = PRESS_FLASH * 2.5
 
 
 def _probe_controls(count: int) -> list[Control]:
@@ -361,5 +366,95 @@ def test_the_whole_row_is_the_click_target():
             # The click also moves the cursor there, so pointer and keyboard still
             # agree after a click, not only after a hover.
             assert app.focused is row
+
+    asyncio.run(_body())
+
+
+def test_the_paint_ladder_keeps_its_priority(omarchy_theme_dir):
+    """pressed > cursor > selected > idle, with the theme's own alphas (UIX-02).
+
+    The second half of UIX-02, and the half nothing guarded until now. Rule ORDER is
+    the mechanism: `:focus` counts as a class for specificity, so `.ctl:focus` and
+    `.ctl.-pressed` TIE and the later rule wins. That makes the ladder's correctness a
+    property of where six lines sit in a file — invisible in review, and silently
+    changed by any tidy-up that sorts them. Plan 04's handover says so in as many
+    words; this is the test that makes the warning enforceable.
+
+    Run against the fixture theme rather than the live desktop one, for two reasons:
+    the four rungs are pinned to four distinct alphas there (0.42 / 0.08 / 0.18 /
+    0.22), and a desktop theme swap mid-suite cannot move the numbers out from under
+    it (T-12.1-02).
+
+    Asserting all four rungs are DISTINCT is load-bearing on its own: one rung alone
+    cannot tell "the ladder is wired" from "every row paints the same fill".
+
+    Negative control, demonstrated (measured 2026-09-13). `.ctl.-pressed` moved ABOVE
+    `.ctl:focus` in `app.tcss` — a re-sort, not a rewrite, and the two rules are
+    byte-identical before and after:
+
+        E   AssertionError: a focused AND pressed row paints the cursor rung, not the
+            pressed one — the ladder has been re-sorted
+        E   assert 0.08 == 0.22
+    """
+
+    async def _body():
+        app = _probe_app(_probe_controls(3))
+        async with app.run_test(size=SANCTIONED_SIZE) as pilot:
+            await pilot.pause()
+            screen = app.screen
+            rows = list(screen.query(ControlRow))
+
+            async def fill(row, *classes, cursor=False):
+                for other in rows:
+                    other.remove_class("-pressed", "-selected")
+                screen.set_focus(row if cursor else None)
+                if classes:
+                    row.add_class(*classes)
+                # Past the 120ms cross-fade, not merely past the message queue.
+                # `styles.background` is the ANIMATED value: measured, reading it
+                # straight after a class change returned 0.2037 for a rung whose
+                # settled alpha is 0.08 — an intermediate frame of the fade from 0.18.
+                # A control that sampled mid-fade would be flaky in whichever
+                # direction the machine happened to be slow.
+                await pilot.pause(SETTLE)
+                if cursor:
+                    assert app.focused is row, "the cursor is not on the measured row"
+                # `% (color,)` and never `% color`: textual.color.Color is a
+                # NamedTuple, so the bare form raises TypeError instead of printing —
+                # a control whose failure message raises says nothing on the day it
+                # fires (found in this phase's plan 04).
+                return round(row.styles.background.a, 4)
+
+            row = rows[1]
+            idle = await fill(row)
+            cursor = await fill(row, cursor=True)
+            selected = await fill(row, "-selected")
+            pressed = await fill(row, "-pressed")
+
+            rungs = {"idle": idle, "cursor": cursor, "selected": selected,
+                     "pressed": pressed}
+            assert len(set(rungs.values())) == 4, (
+                "the four rungs do not paint four different fills, so nothing below "
+                "can tell a wired ladder from a flat one: %s" % (rungs,)
+            )
+
+            # pressed beats the cursor...
+            both = await fill(row, "-pressed", cursor=True)
+            assert both == pressed, (
+                "a focused AND pressed row paints the cursor rung, not the pressed "
+                "one — the ladder has been re-sorted"
+            )
+            # ...the cursor beats selected...
+            cursor_over_selected = await fill(row, "-selected", cursor=True)
+            assert cursor_over_selected == cursor, (
+                "a focused AND selected row paints the selected rung, not the cursor "
+                "— the ladder has been re-sorted"
+            )
+            # ...and pressed beats selected.
+            pressed_over_selected = await fill(row, "-pressed", "-selected")
+            assert pressed_over_selected == pressed, (
+                "a pressed AND selected row paints the selected rung — the ladder "
+                "has been re-sorted"
+            )
 
     asyncio.run(_body())
