@@ -169,8 +169,13 @@ def test_the_proposal_lands_in_a_file_the_owner_alone_can_read(data_dir):
 
 
 def test_a_refused_key_reports_why_and_still_exits_zero(data_dir):
+    # `timezone` and not `curfew.enabled`: the curfew IS editable from the panel
+    # now (that is the parity the terminal app's retirement rests on), while the
+    # timezone is deliberately not — the signer judges the edit window in the
+    # SIGNED config's timezone, so moving it from a surface that never mentions
+    # the gate would move the gate.
     payload = _json("propose", "--ops-json", json.dumps([
-        {"key": "curfew.enabled", "action": "set", "value": False},
+        {"key": "timezone", "action": "set", "value": "UTC"},
     ]), env={"NIGHTGUARD_DIR": str(data_dir)})
     assert payload["ok"] is False
     assert "not an editable field" in payload["error"]

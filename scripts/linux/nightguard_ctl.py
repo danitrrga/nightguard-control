@@ -17,7 +17,8 @@ so any crash converges to OLD or NEW, never a forged/partial middle.
 classify.rs/quota.rs: one edit session = at most one token; any field that LOOSENS costs
 1 token and requires weekly_spent < 3 (else refused with "available again Monday");
 all-tighten/neutral is free; all-noop writes nothing. After writing config.yaml it is
-chowned back to $SUDO_UID:$SUDO_GID (D-5) so the user can hand-edit + the watchdog revert.
+chowned back to whoever owned it (else $PKEXEC_UID/$SUDO_UID) so the user can
+hand-edit and the watchdog can be seen reverting it (D-5).
 
 Subcommands:
     init                 create a 32-byte .guardkey (0600) if absent; sign current config
@@ -474,24 +475,87 @@ def _sign_state(key, new_config_hmac, prev, weekly_spent, week_anchor, ledger):
     return state
 
 
-def _chown_back_config():
-    uid, gid = os.environ.get("SUDO_UID"), os.environ.get("SUDO_GID")
-    if uid and gid:
-        try:
-            os.chown(ng.CONFIG, int(uid), int(gid))
-        except OSError as e:
-            print("warn: could not chown config.yaml back to the user: %s" % e, file=sys.stderr)
+def _config_owner():
+    """Who config.yaml must belong to after the write, or None if unknowable.
+
+    Three sources, in the order of how much they actually know:
+
+    1. **Whoever owns the file right now.** The strongest answer and the one
+       that does not care how this process got its privileges. It survives
+       sudo, pkexec, run0, a systemd unit, or being invoked by hand as root.
+    2. ``PKEXEC_UID``. ``pkexec`` sets this and sets NO ``SUDO_UID`` (man
+       pkexec: "the PKEXEC_UID environment variable is set to the user id of
+       the process invoking pkexec"). The desktop panel authorises through
+       polkit, so after PANEL-01 this is the ordinary case, not the exotic one.
+    3. ``SUDO_UID``/``SUDO_GID``. What this function used to read, and only
+       that -- which meant that under pkexec the guard clause was simply false
+       and the chown never happened at all.
+
+    Why this is not cosmetic. ``config.yaml`` is written by root and is
+    deliberately left owned by the user, because the revert model needs the
+    hand edit to be POSSIBLE so the watchdog can be seen undoing it. Its parent
+    directory is ``root:root 0755``, so once the file is root-owned the user
+    cannot edit it, cannot recreate it and cannot move it aside: half of the
+    product's core value becomes untestable and, for him, gone.
+
+    And there is a second consumer nobody would think to check.
+    ``nightguard_watchdog.py`` derives the user's HOME from this file's owner
+    (``pwd.getpwuid(os.stat(ng.CONFIG).st_uid).pw_dir``) in order to find the
+    Steam and Heroic libraries. A root-owned config.yaml points the game
+    catalog at /root, where there are no games -- so game blocking would
+    silently stop covering anything, with nothing anywhere saying so.
+    """
+    try:
+        st = os.stat(ng.CONFIG)
+        if st.st_uid != 0:
+            return st.st_uid, st.st_gid
+    except OSError:
+        pass
+
+    uid = os.environ.get("PKEXEC_UID") or os.environ.get("SUDO_UID")
+    if not uid:
+        return None
+    gid = os.environ.get("SUDO_GID")
+    try:
+        uid = int(uid)
+        if gid is not None:
+            return uid, int(gid)
+        import pwd
+        return uid, pwd.getpwuid(uid).pw_gid
+    except (ValueError, KeyError):
+        return None
+
+
+def _chown_back_config(owner):
+    """Give config.yaml back to its owner. ``owner`` is read BEFORE the write.
+
+    Read before, applied after: ``_atomic_write_bytes`` replaces the file with
+    a fresh root-owned one, so asking afterwards would only ever answer "root".
+    """
+    if not owner:
+        print("warn: could not tell who config.yaml should belong to; leaving it "
+              "as root. Hand edits will be impossible until this is chowned back.",
+              file=sys.stderr)
+        return
+    try:
+        os.chown(ng.CONFIG, owner[0], owner[1])
+    except OSError as e:
+        print("warn: could not chown config.yaml back to the user: %s" % e, file=sys.stderr)
 
 
 def _write_commit(key, canonical, prev, weekly_spent, week_anchor, ledger, audit_event, audit_detail):
     import json
     new_hmac = ng.hmac_hex(key, canonical)
     with _Lock():
+        # Asked BEFORE anything is written: the write replaces config.yaml with
+        # a fresh root-owned file, so reading its owner afterwards would only
+        # ever answer "root".
+        owner = _config_owner()
         _atomic_write_bytes(ng.SANCTIONED, canonical)
         state = _sign_state(key, new_hmac, prev, weekly_spent, week_anchor, ledger)
         _atomic_write_bytes(ng.STATE, (json.dumps(state, indent=2) + "\n").encode("utf-8"))
         _atomic_write_bytes(ng.CONFIG, canonical)
-        _chown_back_config()
+        _chown_back_config(owner)
         ng.append_audit(key, audit_event, audit_detail)
     return new_hmac
 

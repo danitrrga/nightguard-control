@@ -99,12 +99,21 @@ def test_a_game_title_with_punctuation_survives():
 
 # --- what it refuses ---------------------------------------------------------
 
-def test_a_key_outside_the_editable_set_is_refused():
-    """The panel prices what it proposes. An open key set would let a typo
-    address the curfew itself with the cost line describing something else."""
+@pytest.mark.parametrize("key", [
+    "timezone",                  # shifts the hour the edit window is judged in
+    "curfew.message",            # prose, not a rule
+    "curfew.block_when_offline",
+    "clock_protection.max_offset_minutes",
+    "watchdog.check_interval_seconds",
+])
+def test_a_key_outside_the_editable_set_is_refused(key):
+    """The panel prices what it proposes, so it may only propose what it was
+    built to explain. `timezone` is the sharp one: the signer judges the edit
+    window in the SIGNED config's timezone, so editing it from a surface that
+    does not say so would move the gate without ever mentioning the gate."""
     with pytest.raises(ValueError, match="not an editable field"):
         proposal.apply_ops(FIXTURE, [
-            {"key": "curfew.enabled", "action": "set", "value": False},
+            {"key": key, "action": "set", "value": False},
         ])
 
 
@@ -153,7 +162,7 @@ def test_nothing_is_applied_when_a_later_op_fails():
     with pytest.raises(ValueError):
         proposal.apply_ops(FIXTURE, [
             {"key": "blocking.native_apps.blacklist", "action": "add", "value": "spotify"},
-            {"key": "curfew.enabled", "action": "set", "value": False},
+            {"key": "timezone", "action": "set", "value": "UTC"},
         ])
     # The input text is untouched -- apply_ops returns a new string or raises.
     assert _blocking(FIXTURE)["native_apps"]["blacklist"] == ["steam", "discord"]

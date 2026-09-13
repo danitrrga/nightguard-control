@@ -27,7 +27,27 @@ from ngtui import lineedit
 
 # key -> kind. The kind decides which ops are legal on it, so a list op on a
 # boolean is refused rather than producing nonsense the signer would then judge.
+#
+# This set is the retirement gate. The terminal app is retired "once the panel
+# can do everything it did" (PANEL-03), and everything it did is its own
+# ``EDITABLE_FIELDS`` table -- so every key there has to be here, and
+# ``test_parity.py`` fails if one goes missing. The extra keys beyond it
+# (block_games, mode, allowlist, blocked_urls) are the four the terminal app
+# could never reach, which is why the phase that replaces it exists.
 EDITABLE = {
+    # the curfew itself
+    "curfew.enabled": "bool",
+    "curfew.start": "time",
+    "curfew.end": "time",
+    "curfew.allow_commands": "list",
+    # the defences around it
+    "clock_protection.enabled": "bool",
+    "watchdog.enabled": "bool",
+    # when the pact may be weakened
+    "edit_window.enabled": "bool",
+    "edit_window.start": "time",
+    "edit_window.end": "time",
+    # what the curfew ends
     "blocking.native_apps.enabled": "bool",
     "blocking.native_apps.block_games": "bool",
     "blocking.native_apps.mode": "mode",
@@ -35,6 +55,19 @@ EDITABLE = {
     "blocking.native_apps.allowlist": "list",
     "blocking.browser_extension.enabled": "bool",
     "blocking.browser_extension.blocked_urls": "list",
+    # blocking.browser_extension.extension_id is DELIBERATELY absent, and it is
+    # the one field the terminal app could edit that this one will not.
+    #
+    # The signer's FIELD_TABLE has no entry for it, so `classify_change` returns
+    # no direction for it at all: a change would classify as nothing, price as
+    # free, and be written anyway. Pointing the managed browser policy at a
+    # different or non-existent extension is how site blocking gets switched off
+    # entirely, so "free and unjudged" is the wrong answer for it twice over.
+    #
+    # Offering it here would be building a control for a write the trust
+    # boundary cannot judge. Giving it a direction means changing the signer's
+    # own table -- which decides what costs a token -- and that is the owner's
+    # call, not a side effect of a UI migration.
 }
 
 MODES = ("blocklist", "allowlist")
@@ -79,6 +112,24 @@ def validate_entry(value: str) -> str:
     return entry
 
 
+def validate_time(value) -> str:
+    """Return ``HH:MM``, or raise saying what is wrong with it.
+
+    The signer parses these with ``_parse_hhmm`` and treats an unparseable one
+    as "no window", which for the edit window means the gate silently stops
+    applying. A malformed time must be refused here, where the message reaches
+    a person, rather than becoming a curfew that quietly does nothing.
+    """
+    text = str(value).strip()
+    parts = text.split(":")
+    if len(parts) != 2 or not all(p.isdigit() for p in parts):
+        raise ValueError("a time must look like HH:MM, got %r" % str(value))
+    hour, minute = int(parts[0]), int(parts[1])
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ValueError("a time must be between 00:00 and 23:59, got %r" % text)
+    return "%02d:%02d" % (hour, minute)
+
+
 def _apply_one(text: str, op: dict) -> str:
     key = str((op or {}).get("key") or "")
     action = str((op or {}).get("action") or (op or {}).get("op") or "")
@@ -94,6 +145,16 @@ def _apply_one(text: str, op: dict) -> str:
         if not isinstance(value, bool):
             raise ValueError("%r takes true or false, got %r" % (key, value))
         return lineedit.toggle_bool(text, key, value)
+
+    if kind == "time":
+        if action != "set":
+            raise ValueError("%r takes 'set', not %r" % (key, action))
+        return lineedit.set_scalar(text, key, validate_time(value))
+
+    if kind == "text":
+        if action != "set":
+            raise ValueError("%r takes 'set', not %r" % (key, action))
+        return lineedit.set_scalar(text, key, validate_entry(value))
 
     if kind == "mode":
         if action != "set":
