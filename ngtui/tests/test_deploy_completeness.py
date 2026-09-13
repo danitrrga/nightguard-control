@@ -85,25 +85,66 @@ def test_the_watchdog_really_does_import_the_blocker():
     assert "appblock" in _local_imports(os.path.join(_LINUX, "nightguard_watchdog.py"))
 
 
-def test_deploy_installs_the_bar_widget_it_ships():
-    """The desktop surface is an omarchy-shell bar widget, and the shell only
-    loads plugins from the owner's own plugin directory -- so a deploy that does
-    not copy them there leaves the bar showing the previous version forever."""
+def _plugin_dir():
+    root = os.path.dirname(os.path.dirname(_LINUX))
+    return os.path.join(root, "packaging", "omarchy", "plugins",
+                        "danitrrga.nightguard")
+
+
+def test_deploy_installs_every_file_the_plugin_ships():
+    """The shell only loads plugins from the owner's own plugin directory, so a
+    deploy that misses a file leaves the bar on the previous version forever --
+    and a missed .qml is worse than a missed everything: the plugin half-loads,
+    the shell logs "is not a type" for the one component it cannot resolve, and
+    the widget goes blank with no other symptom.
+
+    This is why the deploy copies the directory by glob rather than by a
+    hand-kept list. NightguardPanel.qml was named in NEITHER for two phases:
+    every deploy shipped a manifest pointing at a panel it did not install.
+    """
     with open(_DEPLOY, encoding="utf-8") as fh:
         text = fh.read()
     assert "plugins/danitrrga.nightguard" in text
-    for name in ("manifest.json", "BarWidget.qml"):
-        assert name in text, "deploy.sh does not install %s" % name
+    assert "*.qml" in text, (
+        "deploy.sh names plugin files one by one again -- the next file added "
+        "will be forgotten exactly as NightguardPanel.qml was"
+    )
+    assert "manifest.json" in text
 
 
-def test_the_bar_widget_files_exist_where_deploy_expects_them():
-    root = os.path.dirname(_LINUX)
-    plugin = os.path.join(os.path.dirname(root), "packaging", "omarchy",
-                          "plugins", "danitrrga.nightguard")
-    for name in ("manifest.json", "BarWidget.qml"):
+def test_the_manifest_entry_points_all_exist():
+    """A manifest naming a file that is not there is a plugin the shell refuses
+    to mount, and the only symptom is a line in the journal."""
+    import json
+
+    plugin = _plugin_dir()
+    with open(os.path.join(plugin, "manifest.json"), encoding="utf-8") as fh:
+        manifest = json.load(fh)
+    assert manifest["entryPoints"], "a plugin with no entry point mounts nothing"
+    for kind, name in manifest["entryPoints"].items():
         assert os.path.isfile(os.path.join(plugin, name)), (
-            "%s is named in deploy.sh but missing from the repo" % name
+            "manifest entry point %r names %s, which is not in the plugin" % (kind, name)
         )
+
+
+def test_every_qml_file_the_plugin_references_is_in_the_plugin():
+    """Same-directory type resolution is what makes `NightguardWriter {}` work
+    inside the panel. A component referenced but not shipped resolves to
+    nothing, and QML says so once, quietly, at load."""
+    import glob
+    import re as _re
+
+    plugin = _plugin_dir()
+    present = {os.path.basename(p)[:-4]
+               for p in glob.glob(os.path.join(plugin, "*.qml"))}
+    for path in glob.glob(os.path.join(plugin, "*.qml")):
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        for referenced in _re.findall(r"\b(Nightguard[A-Za-z]*)\s*\{", text):
+            assert referenced in present, (
+                "%s instantiates %s, which is not a file in the plugin"
+                % (os.path.basename(path), referenced)
+            )
 
 
 def test_the_bar_widget_is_installed_as_the_owner_not_as_root():
@@ -125,17 +166,46 @@ def test_the_bar_widget_is_installed_as_the_owner_not_as_root():
 
 
 def test_the_widget_never_reaches_for_a_privileged_command():
-    """Standing rule: a bar widget may not exec anything privileged, and may not
-    change state. It opens the TUI; the TUI is where the signer is reached."""
-    root = os.path.dirname(os.path.dirname(_LINUX))
-    widget = os.path.join(root, "packaging", "omarchy", "plugins",
-                          "danitrrga.nightguard", "BarWidget.qml")
+    """Standing rule: the bar widget may not exec anything privileged and may
+    not change state. It reads; the panel it opens is where an edit is staged."""
+    widget = os.path.join(_plugin_dir(), "BarWidget.qml")
     with open(widget, encoding="utf-8") as fh:
         text = fh.read()
     for forbidden in ("sudo", "pkexec", "nightguard_ctl", "commit"):
         assert forbidden not in text, (
             "the bar widget references %r — it must stay read-only" % forbidden
         )
+
+
+def test_no_qml_ever_builds_a_privileged_argv_itself():
+    """The panel can write now, and this is the line that keeps that safe.
+
+    Every privileged call goes out as `ngtui commit`, never as a `pkexec` or
+    `sudo` argv assembled in QML. The reason is `_resolve_stack_dir()`: it
+    refuses to hand a path to a root-run interpreter unless that directory
+    really contains nightguard_ctl.py. QML naming the signer directly would run
+    a stack nothing had validated -- and it would be a SECOND place the argv
+    shape lives, free to drift from the sudoers/polkit-pinned one.
+    """
+    import glob
+    import re as _re
+
+    for path in glob.glob(os.path.join(_plugin_dir(), "*.qml")):
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        # Comments are stripped first. The QML SHOULD say, in prose, that a
+        # commit ends at pkexec and what its exit codes mean -- that is the
+        # explanation a reader needs. What must not appear is the word in the
+        # code.
+        text = _re.sub(r"/\*.*?\*/", " ", text, flags=_re.S)
+        text = _re.sub(r"^\s*//.*$", "", text, flags=_re.M)
+        text = _re.sub(r"\s//.*$", "", text, flags=_re.M)
+        for forbidden in ("pkexec", "sudo", "nightguard_ctl", "/usr/bin/python3"):
+            assert forbidden not in text, (
+                "%s names %r — the privileged argv belongs in backend.py, which "
+                "validates the stack directory before root ever runs it"
+                % (os.path.basename(path), forbidden)
+            )
 
 
 def test_deploy_runs_the_config_migration():

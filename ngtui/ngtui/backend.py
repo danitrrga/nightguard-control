@@ -231,6 +231,70 @@ def tokens_left() -> int:
     return ctl.WEEKLY_TOKENS - decision["effective_spent"]
 
 
+def commit_proposal(path: str) -> dict:
+    """Sign + commit an already-composed proposal file, authorised through polkit.
+
+    This is the desktop panel's write path and it is deliberately thinner than
+    ``commit`` above. ``pkexec`` hands the authentication to Omarchy's own polkit
+    agent, which owns the dialog out of process -- so there is no pseudo-terminal
+    to drive, no ANSI to strip and no auth chatter to filter out of the signer's
+    own output. The caller only ever sees stdout, stderr and an exit code.
+
+    ``pkexec`` also never caches under ``org.freedesktop.policykit.exec``: two
+    back-to-back calls each opened a fresh PAM session when this was measured on
+    this machine. That is the anti-impulse friction ``sudo -k`` had to be asked
+    for explicitly, arriving here for free.
+
+    The argv shape is the pinned sudoers one, unchanged: the validated absolute
+    ``CTL_SCRIPT`` and the config CONTENT in a file, never on the command line.
+
+    ``path`` must name a real file. Handing an absent path to a root-run signer
+    is the kind of mistake that should fail here, unprivileged, rather than
+    after an authentication the user already paid for.
+
+    Exit codes are the signer's 0/1/2, plus ``pkexec``'s own 126 (the user
+    dismissed the dialog) and 127 (not authorised, or the program could not be
+    run). The two ranges do not overlap, which is what lets the panel tell a
+    user who CHOSE to cancel apart from one who was refused.
+    """
+    if not os.path.isfile(path):
+        raise ValueError("no such proposal file: %r" % path)
+    argv = [
+        "pkexec",
+        "/usr/bin/python3",
+        CTL_SCRIPT,  # validated absolute path, the pinned signer shape
+        "commit",
+        "--from",
+        path,
+    ]
+    proc = subprocess.run(argv, capture_output=True, text=True)
+    if proc.returncode == 0:
+        _nudge_bar()
+    return {
+        "returncode": proc.returncode,
+        "stdout": (proc.stdout or "").strip(),
+        "stderr": (proc.stderr or "").strip(),
+    }
+
+
+def _nudge_bar() -> None:
+    """Ask Waybar to repaint now rather than on its next poll. Never raises.
+
+    Fire-and-forget on purpose: a missing ``pkill``, an absent Waybar or any
+    OSError must never reach a caller reporting the result of a commit, and must
+    never be able to flip the bar on a commit that was refused.
+    """
+    try:
+        subprocess.run(
+            ["pkill", "-RTMIN+11", "waybar"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except Exception:
+        pass
+
+
 def commit(proposed_text: str, cancel_event=None, status_cb=None) -> dict:
     """Sign + commit a proposed config via the sudoers CLI, authorised on a PTY.
 

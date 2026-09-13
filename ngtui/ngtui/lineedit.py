@@ -189,14 +189,38 @@ def _list_block_bounds(lines: list[str], key_idx: int) -> tuple[int, int, int]:
     return first, last + 1, item_indent
 
 
+def _inline_empty_list(line: str) -> bool:
+    """Is this ``key:`` line carrying an inline empty list (``[]``) as its value?
+
+    The sanctioned config writes an empty list that way -- ``blocked_urls: []``
+    -- so it is the shape the very first added entry has to survive.
+    """
+    _, _, after = line.strip().partition(":")
+    value, _comment = _split_value_comment(after)
+    return value.replace(" ", "") == "[]"
+
+
 def list_add(text: str, dotted_key: str, entry: str) -> str:
     """Insert ``  - <entry>`` as the LAST item of the target list block.
 
     Matches the existing items' indentation. Raises ``ValueError`` if the key is
     absent. (An empty list block falls back to key-indent + 2 for the item indent.)
+
+    An inline ``[]`` on the key line is cleared first. Leaving it would emit
+
+        blocked_urls: []
+          - youtube.com
+
+    which is not a list with one entry in it -- it is a scalar followed by an
+    orphan item, and ``ngcommon.yaml_load`` raises ``AttributeError: 'dict'
+    object has no attribute 'append'`` on it. The live config ships
+    ``blocked_urls: []``, so without this the FIRST site the user ever blocks
+    writes a config the guard cannot read.
     """
     lines = text.split("\n")
     key_idx = _find_key_line(lines, dotted_key)
+    if _inline_empty_list(lines[key_idx]):
+        lines[key_idx] = _rebuild_scalar_line(lines[key_idx], "").rstrip()
     first, after_last, item_indent = _list_block_bounds(lines, key_idx)
     if item_indent == -1:
         item_indent = _indent_of(lines[key_idx]) + 2
@@ -231,4 +255,13 @@ def list_remove(text: str, dotted_key: str, entry: str) -> str:
             f"list entry not found: {entry!r} in {dotted_key!r}"
         )
     del lines[target]
+    # Removing the last item would leave a bare ``key:``, which the parser reads
+    # as None rather than as an empty list -- a different type for every consumer
+    # downstream, and a spurious direction for the signer's classifier. Write the
+    # inline empty list back so the field keeps its type.
+    if not any(
+        lines[i].strip().startswith("- ")
+        for i in range(key_idx + 1, min(after_last, len(lines)))
+    ):
+        lines[key_idx] = _rebuild_scalar_line(lines[key_idx], "[]")
     return "\n".join(lines)

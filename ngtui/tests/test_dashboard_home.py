@@ -292,7 +292,8 @@ def test_the_help_chip_opens_the_panel_that_replaced_the_legend(ng_data_dir):
     asyncio.run(_body())
 
 
-def test_exactly_one_chip_is_filled_and_the_accent_stays_on_its_reserve(ng_data_dir):
+def test_exactly_one_chip_is_filled_and_the_accent_stays_on_its_reserve(
+        ng_data_dir, omarchy_theme_dir):
     """One primary chip, and the accent appears in exactly one painted place.
 
     Two claims that are easy to conflate and must not be:
@@ -309,6 +310,15 @@ def test_exactly_one_chip_is_filled_and_the_accent_stays_on_its_reserve(ng_data_
     ``app.theme_variables``, not as the string ``$accent``: the stylesheet is where
     a breach is written, but the resolved colour is where it lands, and the two are
     different questions.
+
+    ``omarchy_theme_dir`` is not decoration. Without it this control read the
+    LIVE desktop theme, and its premise -- "a widget wearing the accent hex is a
+    breach" -- is only true for a theme whose roles are all distinct hues. Under
+    dos-moos, which declares ``color2`` and ``accent`` as the same
+    ``#819890``, the status word and the countdown wear the accent by the
+    theme's own choosing and the control went red with nothing wrong. A control
+    that fails when the author changes his desktop theme is measuring his theme,
+    not this code.
 
     **The two claims were armed separately and neither arm fires the other's
     assertion** (measured 2026-09-13). A second ``-primary`` chip::

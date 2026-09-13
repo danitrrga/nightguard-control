@@ -163,17 +163,24 @@ else
     echo "      authentication until you run: uv tool install --force ./ngtui"
 fi
 
-# The desktop panel is an omarchy-shell BAR WIDGET, not a standalone window: it
-# has to live in the bar's right-hand cluster and open on click like the network
-# and bluetooth panels beside it, which only a plugin can do. It is installed
-# into the owner's own plugin directory, not system-wide, because that is where
-# omarchy looks for third-party plugins -- and as the owner, since the shell runs
-# as him and a root-owned file there would be a root-writable path in his session.
-echo "== installing the bar widget -> $PLUGIN_DIR =="
+# The desktop surface is an omarchy-shell plugin: a bar widget that opens a
+# panel, plus a `panel`-kind window (the workshop) the panel summons by plugin
+# id. Only a plugin can sit in the bar's right-hand cluster and open on click
+# like the network and bluetooth panels beside it. It is installed into the
+# owner's own plugin directory, not system-wide, because that is where omarchy
+# looks for third-party plugins -- and as the owner, since the shell runs as him
+# and a root-owned file there would be a root-writable path in his session.
+#
+# Every file in the plugin directory is copied, rather than a hand-kept list.
+# A list is one more place to forget a file, and a forgotten .qml is a plugin
+# that half-loads: the shell reports "is not a type" for the missing component
+# and the widget goes blank with no other symptom.
+echo "== installing the shell plugin -> $PLUGIN_DIR =="
 runuser -u "$OWNER" -- install -d -m 0755 "$PLUGIN_DIR"
-for f in manifest.json BarWidget.qml; do
-    runuser -u "$OWNER" -- install -m 0644 \
-        "$REPO_ROOT/packaging/omarchy/plugins/danitrrga.nightguard/$f" "$PLUGIN_DIR/$f"
+PLUGIN_SRC="$REPO_ROOT/packaging/omarchy/plugins/danitrrga.nightguard"
+for f in "$PLUGIN_SRC"/*.qml "$PLUGIN_SRC"/manifest.json; do
+    [ -e "$f" ] || continue
+    runuser -u "$OWNER" -- install -m 0644 "$f" "$PLUGIN_DIR/$(basename "$f")"
 done
 echo "   the shell hot-reloads a changed plugin on its own"
 

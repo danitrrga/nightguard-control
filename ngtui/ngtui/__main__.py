@@ -30,6 +30,12 @@ def main() -> None:
         sys.exit(_status(argv[1:]))  # head-less; emits JSON, exits 0
     if argv and argv[0] == "panel":
         sys.exit(_panel(argv[1:]))   # head-less; emits JSON, exits 0
+    if argv and argv[0] == "apps":
+        sys.exit(_apps(argv[1:]))    # head-less; emits JSON, exits 0
+    if argv and argv[0] == "propose":
+        sys.exit(_propose(argv[1:]))  # head-less; emits JSON, exits 0
+    if argv and argv[0] == "commit":
+        sys.exit(_commit(argv[1:]))   # head-less; emits JSON, exits 0
     _run_tui()  # bare `ngtui`
 
 
@@ -88,21 +94,24 @@ _LAUNCHER_WRAPPERS = frozenset({
 })
 
 
-def _desktop_labels():
-    """Map an executable basename to the human name of its desktop entry.
+def _desktop_entries():
+    """Every launcher on this machine, as ``{"name", "identity", "url"}``.
 
-    Only where exactly ONE entry claims that basename: two programs shipping
-    the same binary name means the label would be a coin flip, and a wrong
-    label on a kill list is worse than no label. Wrapper launchers are skipped
-    entirely for the same reason -- they front many different programs.
+    ``identity`` is the Exec basename -- the same string the watchdog compares
+    against -- and is empty for a webapp, because a webapp has no executable of
+    its own. ``url`` is set instead, and only then, so the caller can route it
+    to the site list rather than pretend it is an application.
 
-    Best-effort by construction. An entry with no label reads as its raw
-    identity, which is what the config actually holds anyway.
+    Wrapper launchers other than the webapp one contribute no identity for the
+    same reason they never contributed a label: their basename is the same for
+    every program that uses them.
+
+    Best-effort by construction; an unreadable entry is skipped, never guessed.
     """
     import glob
     import os
 
-    claims = {}
+    out = []
     dirs = [
         "/usr/share/applications",
         os.path.expanduser("~/.local/share/applications"),
@@ -111,6 +120,7 @@ def _desktop_labels():
         for path in glob.glob(os.path.join(directory, "*.desktop")):
             name = ""
             executable = ""
+            hidden = False
             try:
                 with open(path, encoding="utf-8", errors="replace") as fh:
                     for line in fh:
@@ -121,16 +131,57 @@ def _desktop_labels():
                             name = line[5:].strip()
                         elif not executable and line.startswith("Exec="):
                             executable = line[5:].strip()
+                        elif line in ("NoDisplay=true", "Hidden=true"):
+                            hidden = True
             except OSError:
                 continue
-            if not name or not executable:
+            if hidden or not name or not executable:
                 continue
-            first = executable.split()[0] if executable.split() else ""
+            parts = executable.split()
+            first = parts[0] if parts else ""
             base = os.path.basename(first)
+            url = _webapp_url(base, parts)
+            if url:
+                out.append({"name": name, "identity": "", "url": url})
+                continue
             if not base or base in _LAUNCHER_WRAPPERS:
                 continue
-            claims.setdefault(base, set()).add(name)
+            out.append({"name": name, "identity": base, "url": None})
+    return out
 
+
+def _webapp_url(base, parts):
+    """The URL a launcher opens as a webapp, or "" when it launches a program.
+
+    Two shapes, both real on this machine: ``omarchy-launch-webapp <url>``, and
+    a browser invoked with ``--app=<url>``. Either way the process that ends up
+    running is the browser, so the entry has no executable identity of its own
+    and must never reach the app list.
+    """
+    if base == "omarchy-launch-webapp":
+        for token in parts[1:]:
+            if token.startswith("http://") or token.startswith("https://"):
+                return token
+        return ""
+    for token in parts[1:]:
+        if token.startswith("--app="):
+            return token[len("--app="):]
+    return ""
+
+
+def _desktop_labels():
+    """Executable basename -> the human name of the single entry claiming it.
+
+    Derived from ``_desktop_entries`` so there is one reader of
+    ``*.desktop`` on this path, not two that can disagree about which files
+    count. An ambiguous basename yields no label: a wrong name on a kill list
+    is worse than a raw identity the config already holds.
+    """
+    claims = {}
+    for entry in _desktop_entries():
+        identity = entry.get("identity") or ""
+        if identity:
+            claims.setdefault(identity, set()).add(entry["name"])
     return {base: next(iter(names)) for base, names in claims.items() if len(names) == 1}
 
 
@@ -291,6 +342,179 @@ def _live_warnings() -> list[str]:
     except Exception:
         pass
     return warnings
+
+
+def _running_exes():
+    """``{basename: absolute exe}`` for every process whose exe could be read.
+
+    The basename is the identity the watchdog compares against, and reading it
+    from ``/proc/PID/exe`` is the only way to learn it that a process cannot
+    forge -- ``comm`` is writable by its own owner via ``prctl``.
+    """
+    import os
+
+    import appblock
+
+    out = {}
+    for proc in appblock.read_processes():
+        base = os.path.basename(proc.exe or "")
+        if base:
+            out.setdefault(base, proc.exe)
+    return out
+
+
+def _floor_identities():
+    """The identities that can never be blocked, however the config is written.
+
+    Taken from appblock's own floor rather than restated here: a second list
+    would drift, and the drift would show as a catalog offering to end the
+    compositor.
+    """
+    import appblock
+
+    names = set(appblock.FLOOR_EXES) | set(appblock.FLOOR_TERMINAL_EXES)
+    return {n.rsplit("/", 1)[-1] for n in names}
+
+
+def _apps(args: list[str]) -> int:
+    """Emit the blockable-app catalog as one JSON line; ALWAYS return 0.
+
+    Same fail-closed contract as the other head-less paths. A catalog that could
+    not be built emits ``{"items": [], "error": ...}`` -- an empty list with a
+    reason, never a partial list that reads as "this is everything you have".
+    """
+    import json
+    import os
+
+    payload = {"items": [], "error": None}
+    try:
+        import ngtui.backend as b  # puts the pinned STACK_DIR on sys.path
+
+        import appblock
+
+        from ngtui import catalog
+
+        floor = _floor_identities()
+        payload["items"] = catalog.build(
+            _desktop_entries(),
+            _running_exes(),
+            appblock.build_catalog(os.path.expanduser("~")),
+            b.sanctioned_config(),
+            is_floor=lambda identity: identity in floor,
+            resolves=_resolves_to_a_binary,
+        )
+    except Exception as exc:  # broad on purpose -- fail closed
+        payload = {"items": [], "error": str(exc) or exc.__class__.__name__}
+
+    sys.stdout.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    return 0
+
+
+def _read_ops(args: list[str]):
+    """``--ops <path>`` or ``--ops-json <json>`` -> the parsed list.
+
+    The inline form exists for the desktop panel, which would otherwise have to
+    write a temp file from QML to say "add spotify to the blocklist". It is safe
+    where a shell would not be: ``Process`` execs the argv directly, so a value
+    never passes through a shell and cannot be word-split or expanded. The
+    *config* still travels as a file, never as an argument -- that rule is about
+    the privileged call, and this one is unprivileged and writes nothing.
+    """
+    import json
+
+    if len(args) != 2:
+        raise ValueError("usage: ngtui propose --ops <path> | --ops-json <json>")
+    if args[0] == "--ops":
+        with open(args[1], encoding="utf-8") as fh:
+            ops = json.load(fh)
+    elif args[0] == "--ops-json":
+        ops = json.loads(args[1])
+    else:
+        raise ValueError("usage: ngtui propose --ops <path> | --ops-json <json>")
+    if not isinstance(ops, list):
+        raise ValueError("the ops must be a JSON list")
+    return ops
+
+
+def _propose(args: list[str]) -> int:
+    """Stage edits, compose the proposed config, and price it. ALWAYS returns 0.
+
+    Unprivileged and write-free: it touches the sanctioned config only to read
+    it, and the proposal lands in a 0600 temp file whose path is returned. The
+    cost and any refusal come back with it, which is what lets the panel put
+    both in front of the user BEFORE an authentication dialog ever appears.
+
+    The temp file is deliberately NOT cleaned up here: the caller commits it in
+    a second call. It is created by ``mkstemp`` under the user's own runtime
+    directory semantics and holds a config the user composed, not a secret.
+    """
+    import json
+    import os
+    import tempfile
+
+    payload = {"ok": False, "error": None, "path": None,
+               "dirs": None, "loosening": None, "decision": None}
+    try:
+        ops = _read_ops(args)
+
+        import ngtui.backend as b
+
+        from ngtui import proposal
+
+        text = b.sanctioned_text()
+        if not text:
+            raise ValueError("the sanctioned config could not be read")
+        proposed = proposal.apply_ops(text, ops)
+
+        fd, path = tempfile.mkstemp(suffix=".yaml", prefix="ngtui-proposal-")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(proposed)
+
+        preview = b.preview_change(proposed)
+        payload = {
+            "ok": True,
+            "error": None,
+            "path": path,
+            "dirs": preview["dirs"],
+            "loosening": bool(preview["loosening"]),
+            "decision": preview["decision"],
+        }
+    except Exception as exc:  # broad on purpose -- fail closed
+        payload["error"] = str(exc) or exc.__class__.__name__
+
+    sys.stdout.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    return 0
+
+
+def _commit(args: list[str]) -> int:
+    """Hand a proposed config to the root signer through polkit. ALWAYS returns 0.
+
+    The exit code the caller cares about is the SIGNER's, and it comes back
+    inside the JSON -- returning it as this process's own status would make a
+    refusal indistinguishable from a broken CLI to a caller that only checks
+    whether the command failed.
+
+    Nothing is interpreted here. The signer's stdout and stderr are passed
+    through verbatim, because translating a refusal would put words in the
+    trust boundary's mouth.
+    """
+    import json
+
+    payload = {"returncode": None, "stdout": "", "stderr": "", "error": None}
+    try:
+        if len(args) != 2 or args[0] != "--from":
+            raise ValueError("usage: ngtui commit --from <path>")
+
+        import ngtui.backend as b
+
+        payload = b.commit_proposal(args[1])
+        payload["error"] = None
+    except Exception as exc:  # broad on purpose -- fail closed
+        payload = {"returncode": None, "stdout": "", "stderr": "",
+                   "error": str(exc) or exc.__class__.__name__}
+
+    sys.stdout.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    return 0
 
 
 if __name__ == "__main__":

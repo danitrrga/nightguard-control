@@ -6,10 +6,12 @@
   "author": "danitrrga",
   "description": "Estado del curfew, ventana de edicion y bloqueo, en un panel nativo de Omarchy",
   "kinds": [
-    "bar-widget"
+    "bar-widget",
+    "panel"
   ],
   "entryPoints": {
-    "barWidget": "BarWidget.qml"
+    "barWidget": "BarWidget.qml",
+    "panel": "NightguardWorkshop.qml"
   },
   "barWidget": {
     "displayName": "Nightguard",

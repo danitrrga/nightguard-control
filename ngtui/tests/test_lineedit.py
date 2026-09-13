@@ -202,3 +202,53 @@ def test_round_trip_changes_only_targeted_field():
 
     # Quoting style of the untouched neighbour line is preserved verbatim.
     assert 'start: "20:45"' in out
+
+
+# --- Test 5: the inline empty list, which is what the live config actually ships --
+
+
+EMPTY_LIST_FIXTURE = '''blocking:
+  browser_extension:
+    enabled: true
+    # Sites blocked during curfew.
+    blocked_urls: []
+  native_apps:
+    enabled: true
+'''
+
+
+def test_adding_to_an_inline_empty_list_produces_readable_yaml():
+    """The first site ever blocked must not write a config the guard cannot read.
+
+    Before this, ``list_add`` left the ``[]`` in place and appended an item under
+    it, which is a scalar followed by an orphan list item. ``ngcommon.yaml_load``
+    raises ``AttributeError: 'dict' object has no attribute 'append'`` on that
+    shape — so the commit would have been signed and then unreadable.
+    """
+    out = list_add(EMPTY_LIST_FIXTURE, "blocking.browser_extension.blocked_urls",
+                   "youtube.com")
+    assert "[]" not in out
+    doc = ng.yaml_load(out)  # must not raise
+    assert doc["blocking"]["browser_extension"]["blocked_urls"] == ["youtube.com"]
+    # Its neighbours are untouched, comment included.
+    assert "# Sites blocked during curfew." in out
+    assert doc["blocking"]["native_apps"]["enabled"] is True
+
+
+def test_emptying_a_list_restores_the_inline_empty_list():
+    """A bare ``key:`` parses to None, not to []. Two different types for every
+    consumer downstream, and a spurious direction for the signer's classifier."""
+    one = list_add(EMPTY_LIST_FIXTURE, "blocking.browser_extension.blocked_urls",
+                   "youtube.com")
+    back = list_remove(one, "blocking.browser_extension.blocked_urls", "youtube.com")
+    assert ng.yaml_load(back)["blocking"]["browser_extension"]["blocked_urls"] == []
+    assert back == EMPTY_LIST_FIXTURE, "add-then-remove must be byte-identical"
+
+
+def test_removing_one_of_several_leaves_the_list_a_list():
+    text = list_add(
+        list_add(EMPTY_LIST_FIXTURE, "blocking.browser_extension.blocked_urls", "a.com"),
+        "blocking.browser_extension.blocked_urls", "b.com")
+    out = list_remove(text, "blocking.browser_extension.blocked_urls", "a.com")
+    assert ng.yaml_load(out)["blocking"]["browser_extension"]["blocked_urls"] == ["b.com"]
+    assert "[]" not in out, "a list that still has items must not regain the inline []"

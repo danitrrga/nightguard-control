@@ -17,9 +17,14 @@ import qs.Ui
 // readers of the same command disagree for up to a tick, and a panel that
 // disagrees with its own bar icon is worse than either being slightly stale.
 //
-// It reads and never writes. Nothing here spends a token, grants grace or edits
-// anything; both actions open the terminal UI, which is the one sanctioned
-// editor.
+// It can now write, and the way it writes is the product. An edit stages
+// locally, `ngtui propose` asks the SIGNER'S OWN classifier what that edit does
+// and what it costs, the cost and any refusal go on screen, and only then does
+// a confirmation lead to `pkexec` and the root signer. Nothing here classifies
+// a direction, counts a token or decides a refusal; it renders what the signer
+// said. The staging and the two CLI calls live in NightguardWriter.qml, shared
+// with the workshop so the surface that prices a change and the surface that
+// signs it can never drift apart.
 Panel {
   id: root
   moduleName: "danitrrga.nightguard"
@@ -124,6 +129,42 @@ Panel {
   function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
   function refresh() { if (hostWidget) hostWidget.refresh() }
 
+  // The staging + signing path, shared with the workshop. Re-reading after a
+  // commit is not optimism-avoidance decoration: the token count, the roster
+  // and the switches must all come back from the config that was actually
+  // signed, never from what this panel believed it asked for.
+  NightguardWriter {
+    id: writer
+    tokensTotal: root.tokensTotal > 0 ? root.tokensTotal : 3
+    onCommitted: root.refresh()
+  }
+
+  readonly property color resultColor: {
+    switch (writer.resultKind) {
+    case "ok":        return Color.accent
+    case "refused":   return root.urgent
+    case "error":     return root.urgent
+    default:          return root.dim
+    }
+  }
+
+  // The description under each switch says what the state MEANS, not what it
+  // is. "0 bloqueados" could not tell "off" from "on with nothing to enforce",
+  // and those are opposite problems.
+  readonly property string gamesDescription: {
+    if (!blocking) return "—"
+    return blocking.games
+      ? "Steam y Heroic, detectados solos según los instalas"
+      : "los juegos que instales no quedan cubiertos"
+  }
+
+  readonly property string sitesDescription: {
+    if (!blocking) return "—"
+    if (!blocking.sites_enabled) return "desactivado — la política del navegador no se aplica"
+    if (blocking.sites === 0) return "activo, pero sin ninguna dirección que aplicar"
+    return blocking.sites + (blocking.sites === 1 ? " dirección" : " direcciones") + " · vía la política del navegador"
+  }
+
   // Where the first action button sits on screen while the panel is open.
   // Published so a test can put a real pointer on it: driving the same function
   // over IPC proves the function works, not that the button is reachable, and
@@ -133,7 +174,15 @@ Panel {
     var p = tuiButton.mapToGlobal(0, 0)
     return { x: p.x, y: p.y, w: tuiButton.width, h: tuiButton.height }
   }
-  function openTui() { if (hostWidget) hostWidget.openTui() }
+  // The workshop is a second entry point of this same plugin, so the shell
+  // opens it by id rather than the panel spawning a process of its own. `toggle`
+  // and not `summon`: clicking twice should put it away, not summon a second.
+  function openWorkshop() {
+    // Single-quoted: `bar.run` hands the string to `bash -lc`, and an unquoted
+    // {} is one comma away from being brace-expanded into something else.
+    if (root.bar) root.bar.run("omarchy-shell shell toggle danitrrga.nightguard '{}'")
+    root.close()
+  }
 
   // A missing or non-numeric minute reads as "absent" rather than as undefined,
   // which QML complains about once per binding per repaint. An older ngtui has
@@ -371,111 +420,6 @@ Panel {
     }
   }
 
-  // A switch that does not exist yet would be a lie told by affordance, so
-  // these carry their state as a word instead. The card shape is the one the
-  // control will take when the signing path lands, so the panel does not have
-  // to be relaid out around it later.
-  component FactCard: Rectangle {
-    id: factCard
-    property string label: ""
-    property string detailText: ""
-    property string value: ""
-    property bool alarm: false
-
-    implicitHeight: factCol.implicitHeight + Style.space(16)
-    radius: Style.cornerRadius
-    color: Style.normalFillFor(root.foreground, Color.accent)
-    border.width: Style.normalBorderWidth
-    border.color: Style.normalBorderFor(root.foreground, Color.accent)
-
-    Column {
-      id: factCol
-      x: Style.spacing.rowPaddingX
-      y: Style.space(8)
-      width: parent.width - Style.spacing.rowPaddingX * 2
-      spacing: Style.spacing.labelGap
-
-      Item {
-        width: parent.width
-        implicitHeight: Math.max(factLabel.implicitHeight, factValue.implicitHeight)
-
-        Text {
-          id: factLabel
-          textFormat: Text.PlainText
-          anchors.left: parent.left
-          anchors.verticalCenter: parent.verticalCenter
-          text: factCard.label
-          color: root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.subtitle
-          font.bold: true
-        }
-
-        Text {
-          id: factValue
-          textFormat: Text.PlainText
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          text: factCard.value
-          color: factCard.alarm ? root.urgent : root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-      }
-
-      Text {
-        textFormat: Text.PlainText
-        width: parent.width
-        visible: factCard.detailText !== ""
-        text: factCard.detailText
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
-      }
-    }
-  }
-
-  // Label left, value right — the shell's own row shape.
-  component InfoRow: Item {
-    id: infoRow
-    property string title: ""
-    property string value: ""
-    property bool muted: false
-    // A third state exists here that `muted` cannot express: an entry that
-    // matches nothing is neither normal nor de-emphasised, it is wrong. The
-    // colour is a role rather than a boolean so the row stays one component.
-    property color valueColor: infoRow.muted ? root.dim : root.foreground
-
-    implicitHeight: Math.max(rowTitle.implicitHeight, rowValue.implicitHeight)
-
-    Text {
-      id: rowTitle
-      textFormat: Text.PlainText
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-      text: infoRow.title
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-    }
-
-    Text {
-      id: rowValue
-      textFormat: Text.PlainText
-      anchors.right: parent.right
-      anchors.left: rowTitle.right
-      anchors.leftMargin: Style.spacing.sm
-      anchors.verticalCenter: parent.verticalCenter
-      horizontalAlignment: Text.AlignRight
-      text: infoRow.value
-      color: infoRow.valueColor
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-      elide: Text.ElideRight
-    }
-  }
-
   // --- the popup ------------------------------------------------------------
 
   KeyboardPanel {
@@ -486,28 +430,76 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(340))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(620))
+    // The footer is pinned, so its height is part of what the popup must be
+    // tall enough for -- leaving it out let the scroll area eat the apply
+    // button whenever the content was long, which is exactly when it matters.
+    contentHeight: panel.fittedContentHeight(
+      column.implicitHeight + (footer.visible ? footer.implicitHeight + Style.space(10) : 0),
+      Style.space(660))
+
+    // Overlays the whole popup. The gate between a click and an authentication
+    // dialog: it states the consequence in one sentence, in the user's own
+    // terms, using the direction and cost the SIGNER computed -- so the
+    // sentence cannot say "free" about a change the signer is about to charge
+    // for. `selectedIndex: 0` starts on Cancel, because the default answer to
+    // "do you want to weaken this?" at two in the morning is no.
+    ConfirmDialog {
+      id: confirmApply
+      anchors.fill: parent
+      z: 100
+      message: writer.confirmMessage
+      cancelText: "Cancelar"
+      confirmText: writer.applyLabel
+      selectedIndex: 0
+      foreground: root.foreground
+      fontFamily: root.fontFamily
+      onCanceled: { opened = false; selectedIndex = 0 }
+      onConfirmed: { opened = false; selectedIndex = 0; writer.apply() }
+    }
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
 
-      onCloseRequested: root.close()
-      onActivateRequested: root.refresh()
+      // While the confirmation is up, Esc answers the question rather than
+      // closing the panel out from under it.
+      //
+      // There is deliberately no key that CONFIRMS. Enter is one keystroke from
+      // a fingerprint prompt, and a single unmodified keystroke that ends in an
+      // authorised write is exactly the impulse this product exists to slow
+      // down. Confirming is a click, on a button that starts unselected.
+      onCloseRequested: {
+        if (confirmApply.opened) { confirmApply.opened = false; confirmApply.selectedIndex = 0 }
+        else root.close()
+      }
+      onActivateRequested: if (!confirmApply.opened) root.refresh()
       onTabRequested: function(direction) { root.switchPanel(direction) }
-      // Enter/Space only ever reach refresh() — this panel has no per-button
-      // focus, so "Abrir ngtui" (its whole reason to exist) had no keyboard
-      // path at all. A mnemonic, matching the clock panel's 't'/'T' pattern,
-      // rather than building a cursor/onMoveRequested pair for two buttons
+      // Enter/Space only ever reach refresh(), so the panel's own actions had
+      // no keyboard path at all. Mnemonics, matching the clock panel's 't'/'T'
+      // pattern, rather than a cursor/onMoveRequested pair for three buttons
       // (found in the cross-model UI audit, 2026-09-07).
+      //
+      // 'a' is deliberately NOT bound to apply: a single unmodified keystroke
+      // that leads to an authentication dialog is the impulse this whole
+      // product exists to slow down.
       onTextKey: function(t) {
+        if (confirmApply.opened) return
         if (t === "r" || t === "R") root.refresh()
-        else if (t === "o" || t === "O") root.openTui()
+        else if (t === "o" || t === "O") root.openWorkshop()
+        else if (t === "d" || t === "D") writer.discard()
       }
 
+      // The scroll holds everything you READ. What you must ACT on is pinned
+      // below it: a cost line and an apply button that can be scrolled out of
+      // sight are a cost line and an apply button the user does not know are
+      // there, and this is the one place in the product where that matters.
       Flickable {
         id: panelFlick
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: footer.top
+        anchors.bottomMargin: footer.visible ? Style.space(10) : 0
         contentWidth: width
         contentHeight: column.implicitHeight
         clip: true
@@ -696,28 +688,96 @@ Panel {
           // Not part of the roster above. These are settings that decide what
           // ELSE falls, and running them together as identical lines was what
           // made the whole panel read as four loose facts.
-          FactCard {
+          //
+          // Real switches, because the write path exists now. A switch shows
+          // the value it WOULD have once applied, not the value on disk --
+          // otherwise the control the user just flipped snaps back while the
+          // change sits waiting in the pending list, which reads as the click
+          // having failed.
+          Toggle {
             width: parent.width
             label: "Bloquear juegos"
-            value: !root.blocking ? "—" : (root.blocking.games ? "activo" : "sin bloquear")
-            alarm: !!root.blocking && !root.blocking.games
-            detailText: !root.blocking ? ""
-                        : (root.blocking.games
-                           ? "Steam y Heroic, detectados solos según los instalas"
-                           : "los juegos que instales no quedan cubiertos")
+            description: root.gamesDescription
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            checked: writer.stagedValue("blocking.native_apps.block_games",
+                                        !!root.blocking && root.blocking.games === true) === true
+            onClicked: writer.stage("blocking.native_apps.block_games", "set", !checked,
+                                    checked ? "Dejar de bloquear juegos" : "Bloquear juegos")
           }
 
-          FactCard {
+          Toggle {
             width: parent.width
             label: "Bloquear sitios"
-            value: !root.blocking ? "—" : (root.blocking.sites + " bloqueados")
-            alarm: !!root.blocking && root.blocking.sites_enabled && root.blocking.sites === 0
-            detailText: !root.blocking ? ""
-                        : (!root.blocking.sites_enabled
-                           ? "desactivado — la política del navegador no se aplica"
-                           : (root.blocking.sites === 0
-                              ? "activo, pero sin ninguna dirección que aplicar"
-                              : "vía la política del navegador"))
+            description: root.sitesDescription
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            checked: writer.stagedValue("blocking.browser_extension.enabled",
+                                        !!root.blocking && root.blocking.sites_enabled === true) === true
+            onClicked: writer.stage("blocking.browser_extension.enabled", "set", !checked,
+                                    checked ? "Dejar de bloquear sitios" : "Bloquear sitios")
+          }
+
+          // ---------- what is waiting to be signed ----------
+          // Absent entirely when nothing is staged: a section that is always
+          // there and usually empty teaches the eye to skip it, and this is the
+          // one section that must never be skipped.
+          PanelSeparator {
+            width: parent.width
+            foreground: root.foreground
+            visible: writer.count > 0
+          }
+
+          PanelSectionHeader {
+            width: parent.width
+            visible: writer.count > 0
+            text: "CAMBIOS PENDIENTES"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.spacing.xs
+            visible: writer.count > 0
+
+            Repeater {
+              model: writer.ops
+
+              Rectangle {
+                required property var modelData
+                required property int index
+                width: column.width
+                implicitHeight: pendingLabel.implicitHeight + Style.space(12)
+                radius: Style.cornerRadius
+                color: Style.normalFillFor(root.foreground, Color.accent)
+                border.width: Style.normalBorderWidth
+                border.color: Style.normalBorderFor(root.foreground, Color.accent)
+
+                Text {
+                  id: pendingLabel
+                  textFormat: Text.PlainText
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.spacing.rowPaddingX
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: String(parent.modelData.label || parent.modelData.key)
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                }
+
+                PanelActionButton {
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(6)
+                  anchors.verticalCenter: parent.verticalCenter
+                  iconText: "󰅖"
+                  tooltipText: "Quitar este cambio"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: writer.unstage(parent.index)
+                }
+              }
+            }
           }
 
           // ---------- warnings ----------
@@ -764,8 +824,8 @@ Panel {
           PanelSeparator { width: parent.width; foreground: root.foreground }
 
           // ---------- actions ----------
-          // Both open something. Neither changes state: the signer is the only
-          // thing that may, and it is reached through the terminal UI.
+          // The workshop is where the app list is chosen; this panel holds the
+          // two switches that are safe at a glance and nothing else.
           Row {
             width: parent.width
             spacing: Style.space(8)
@@ -773,13 +833,13 @@ Panel {
             Button {
               id: tuiButton
               width: (parent.width - Style.space(8)) * 0.62
-              text: "Abrir ngtui"
-              tooltipText: "La interfaz completa — lo único que puede cambiar algo"
+              text: "Abrir el taller"
+              tooltipText: "Elegir qué aplicaciones y qué sitios mueren en curfew"
               bordered: true
               foreground: root.foreground
               fontFamily: root.fontFamily
               fontSize: Style.font.caption
-              onClicked: root.openTui()
+              onClicked: root.openWorkshop()
             }
 
             Button {
@@ -793,6 +853,73 @@ Panel {
               onClicked: root.refresh()
             }
           }
+        }
+      }
+
+      Column {
+        id: footer
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        spacing: Style.space(8)
+        visible: writer.count > 0 || writer.resultText !== ""
+
+        // The cost, before any authentication. This is the whole reason the
+        // preview call exists and is unprivileged: a polkit dialog must never
+        // be the first place the user learns what a change costs, and it must
+        // never appear at all for a change the signer has already refused.
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          visible: writer.count > 0
+          text: writer.costLine
+          color: writer.refusalReason !== "" ? root.urgent
+                                             : (writer.costsToken ? Color.accent : root.foreground)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+
+        Row {
+          width: parent.width
+          spacing: Style.space(8)
+          visible: writer.count > 0
+
+          Button {
+            width: (parent.width - Style.space(8)) * 0.62
+            text: writer.applyLabel
+            tooltipText: "Firmar y aplicar — pedirá autorización"
+            bordered: true
+            enabled: writer.canApply
+            opacity: writer.canApply ? 1 : 0.45
+            foreground: writer.costsToken ? Color.accent : root.foreground
+            fontFamily: root.fontFamily
+            fontSize: Style.font.caption
+            onClicked: if (writer.canApply) confirmApply.opened = true
+          }
+
+          Button {
+            width: (parent.width - Style.space(8)) * 0.38
+            text: "Descartar"
+            tooltipText: "Olvidar los cambios sin aplicar"
+            bordered: true
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            fontSize: Style.font.caption
+            onClicked: writer.discard()
+          }
+        }
+
+        // What the signer said, in its own words inside a Spanish frame.
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          visible: writer.resultText !== ""
+          text: writer.resultText
+          color: root.resultColor
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
         }
       }
     }

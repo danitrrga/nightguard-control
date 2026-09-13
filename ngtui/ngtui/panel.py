@@ -247,20 +247,33 @@ def theme_view(tokens):
     foreground = pick("foreground", "bright_foreground")
 
     candidates = [c for c in (pick("light_foreground"), pick("dark_foreground"),
-                              pick("muted"), pick("selection")) if c]
+                              pick("muted"), pick("selection"), pick("color8")) if c]
     muted = _dimmer_than(candidates, foreground, background)
 
     view = {
         "background": background,
-        "surface": pick("lighter_background", "selection"),
+        # ``color8`` last on purpose. It is the ANSI "bright black" every
+        # palette declares, and it is the tone a terminal already uses for a
+        # subtle raised fill -- so a theme that ships neither of the named keys
+        # still gets a surface it declared itself, rather than one this file
+        # invented. dos-moos is the live example: it declares
+        # ``selection_background`` (a LIGHT tone, wrong for a fill on a dark
+        # ground) and ``color8`` (#3A4849, right), and nothing else.
+        "surface": pick("lighter_background", "selection", "color8"),
         "foreground": foreground,
         # Never invisible: a palette with no dimmer tone reads body text instead
         # of something that disappears into the background.
         "muted": muted or foreground,
-        "accent": pick("accent", "blue", "cyan"),
-        "ok": pick("green", "bright_green"),
-        "warn": pick("yellow", "bright_yellow"),
-        "alert": pick("red", "bright_red"),
+        # The ANSI numbers close every chain. A colors.toml is free to declare
+        # only ``color1..color15`` and no human aliases at all -- dos-moos does
+        # exactly that for its greens -- and a role that then falls through to
+        # THEME_FALLBACK paints one theme's colour onto another theme's ground.
+        # Reading the number the theme DID declare is the difference between
+        # rendering the user's theme and rendering the author's.
+        "accent": pick("accent", "blue", "cyan", "color4", "color6"),
+        "ok": pick("green", "bright_green", "color2", "color10"),
+        "warn": pick("yellow", "bright_yellow", "color3", "color11"),
+        "alert": pick("red", "bright_red", "color1", "color9"),
     }
     return {k: (v or THEME_FALLBACK[k]) for k, v in view.items()}
 
