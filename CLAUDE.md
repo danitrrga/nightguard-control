@@ -3,7 +3,8 @@
 
 **Nightguard Control**
 
-A Windows desktop app (Tauri v2) that is the **single sanctioned editor** for a
+A Linux desktop surface — an omarchy-shell (Quickshell/QML) plugin — that is the
+**single sanctioned editor** for a
 "nightguard" curfew configuration — a self-binding ("anti-me") discipline tool. It
 rate-limits how often you can *weaken* your own curfew, grants a small once-daily timed
 bypass, and pairs with a guard hook that **auto-reverts any out-of-band hand edits** to
@@ -16,8 +17,13 @@ reverts. Everything else is secondary to that guarantee holding.
 
 ### Constraints
 
-- **Tech stack**: Tauri v2, Rust backend (sole writer/signer), vanilla TS + Vite frontend — keep deps lean.
-- **Platform**: Windows-only (DPAPI, PowerShell guard).
+- **Tech stack (live)**: omarchy-shell plugin in QML (the panel, the workshop), a
+  dependency-free Python CLI (`ngtui`) behind it, and a root Python signer
+  (`nightguard_ctl.py`) as the sole writer. Authorisation is `pkexec`/polkit.
+- **Platform**: Linux / Omarchy 4 / Hyprland.
+- **Retired**: the Windows Tauri/Rust tree (`src/`, `src-tauri/`, `crates/`) and
+  the `ngtui` Textual terminal app. Neither is built, tested or deployed; the
+  notes below about Tauri, DPAPI and PowerShell describe that retired product.
 - **Security**: HMAC-SHA256 over config + state; key at rest via DPAPI (CurrentUser); atomic writes; fail-closed on tamper.
 - **Interop**: Rust app and PowerShell guard must verify the *same* HMAC key (shared DPAPI blob).
 - **Design**: Moonlit Indigo palette (`--bg #0c0e14 --surface #161a24 --border #242a38 --text #e8eaf0 --dim #8b91a3 --accent #7aa2ff`), Roboto, YouTube-Studio aesthetic, own brand (no borrowed logos).

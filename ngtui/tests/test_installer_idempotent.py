@@ -1,212 +1,123 @@
-"""D-07: the author-facing installer is idempotent, backup-first, and never
-corrupts the JSONC it merges into.
+"""The author-facing installer is idempotent, backup-first, and never clobbers.
 
-This is the T-12-10 safety net — it proves, headless against FIXTURE copies,
-that ``packaging/omarchy/install.sh`` can be run against the author's live
-desktop configs without:
-  * duplicating its managed block on a re-run (run-twice-no-dup),
-  * losing the prior file (a ``*.bak.<epoch>`` is written before the first edit),
-  * stripping the author's ``//`` comments (text-only merge, never jq/JSON), or
-  * producing a structurally invalid ``config.jsonc`` (a malformed injection —
-    missing comma / stray brace — must fail the JSON-parse assertion here rather
-    than at the live Plan-06 human-verify, where a bad merge breaks the bar).
+It merges into a hand-maintained config the author also edits, so the three
+properties that matter are: a re-run detects its own marker and does not
+duplicate; the file is copied to `<name>.bak.<epoch>` BEFORE the first edit;
+and everything outside the managed block comes out byte-identical, comments
+included.
 
-Every write is redirected into ``tmp_path`` via the installer's ``NG_*`` env
-vars, and ``NG_SKIP_RELOAD=1`` suppresses the ngtui prereq check + the
-waybar/hyprland reload so the run is fully headless. ``HOME`` is pointed at an
-unused temp dir so a stray default-path write would be caught.
+`NG_*` env vars redirect every write into a temp dir and `NG_SKIP_RELOAD`
+suppresses the prereq check and the hyprland reload, so the run is fully
+headless and never touches the live desktop.
+
+This file used to test the Waybar merge as well — a structural TEXT insertion
+into `config.jsonc` that had to preserve `//` comments. That merge is gone with
+the terminal app it launched, and it was already inert before that: Omarchy 4
+replaced Waybar with Quickshell, and `~/.config/waybar` does not exist on this
+box, so the module had been merging into a file nobody reads.
 """
 from __future__ import annotations
 
-import json
+import glob
 import os
-import re
 import shutil
 import subprocess
-from pathlib import Path
 
-import pytest
-
-_REPO = Path(__file__).resolve().parents[2]
-_INSTALLER = _REPO / "packaging" / "omarchy" / "install.sh"
-_FIXTURES = Path(__file__).resolve().parent / "fixtures"
-
-_MARKER = ">>> nightguard"
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO = os.path.dirname(os.path.dirname(_HERE))
+_INSTALLER = os.path.join(_REPO, "packaging", "omarchy", "install.sh")
+_FIXTURES = os.path.join(_HERE, "fixtures")
+_MARKER = ">>> nightguard (managed)"
 
 
-def _strip_jsonc(text: str) -> str:
-    """Remove ``/* */`` block comments then ``//`` line comments (JSONC -> JSON).
-
-    The fixtures deliberately contain no ``//`` inside string values, so the
-    naive line-comment strip is safe here.
-    """
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    text = re.sub(r"(?m)//.*$", "", text)
-    return text
-
-
-def _make_env(tmp_path: Path):
-    """Copy the three fixtures into ``tmp_path`` and build the redirected env."""
-    cfg = tmp_path / "config.jsonc"
-    style = tmp_path / "style.css"
-    hypr = tmp_path / "hyprland.conf"
-    shutil.copy(_FIXTURES / "config.jsonc", cfg)
-    shutil.copy(_FIXTURES / "style.css", style)
-    shutil.copy(_FIXTURES / "hyprland.conf", hypr)
-
-    icon_base = tmp_path / "icons" / "hicolor"
-    apps = tmp_path / "applications"
-    bindir = tmp_path / "bin"
-    fake_home = tmp_path / "unused_home"
-
+def _run(tmp_path, hypr):
     env = dict(os.environ)
-    env.update(
-        {
-            "NG_WAYBAR_CONFIG": str(cfg),
-            "NG_WAYBAR_STYLE": str(style),
-            "NG_HYPR_CONF": str(hypr),
-            "NG_ICON_BASE": str(icon_base),
-            "NG_APPLICATIONS_DIR": str(apps),
-            "NG_BIN_DIR": str(bindir),
-            "NG_SKIP_RELOAD": "1",
-            # Any accidental default-path write would land under this unused HOME.
-            "HOME": str(fake_home),
-        }
+    env.update({
+        "HOME": str(tmp_path / "home"),
+        "NG_HYPR_CONF": str(hypr),
+        "NG_ICON_BASE": str(tmp_path / "icons"),
+        "NG_APPLICATIONS_DIR": str(tmp_path / "applications"),
+        "NG_BIN_DIR": str(tmp_path / "bin"),
+        "NG_SKIP_RELOAD": "1",
+    })
+    os.makedirs(env["HOME"], exist_ok=True)
+    proc = subprocess.run(["bash", _INSTALLER], capture_output=True, text=True, env=env)
+    assert proc.returncode == 0, proc.stderr
+    return proc
+
+
+def _hypr_fixture(tmp_path):
+    path = tmp_path / "hyprland.conf"
+    shutil.copy(os.path.join(_FIXTURES, "hyprland.conf"), path)
+    return path
+
+
+def test_running_it_twice_adds_the_block_once(tmp_path):
+    hypr = _hypr_fixture(tmp_path)
+    original = hypr.read_text(encoding="utf-8")
+
+    _run(tmp_path, hypr)
+    after_one = hypr.read_text(encoding="utf-8")
+    assert after_one.count(_MARKER) == 1, "the managed block was not injected once"
+
+    _run(tmp_path, hypr)
+    after_two = hypr.read_text(encoding="utf-8")
+    assert after_two.count(_MARKER) == 1, (
+        "a second run duplicated the managed block — the marker guard is not working"
     )
-    paths = {
-        "cfg": cfg,
-        "style": style,
-        "hypr": hypr,
-        "icon_base": icon_base,
-        "apps": apps,
-        "bindir": bindir,
-        "fake_home": fake_home,
-    }
-    return env, paths
+    assert after_two == after_one, "the second run changed the file at all"
 
-
-def _run(env) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["bash", str(_INSTALLER)], env=env, capture_output=True, text=True
-    )
-
-
-def test_installer_runs_twice_no_dup_backup_and_preserves_comments(tmp_path):
-    env, paths = _make_env(tmp_path)
-
-    r1 = _run(env)
-    assert r1.returncode == 0, f"run 1 failed:\n{r1.stderr}"
-    r2 = _run(env)
-    assert r2.returncode == 0, f"run 2 failed:\n{r2.stderr}"
-
-    # --- run-twice-no-dup: exactly one managed block per mutated config -------
-    for key in ("cfg", "style", "hypr"):
-        text = paths[key].read_text()
-        n = text.count(_MARKER)
-        assert n == 1, f"{key}: expected exactly one managed block, found {n}"
-
-    cfg_text = paths["cfg"].read_text()
-
-    # --- modules-center membership present exactly once ----------------------
-    members = re.findall(r'^\s*"custom/nightguard",\s*$', cfg_text, flags=re.M)
-    assert len(members) == 1, (
-        f'"custom/nightguard" array membership must appear once, found {len(members)}'
+    # Everything the author wrote is still there, byte for byte, ahead of ours.
+    assert after_one.startswith(original), (
+        "the injection rewrote the author's own config instead of appending to it"
     )
 
-    # --- backup-first: at least one *.bak.* per mutated config ----------------
-    for key in ("cfg", "style", "hypr"):
-        p = paths[key]
-        baks = list(p.parent.glob(p.name + ".bak.*"))
-        assert baks, f"{key}: no backup file was created before the merge"
 
-    # --- JSONC comment preservation (T-12-11) --------------------------------
-    assert "// Waybar config (test fixture)" in cfg_text, (
-        "the author's original // comment must survive the text merge"
-    )
+def test_the_file_is_backed_up_before_it_is_touched(tmp_path):
+    hypr = _hypr_fixture(tmp_path)
+    original = hypr.read_text(encoding="utf-8")
 
-    # --- structural validity after merge (T-12-10 headless safety net) -------
-    parsed = json.loads(_strip_jsonc(cfg_text))
-    assert "custom/nightguard" in parsed, "module object must be injected"
-    assert "custom/nightguard" in parsed["modules-center"], (
-        "the text injection must land inside the modules-center array"
-    )
+    _run(tmp_path, hypr)
+    backups = glob.glob(str(hypr) + ".bak.*")
+    assert len(backups) == 1, "no backup, or more than one: %s" % backups
+    with open(backups[0], encoding="utf-8") as fh:
+        assert fh.read() == original, "the backup is not the file as it was"
 
-    # --- .desktop + menu landed in the redirected dirs -----------------------
-    assert (paths["apps"] / "nightguard.desktop").is_file()
-    assert (paths["bindir"] / "ngtui-menu").is_file()
-
-    # --- icons: only assert when rsvg-convert is available -------------------
-    if shutil.which("rsvg-convert"):
-        assert (
-            paths["icon_base"] / "16x16" / "apps" / "org.omarchy.ngtui.png"
-        ).is_file()
-        assert (
-            paths["icon_base"] / "512x512" / "apps" / "org.omarchy.ngtui.png"
-        ).is_file()
-    else:  # pragma: no cover - environment-dependent
-        pytest.skip("rsvg-convert absent — icon rasterization not asserted")
-
-    # --- never touched the default $HOME paths -------------------------------
-    fake_home = paths["fake_home"]
-    assert not (fake_home / ".config").exists()
-    assert not (fake_home / ".local").exists()
+    # A second run makes no edit, so it must not leave a second backup either.
+    _run(tmp_path, hypr)
+    assert len(glob.glob(str(hypr) + ".bak.*")) == 1
 
 
-def test_installer_handles_inline_modules_center_array(tmp_path):
-    """The author's live ``config.jsonc`` keeps ``modules-center`` as a SINGLE
-    inline array (``["clock", "custom/weather", ...]``), not the fixture's
-    multi-line form. The membership insert must land inside that inline array
-    (Plan 06 live-run finding) and stay idempotent + JSON-valid on a re-run.
-    """
-    env, paths = _make_env(tmp_path)
+def test_comments_outside_the_block_survive(tmp_path):
+    hypr = _hypr_fixture(tmp_path)
+    comments = [line for line in hypr.read_text(encoding="utf-8").splitlines()
+                if line.strip().startswith("#")]
+    assert comments, "the fixture has no comments, so this test would pass over nothing"
 
-    # Rewrite the fixture's multi-line modules-center as one inline array.
-    cfg = paths["cfg"]
-    original = cfg.read_text()
-    inline = re.sub(
-        r'"modules-center"\s*:\s*\[[^\]]*\]',
-        '"modules-center": ["clock", "custom/weather", "custom/update"]',
-        original,
-        count=1,
-        flags=re.S,
-    )
-    assert inline != original, "fixture rewrite to inline modules-center failed"
-    cfg.write_text(inline)
-
-    assert _run(env).returncode == 0, "run 1 (inline) failed"
-    assert _run(env).returncode == 0, "run 2 (inline) failed"
-
-    cfg_text = cfg.read_text()
-
-    # Exactly one managed block + one array membership after two runs.
-    assert cfg_text.count(_MARKER) == 1
-    members = re.findall(r'"custom/nightguard"\s*,', cfg_text)
-    assert len(members) == 1, (
-        f'inline membership must appear once, found {len(members)}'
-    )
-
-    # Structurally valid and the module is IN modules-center (not just defined).
-    parsed = json.loads(_strip_jsonc(cfg_text))
-    assert "custom/nightguard" in parsed, "module object must be injected"
-    assert "custom/nightguard" in parsed["modules-center"], (
-        "inline text injection must land inside the modules-center array"
-    )
-    assert "// Waybar config (test fixture)" in cfg_text, "comment must survive"
+    _run(tmp_path, hypr)
+    after = hypr.read_text(encoding="utf-8").splitlines()
+    for line in comments:
+        assert line in after, "the installer ate a comment: %r" % line
 
 
-def test_malformed_injection_would_fail_json_parse(tmp_path):
-    """Guard the guard: a stray brace in the merged JSONC must FAIL the parse.
+def test_it_installs_nothing_that_opens_the_retired_terminal_app(tmp_path):
+    """The launcher, the right-click menu and the Waybar module all existed to
+    OPEN the terminal editor. Retiring it and leaving them behind would put a
+    desktop entry in the launcher that fails with exit 2."""
+    hypr = _hypr_fixture(tmp_path)
+    _run(tmp_path, hypr)
 
-    Proves the structural-validity assertion above is load-bearing — if the
-    installer ever produced a malformed config, ``json.loads`` after comment
-    strip would raise, catching the break headless (not at the live run).
-    """
-    env, paths = _make_env(tmp_path)
-    assert _run(env).returncode == 0
+    applications = tmp_path / "applications"
+    assert not (applications / "nightguard.desktop").exists()
+    assert not (tmp_path / "bin" / "ngtui-menu").exists()
 
-    good = paths["cfg"].read_text()
-    json.loads(_strip_jsonc(good))  # sanity: the real merge parses
+    import re as _re
 
-    broken = good.replace('"layer": "top",', '"layer": "top",,', 1)
-    with pytest.raises(json.JSONDecodeError):
-        json.loads(_strip_jsonc(broken))
+    with open(_INSTALLER, encoding="utf-8") as fh:
+        script = fh.read()
+    # Comments stripped first: the script SHOULD explain in prose what was
+    # removed and why. What must be gone is the code.
+    script = _re.sub(r"^\s*#.*$", "", script, flags=_re.M)
+    for gone in ("merge_waybar_config", "nightguard.desktop", "ngtui-menu",
+                 "NG_WAYBAR_CONFIG", "NG_WAYBAR_STYLE"):
+        assert gone not in script, "install.sh still installs %s" % gone

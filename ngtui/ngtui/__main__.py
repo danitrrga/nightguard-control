@@ -1,22 +1,29 @@
 """Console entry point + argv front-controller (`ngtui = ngtui.__main__:main`).
 
-Routing:
-  * ``ngtui status [--json]`` -> a head-less, key-less reader. It emits a single
-    line of Waybar-shaped JSON to stdout and ALWAYS exits 0 — any failure (a bad
-    trust-stack import, an OSError, a malformed config) is caught broadly and
-    degraded to the fixed ``status.UNAVAILABLE`` object. It never imports
-    ``textual``/``ngtui.app`` (the TUI cost is paid only on the bare branch).
-  * bare ``ngtui`` (anything else) -> the interactive Textual TUI, behind a
-    TTY loud-fail guard so a non-TTY launch (a Waybar exec, a pipe) fails with
-    ``SystemExit(2)`` instead of spewing escape sequences.
+Five head-less subcommands and nothing else. Every one emits a single line of
+JSON on stdout and ALWAYS exits 0 — any failure (a bad trust-stack import, an
+OSError, a malformed config) is caught broadly and degraded to a fixed
+"unavailable" object inside that JSON. They are read by a QML ``Process``,
+which sees a stream and an exit status and nothing more, so a non-zero exit
+would be indistinguishable from a missing binary.
 
-Note on the trust-stack defaults: ``ngtui.backend``'s module-level bootstrap reads
-``NIGHTGUARD_STACK_DIR`` / ``NIGHTGUARD_DIR`` from the environment and, when they
-are unset, falls back to *hardcoded author paths* (``os.environ.setdefault`` to a
-fixed LifeOS directory) — it does not unconditionally "set" them. A generic
-default is a later-phase concern. ``import ngtui.backend`` can also raise
-``RuntimeError`` at import time on a poisoned stack dir, which is exactly why the
-status path imports it INSIDE its try-block (fail closed to ``unavailable``).
+    ngtui status --json           the bar icon's cheap poll
+    ngtui panel                   the whole desktop state, for the panel
+    ngtui apps                    the blockable-app catalog, for the picker
+    ngtui propose --ops-json ...  apply staged edits, price them, write nothing
+    ngtui commit --from <path>    pkexec -> the root signer
+
+The interactive terminal app that used to live behind a bare ``ngtui`` is
+retired (PANEL-03). It was retired in one step, once the desktop panel could
+edit everything it could -- which is checked by ``tests/test_parity.py`` rather
+than asserted. The bare invocation now says so and exits 2 instead of starting
+something that no longer exists.
+
+Note on the trust-stack defaults: ``ngtui.backend``'s module-level bootstrap
+reads ``NIGHTGUARD_STACK_DIR`` / ``NIGHTGUARD_DIR`` from the environment and,
+when they are unset, falls back to *hardcoded author paths*. ``import
+ngtui.backend`` can raise ``RuntimeError`` at import time on a poisoned stack
+dir, which is exactly why every subcommand imports it INSIDE its try-block.
 """
 from __future__ import annotations
 
@@ -36,23 +43,28 @@ def main() -> None:
         sys.exit(_propose(argv[1:]))  # head-less; emits JSON, exits 0
     if argv and argv[0] == "commit":
         sys.exit(_commit(argv[1:]))   # head-less; emits JSON, exits 0
-    _run_tui()  # bare `ngtui`
+    _no_terminal_app(argv)
 
 
-def _run_tui() -> None:
-    """Launch the interactive Textual TUI, guarded on a real TTY (Pitfall 4).
+def _no_terminal_app(argv: list[str]) -> None:
+    """Say what happened to the terminal app, and exit 2.
 
-    The TTY guard lives on THIS branch only — never a blanket check at the top of
-    ``main()``, which would break the head-less ``status`` (run from a Waybar exec
-    with no TTY). ``ngtui.app``/``textual`` is imported lazily, AFTER the guard, so
-    the status path never pays textual's import cost.
+    A bare ``ngtui`` used to start an interactive editor. Somebody with that in
+    muscle memory, or a stale .desktop file, deserves a sentence rather than a
+    traceback or a silent success -- and deserves to be told where the editor
+    went, not merely that it is gone.
     """
-    if not sys.stdin.isatty():
-        sys.stderr.write("ngtui must be run in a terminal (no TTY on stdin).\n")
-        raise SystemExit(2)
-    from ngtui.app import NightguardApp  # lazy: status never imports textual
-
-    NightguardApp().run()
+    if argv:
+        sys.stderr.write("ngtui: unknown command %r\n" % argv[0])
+    sys.stderr.write(
+        "The terminal editor is retired. Everything it could change now lives in "
+        "the Nightguard panel:\n"
+        "  click the shield in the bar, or\n"
+        "  omarchy-shell shell toggle danitrrga.nightguard '{}'   (the workshop)\n"
+        "\n"
+        "This command still answers: status --json, panel, apps, propose, commit.\n"
+    )
+    raise SystemExit(2)
 
 
 def _status(args: list[str]) -> int:

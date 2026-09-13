@@ -28,7 +28,8 @@ import qs.Ui
 //     compositor focus grabs left fighting.
 //
 // It reads and never writes. Only the signer may change state, so nothing here
-// spends a token, grants grace or edits anything.
+// spends a token, grants grace or edits anything — the panel this opens is
+// where an edit is staged, and the signer is still the only thing that writes.
 BarWidget {
   id: root
   moduleName: "danitrrga.nightguard"
@@ -103,8 +104,12 @@ BarWidget {
     if (!detailProc.running) detailProc.running = true
   }
 
-  function openTui() {
-    if (root.bar) root.bar.run("omarchy-launch-or-focus-tui ngtui")
+  // The workshop, which is where the editing lives now. A second entry point of
+  // this same plugin, so the shell opens it by id rather than this widget
+  // spawning a process of its own; `toggle` and not `summon` so a second press
+  // puts it away instead of summoning another.
+  function openWorkshop() {
+    if (root.bar) root.bar.run("omarchy-shell shell toggle danitrrga.nightguard '{}'")
     root.close()
   }
 
@@ -238,7 +243,7 @@ BarWidget {
 
     // The button paths, reachable from a script. Same functions, same arguments.
     function activate(which: string): string {
-      if (which === "tui") { root.openTui(); return "ok" }
+      if (which === "workshop") { root.openWorkshop(); return "ok" }
       if (which === "refresh") { root.refresh(); return "ok" }
       return "unknown action: " + which
     }
@@ -256,7 +261,7 @@ BarWidget {
 
     onPressed: function(b) {
       if (b === Qt.MiddleButton) root.refresh()
-      else if (b === Qt.RightButton) root.openTui()
+      else if (b === Qt.RightButton) root.openWorkshop()
       else {
         root.refresh()
         root.togglePanel()

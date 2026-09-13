@@ -222,23 +222,32 @@ def test_status_jq_valid_single_line(ng_data_dir_outside):
     assert obj["class"] != "unavailable"
 
 
-def test_tui_requires_tty(monkeypatch):
-    """Bare ``ngtui`` with no TTY fails loudly BEFORE importing textual (Pitfall 4)."""
+def test_the_bare_command_says_where_the_editor_went(capsys):
+    """A bare ``ngtui`` used to start an interactive editor. It is retired, and
+    somebody with that in muscle memory — or a stale .desktop file — deserves a
+    sentence rather than a traceback or a silent success.
+
+    Exit 2 and not 0: a launcher that treats success as "it opened" must not be
+    told this opened.
+    """
     from ngtui import __main__ as cli
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
-    # Poison the lazy app import: if the guard fired first, this never runs.
-    monkeypatch.setitem(
-        sys.modules,
-        "ngtui.app",
-        _ExplodingModule("ngtui.app imported before the TTY guard fired"),
-    )
-
     with pytest.raises(SystemExit) as exc:
-        cli._run_tui()
+        cli._no_terminal_app([])
+    assert exc.value.code == 2
 
-    assert exc.value.code != 0  # loud, non-zero — never a silent escape-code spew
+    err = capsys.readouterr().err
+    assert "terminal editor is retired" in err
+    assert "danitrrga.nightguard" in err, "it must say where the editor went"
+    assert "status --json" in err, "and what this command still answers"
 
+
+def test_an_unknown_subcommand_is_named_back(capsys):
+    from ngtui import __main__ as cli
+
+    with pytest.raises(SystemExit):
+        cli._no_terminal_app(["edit"])
+    assert "unknown command 'edit'" in capsys.readouterr().err
 
 def test_status_does_not_import_textual():
     """The status path must not pull ``textual`` into sys.modules (head-less).

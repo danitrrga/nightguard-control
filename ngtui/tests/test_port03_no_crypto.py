@@ -13,7 +13,7 @@ It is designed to FAIL if any of those patterns appear in the source.
 ``<repo>/ngtui/ngtui/ngtui`` — a directory that does not exist. ``rglob`` over a
 missing directory yields nothing, so all three tests below were scanning **zero
 files** and had passed vacuously for the whole of their life. Armed with
-``import hmac`` in ``widgets/status.py``, the scan stayed green. One
+``import hmac`` in a widget module, the scan stayed green. One
 ``parent.parent`` too many: the tests moved into ``ngtui/tests/`` after this path
 was written, and nothing noticed because a scan that finds nothing looks exactly
 like a scan that finds nothing wrong.
@@ -43,7 +43,11 @@ NGTUI_SRC = (pathlib.Path(__file__).parent.parent / "ngtui").resolve()
 
 # The package's floor. Any real ngtui holds at least these; the count is a floor
 # and not an equality so adding a module does not turn this into a chore.
-_ANCHORS = ("__init__.py", "app.py", "backend.py", "theme.py", "panel.py")
+# Anchors: files whose absence means the scan is pointed at the wrong place.
+# `app.py` was one until the terminal app was retired; `proposal.py` and
+# `catalog.py` replace it as the modules the panel actually writes through.
+_ANCHORS = ("__init__.py", "backend.py", "theme.py", "panel.py",
+            "proposal.py", "catalog.py")
 
 
 def _iter_py_files() -> Generator[pathlib.Path, None, None]:

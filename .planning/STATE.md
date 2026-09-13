@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts. *(v2.0: the wall is now root-backed; `sudo` is the past-the-impulse threshold.)*
-**Current focus:** Phase 12.2.1 — omarchy-native-panel
+**Current focus:** Phase 12.2.1 — omarchy-native-panel (panel writes; terminal app retired 2026-09-13)
 
 ## Current Position
 

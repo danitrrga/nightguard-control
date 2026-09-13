@@ -15,7 +15,7 @@
 #
 # Every target path is read from an env var (live defaults below) so the
 # idempotency test can redirect all writes into a temp dir. `NG_SKIP_RELOAD`
-# additionally suppresses the prereq check + the waybar/hyprland reload so the
+# additionally suppresses the prereq check + the hyprland reload so the
 # test runs headless. This is the T-12-10 safety net: prove run-twice-no-dup +
 # backup + comment-preservation against fixtures BEFORE this ever touches the
 # live box (the live run is Plan 06).
@@ -29,8 +29,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- Env-redirectable target paths (live defaults) ---------------------------
-NG_WAYBAR_CONFIG="${NG_WAYBAR_CONFIG:-$HOME/.config/waybar/config.jsonc}"
-NG_WAYBAR_STYLE="${NG_WAYBAR_STYLE:-$HOME/.config/waybar/style.css}"
 NG_HYPR_CONF="${NG_HYPR_CONF:-$HOME/.config/hypr/hyprland.conf}"
 NG_ICON_BASE="${NG_ICON_BASE:-$HOME/.local/share/icons/hicolor}"
 NG_APPLICATIONS_DIR="${NG_APPLICATIONS_DIR:-$HOME/.local/share/applications}"
@@ -56,7 +54,8 @@ fi
 
 # --- (2) inject_block: marker-guarded, backup-first, line-based append --------
 # Safe for line-oriented configs (hyprland.conf, style.css). config.jsonc needs
-# structural insertion and is handled separately (merge_waybar_config).
+# structural insertion, which is why the retired Waybar merge was handled
+# separately from this helper.
 inject_block() {  # $1=target file  $2=block file
   local f="$1" blk="$2"
   if [ ! -f "$f" ]; then
@@ -75,118 +74,22 @@ inject_block() {  # $1=target file  $2=block file
   log "merged managed block into $f"
 }
 
-# --- (5) config.jsonc: TEXT-only structural merge (never jq) ------------------
-# Two independent, independently-guarded edits (Pitfall 3 — a module is only
-# rendered if BOTH its object exists AND its name is in a modules-* array):
-#   (a) inject the module OBJECT as the first property (right after the root
-#       `{`). The Plan-04 snippet ends with `},` (a trailing comma), which is
-#       only JSON-valid as a NON-terminal property — so it goes at the head, not
-#       before the final `}`, keeping the merged file parseable as strict JSON
-#       once comments are stripped (must-have: post-merge JSON parse succeeds).
-#   (b) insert `"custom/nightguard",` into modules-center right after the
-#       `"clock",` array-element anchor (the anchor regex requires the trailing
-#       comma, so it matches the array element, never the `"clock": {` def).
-merge_waybar_config() {
-  local f="$NG_WAYBAR_CONFIG"
-  if [ ! -f "$f" ]; then
-    echo "ERROR: waybar config not found: $f" >&2
-    return 1
-  fi
-  local backed_up=""
-
-  _backup_once() {
-    if [ -z "$backed_up" ]; then
-      backed_up="$f.bak.$(date +%s)"
-      cp -a "$f" "$backed_up"
-      log "backed up to $backed_up"
-    fi
-  }
-
-  # (a) module object
-  if grep -qF "$MARKER" "$f"; then
-    log "waybar module object already merged: $f"
-  else
-    _backup_once
-    local brace_line
-    # `|| true`: a no-match grep returns 1, which under `set -euo pipefail`
-    # would abort the script before the `-z` guard below can handle it.
-    brace_line="$(grep -n '^[[:space:]]*{[[:space:]]*$' "$f" | head -1 | cut -d: -f1 || true)"
-    if [ -z "$brace_line" ]; then
-      echo "ERROR: no root '{' line found in $f" >&2
-      return 1
-    fi
-    local tmp
-    tmp="$(mktemp)"
-    head -n "$brace_line" "$f" >"$tmp"
-    cat "$SCRIPT_DIR/waybar/custom-nightguard.jsonc" >>"$tmp"
-    tail -n +"$((brace_line + 1))" "$f" >>"$tmp"
-    mv "$tmp" "$f"
-    log "injected custom/nightguard module object"
-  fi
-
-  # (b) modules-center membership.
-  # Idempotency probe = the ARRAY element, which (unlike the module-object key
-  # `"custom/nightguard": {`) is followed by a `,` or the closing `]`. The
-  # `[],]` class (leading `]` is literal) matches exactly that and never the
-  # `:`-terminated object key, so a re-run after (a) injected the object does
-  # NOT falsely conclude the membership already landed.
-  if grep -qE '"custom/nightguard"[[:space:]]*[],]' "$f"; then
-    log "custom/nightguard already present in a modules-* array"
-  else
-    _backup_once
-    # Two live array styles are supported (fixtures use multi-line; the author's
-    # live config.jsonc uses a single-line array — Plan 06 execution finding):
-    #   multi-line:  a bare `"clock",` element on its own line.
-    #   inline:      `"modules-center": ["clock", "custom/weather", ...]`.
-    # `|| true` on both anchor greps: a legitimate no-match (e.g. the inline
-    # array style has no bare `"clock",` line) must fall through to the next
-    # branch, not abort under `set -euo pipefail`.
-    local clock_line
-    clock_line="$(grep -nE '^[[:space:]]*"clock",[[:space:]]*$' "$f" | head -1 | cut -d: -f1 || true)"
-    if [ -n "$clock_line" ]; then
-      local tmp
-      tmp="$(mktemp)"
-      head -n "$clock_line" "$f" >"$tmp"
-      printf '    "custom/nightguard",\n' >>"$tmp"
-      tail -n +"$((clock_line + 1))" "$f" >>"$tmp"
-      mv "$tmp" "$f"
-      log "inserted \"custom/nightguard\" into modules-center (multi-line)"
-    else
-      # Inline form: insert right after the `"clock",` element on the
-      # modules-center line (text-only, never a jq round-trip).
-      local inline_line
-      inline_line="$(grep -nE '"modules-center"[[:space:]]*:[[:space:]]*\[.*"clock"' "$f" | head -1 | cut -d: -f1 || true)"
-      if [ -z "$inline_line" ]; then
-        echo "ERROR: no \"clock\" array anchor (multi-line or inline) in $f (expected in modules-center)" >&2
-        return 1
-      fi
-      sed -i "${inline_line}s@\"clock\",[[:space:]]*@\"clock\", \"custom/nightguard\", @" "$f"
-      log "inserted \"custom/nightguard\" into modules-center (inline)"
-    fi
-    # Fail loud if the insert did not actually land (never a silent partial that
-    # leaves the object defined but unrendered — Pitfall 3 / T-12-10).
-    if ! grep -qE '"custom/nightguard"[[:space:]]*[],]' "$f"; then
-      echo "ERROR: failed to insert \"custom/nightguard\" into a modules-* array in $f" >&2
-      return 1
-    fi
-  fi
-}
-
 echo "nightguard installer — merging omarchy artifacts (author-facing, D-07)"
 
 # --- (3) Hyprland windowrule (line-based append) -----------------------------
 inject_block "$NG_HYPR_CONF" "$SCRIPT_DIR/hypr/nightguard.windowrule.conf"
 
-# --- (4) Waybar style (line-based append) ------------------------------------
-inject_block "$NG_WAYBAR_STYLE" "$SCRIPT_DIR/waybar/style-nightguard.css"
-
-# --- (5) Waybar config.jsonc (structural TEXT merge) -------------------------
-merge_waybar_config
-
-# --- (6) .desktop launcher ---------------------------------------------------
-install -d "$NG_APPLICATIONS_DIR"
-install -m644 "$SCRIPT_DIR/nightguard.desktop" "$NG_APPLICATIONS_DIR/nightguard.desktop"
-log "installed nightguard.desktop -> $NG_APPLICATIONS_DIR"
+# Steps 4, 5, 6 and 8 are gone with the terminal app (PANEL-03). They installed
+# a Waybar module, a Waybar style, a .desktop launcher and a right-click menu,
+# and every one of them existed to OPEN the terminal editor. Two of them were
+# already inert before this: Omarchy 4 replaced Waybar with Quickshell and
+# ~/.config/waybar does not exist on this box, so the module and the style had
+# been merging into a file nobody reads.
+#
+# What replaces them is not installed by this script at all. The desktop surface
+# is an omarchy-shell plugin, and deploy.sh copies it into the owner's own
+# plugin directory -- which is where the shell looks and where it hot-reloads
+# from.
 
 # --- (7) Icon: rasterize 16..512 into hicolor + scalable SVG -----------------
 SRC="$SCRIPT_DIR/icons/nightguard.svg"
@@ -202,11 +105,6 @@ else
   log "rsvg-convert absent — skipped icon rasterization (install librsvg for icons)"
 fi
 
-# --- (8) ngtui-menu (right-click read-only menu) -----------------------------
-install -d "$NG_BIN_DIR"
-install -m755 "$SCRIPT_DIR/bin/ngtui-menu" "$NG_BIN_DIR/ngtui-menu"
-log "installed ngtui-menu -> $NG_BIN_DIR"
-
 # --- (9) Cache refresh (immediate visibility, no relogin — D-03/SC-2) --------
 # `-t` skips the missing index.theme in the user hicolor dir (Pitfall 6).
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
@@ -217,19 +115,16 @@ if command -v update-desktop-database >/dev/null 2>&1; then
 fi
 
 # --- (10) Reload live services (skipped under NG_SKIP_RELOAD) -----------------
+# Only Hyprland is signalled now. The Waybar reload went with the module it
+# reloaded, and the desktop surface needs no signal at all: the shell watches
+# its own plugin directory and hot-reloads a changed plugin by itself.
 if [ -z "${NG_SKIP_RELOAD:-}" ]; then
-  if command -v pkill >/dev/null 2>&1; then
-    if pkill -SIGUSR2 waybar; then
-      log "sent SIGUSR2 to waybar (config reload)"
-    else
-      log "waybar reload signal not delivered — a full waybar restart may be needed"
-    fi
-  fi
   if command -v hyprctl >/dev/null 2>&1; then
-    hyprctl reload || log "hyprctl reload non-zero (non-fatal)"
+    hyprctl reload >/dev/null 2>&1 && log "reloaded hyprland" \
+      || log "hyprctl reload non-zero (non-fatal)"
   fi
 else
-  log "NG_SKIP_RELOAD set — skipped waybar/hyprland reload"
+  log "NG_SKIP_RELOAD set — skipped the hyprland reload"
 fi
 
 echo "nightguard installer — done."

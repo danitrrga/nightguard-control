@@ -1,9 +1,9 @@
 [project]
 name = "ngtui"
 version = "0.1.0"
-description = "Nightguard Control — omarchy Textual TUI thin-client over the Python trust stack"
+description = "Nightguard Control — head-less CLI behind the omarchy desktop panel"
 requires-python = ">=3.11"
-dependencies = ["textual==8.2.7"]
+dependencies = []  # the terminal app is retired (PANEL-03); nothing here needs textual
 
 [project.scripts]
 ngtui = "ngtui.__main__:main"

@@ -19,7 +19,7 @@ from datetime import datetime
 import pytest
 
 from ngtui import backend
-from ngtui.widgets import edit as edit_mod
+from ngtui import proposal
 
 ctl = backend.ctl
 guard = backend.guard
@@ -119,20 +119,20 @@ def test_preview_allows_a_tightening_at_two_in_the_morning(sanctioned_window, cl
 def test_the_refusal_blocks_the_commit_before_authentication(sanctioned_window, clock):
     """``confirm_copy`` decides whether the confirm screen can reach sudo at all.
 
-    ``can_commit`` False means ``action_do_commit`` rings the bell and returns
-    without invoking sudo, so no fingerprint is ever requested for a change the
-    hour forbids.
+    The panel binds its apply button's `enabled` to `decision.allowed`, so a
+    False here is a button that cannot be pressed -- and therefore a polkit
+    dialog that never appears for a change the hour forbids. That is the
+    contract; this asserts the value it is bound to.
     """
     clock(_unix_at(2))
     preview = backend.preview_change(_LOOSENED)
-    _text, _role, can_commit = edit_mod.confirm_copy(preview["decision"])
-    assert can_commit is False
+    assert preview["decision"]["allowed"] is False
 
 
 def test_the_same_change_can_be_confirmed_inside_the_window(sanctioned_window, clock):
     clock(_unix_at(10))
     preview = backend.preview_change(_LOOSENED)
-    _text, _role, can_commit = edit_mod.confirm_copy(preview["decision"])
+    can_commit = preview["decision"]["allowed"]
     assert can_commit is True
 
 
@@ -254,9 +254,9 @@ def test_the_migrated_window_actually_gates():
 
 
 def test_the_editable_field_list_exposes_the_window():
-    """Without these rows the user could never change the window from the TUI, and
-    the only way to adjust it would be a hand edit the watchdog reverts."""
-    keys = {key for _label, key, _kind in edit_mod.EDITABLE_FIELDS}
+    """Without these keys the user could never change the window from the panel,
+    and the only way to adjust it would be a hand edit the watchdog reverts."""
+    keys = set(proposal.EDITABLE)
     assert {"edit_window.enabled", "edit_window.start", "edit_window.end"} <= keys
 
 
