@@ -129,7 +129,7 @@ Plans:
 
 **Wave 2**
 
-- [ ] 12.1-03-PLAN.md — omarchy_style injection seam + full [controls] ladder + hypr_rounding + style_variables (controls 3b/4b/4c)
+- [x] 12.1-03-PLAN.md — omarchy_style injection seam + full [controls] ladder + hypr_rounding + style_variables (controls 3b/4b/4c)
 
 **Wave 3**
 
@@ -200,6 +200,6 @@ Plans:
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
 | 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete    | 2026-06-25 |
 | 12. Launcher + Waybar Presence | v2.1 | 6/6 | Complete    | 2026-07-04 |
-| 12.1 Native dashboard | v2.1 | 2/9 | In Progress|  |
+| 12.1 Native dashboard | v2.1 | 3/9 | In Progress|  |
 | 12.2 Blocking editable | v2.1 | 0/? | Not started | — |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |

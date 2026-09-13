@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
 status: executing
-stopped_at: Completed 12.1-02-PLAN.md (Wave 1 — colour-role pick chains)
-last_updated: "2026-09-13T08:58:24.931Z"
+stopped_at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
+last_updated: "2026-09-13T09:15:59.655Z"
 last_activity: 2026-09-13
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 11
+  completed_plans: 12
   percent: 40
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 ## Current Position
 
 Phase: 12.1 (native-dashboard-pointer-first-omarchy-tui) — EXECUTING
-Plan: 3 of 9
+Plan: 4 of 9
 Status: Ready to execute
 Last activity: 2026-09-13
 
@@ -91,6 +91,7 @@ Last activity: 2026-09-13
 | Phase 12 P06 | 40 | 2 tasks | 2 files |
 | Phase 12.1 P01 | 22 | 3 tasks | 3 files |
 | Phase 12.1 P02 | 9min | 2 tasks | 2 files |
+| Phase 12.1 P03 | 41 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,10 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 12.1, 12.1-02]: Colour roles resolve through per-role pick chains, first declared key wins — 25 of 27 installed themes collapsed the verdict colours to one because the loader knew only the ANSI color1/2/3 vocabulary
 - [Phase ?]: [Phase 12.1, 12.1-02]: The Textual-role sweep asserts provenance and verdict distinctness, never surface-vs-background: 4 of 27 themes legitimately resolve them equal (D-11)
 - [Phase ?]: [Phase 12.1, 12.1-02]: Provenance cannot catch theme.py's 'or accent' fallback — it is an in-theme colour. Distinctness is the load-bearing assertion; measured, not assumed
+- [Phase ?]: [Phase 12.1, 12.1-03] hypr_rounding's returncode check is invisible to a JSONDecodeError test — JSONDecodeError IS a ValueError, so the parse except already catches it. The discriminating control is a non-zero rc whose stdout parses: it returns 12 instead of 0
+- [Phase ?]: [Phase 12.1, 12.1-03] Border widths clamped at both the parser and the mapper; measured, removing either layer alone leaves the end-to-end assertion green, so the clamp is asserted per layer
+- [Phase ?]: [Phase 12.1, 12.1-03] ThemeWatch stats both colors.toml and shell.toml; paths added, path kept because two shipped tests pin watch.path by name
+- [Phase ?]: [Phase 12.1, 12.1-03] UIX-01 still Pending after three plans: its text requires the running TUI to restyle, and nothing is wired into the App until plan 04
 
 ### Pending Todos
 
@@ -193,7 +198,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-13T08:58:20.096Z
+Last session: 2026-09-13T09:15:42.586Z
 Stopped at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
