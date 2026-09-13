@@ -419,13 +419,19 @@ class DayRamp(CursorStop, can_focus=True):
     """
 
     # show=False everywhere: no bracket hint appears on this surface and the legend
-    # lives in the help chip (UIX-03, OD-2). h/l rather than left/right because the
-    # ramp is a horizontal instrument and the cursor keys belong to the control walk —
-    # which this widget is now ON, via `CursorStop`. `j`/`k`/`up`/`down` are inherited
-    # from there; before that the ramp was stop 1 of 16 and the walk skipped it.
+    # lives in the help chip (UIX-03, OD-2). `j`/`k`/`up`/`down` are inherited from
+    # `CursorStop`; before that the ramp was stop 1 of 16 and the walk skipped it.
+    #
+    # `h`/`l` WERE here and are gone, because `l` COLLIDES with the app's `ledger`
+    # binding — measured the first time this widget was composed into the real home
+    # surface. The ramp holds the cursor on mount (it is stop 1), so `l` reached the
+    # ramp and the ledger toggle was unreachable from the screen's opening state.
+    # `e r l q` are pinned to NightguardApp by tests/test_port01_single_key_bindings.py
+    # and are a locked contract; the ramp is the newer claim, so the ramp yields.
+    #
+    # `h` alone is not kept. A half-pair is worse than none: it teaches a vim habit
+    # that works in one direction and silently does something else in the other.
     BINDINGS = [
-        Binding("h", "readout_left", "Earlier hour", show=False),
-        Binding("l", "readout_right", "Later hour", show=False),
         Binding("left", "readout_left", "Earlier hour", show=False),
         Binding("right", "readout_right", "Later hour", show=False),
     ]

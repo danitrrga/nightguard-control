@@ -330,6 +330,15 @@ def test_keyboard_readout_matches_the_pointer():
     string in ``action_readout_right`` instead of routing through the one ``readout()``
     call site. The two captures diverge. The verbatim message is in
     ``12.1-06-SUMMARY.md``.
+
+    **This control pressed ``l``/``h`` until plan 12.1-07 composed the ramp into the
+    real home surface and measured the collision:** ``l`` is one of the four
+    single-key bindings pinned to ``NightguardApp`` (``ledger``), and the ramp holds
+    the cursor on mount because it is stop 1 of 16 — so ``l`` reached the ramp and
+    the ledger toggle was unreachable from the screen's opening state. The ramp gave
+    up the vim pair; ``left``/``right`` were already bound to the same two actions
+    and are what this control presses now. The claim under test is unchanged: two
+    inputs, one destination.
     """
 
     async def _body():
@@ -342,10 +351,10 @@ def test_keyboard_readout_matches_the_pointer():
             width = ramp.content_size.width
 
             # Textual focuses the first focusable widget on mount. Asserted rather than
-            # assumed: if the cursor were somewhere else, `l` would be walking a widget
-            # this control never names and both captures would still agree.
+            # assumed: if the cursor were somewhere else, `right` would be walking a
+            # widget this control never names and both captures would still agree.
             assert app.focused is hero, (
-                "the cursor is not on the ramp — `l` is walking something else: %r"
+                "the cursor is not on the ramp — `right` is walking something else: %r"
                 % (app.focused,)
             )
 
@@ -354,11 +363,11 @@ def test_keyboard_readout_matches_the_pointer():
             assert hero.readout_column == start_column
 
             steps = 5
-            await pilot.press(*(["l"] * steps))
+            await pilot.press(*(["right"] * steps))
             await pilot.pause()
 
             assert hero.readout_column == start_column + steps, (
-                "`l` x%d moved the read-out column from %s to %s"
+                "`right` x%d moved the read-out column from %s to %s"
                 % (steps, start_column, hero.readout_column)
             )
             keyboard_string = _readout(app)
@@ -387,8 +396,8 @@ def test_keyboard_readout_matches_the_pointer():
                 % (column, pointer_string)
             )
 
-            # And `h` walks back the way it came, through the same destination.
-            await pilot.press("h")
+            # And `left` walks back the way it came, through the same destination.
+            await pilot.press("left")
             await pilot.pause()
             assert hero.readout_column == column - 1
             assert _readout(app).startswith(

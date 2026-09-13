@@ -370,9 +370,17 @@ def test_live_restyle_changes_the_border_style(
             # The probe screen composes only .ctl rows, and a .ctl row's spine is
             # a LITERAL vkey by design — D-05 reserves the same one-column border
             # in every state, so its style must never move. The style FAMILY seam
-            # is $ng-border-style, and the shipped rule that consumes it is
-            # `.panel`. Mount one rather than assert on a widget that cannot move.
-            region = Static("region", classes="panel")
+            # is $ng-border-style; mount a widget carrying a shipped rule that
+            # consumes it rather than assert on one that cannot move.
+            #
+            # This was `.panel` until plan 12.1-07 deleted that rule: the home
+            # surface's regions no longer draw their own outlines (UI-SPEC 7.1 —
+            # the frame plus keylines plus one blank row is the whole separation),
+            # so `.panel` had no user left and a dead rule that still says
+            # `border:` is an invitation to re-add the box. `#edit-fields` carries
+            # the byte-identical declaration, `border: $ng-border-style $foreground
+            # 12%`, and is still on a live surface.
+            region = Static("region", id="edit-fields")
             await app.screen.mount(region)
             await pilot.pause()
 

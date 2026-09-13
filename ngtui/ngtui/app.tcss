@@ -162,7 +162,13 @@ Screen {
  * Outline chips, one row tall, spine on both sides. Exactly one chip on the
  * strip is filled, and it inverts to ink-on-ground — NOT to the accent. */
 .chip {
+    /* `width: auto` is load-bearing, not tidiness — same measurement as
+     * `.row-detail` above. A cell with no declared width in a horizontal row
+     * resolves to 1fr against the row's FULL width, so five undeclared chips
+     * would each claim the whole strip and the first one would eat it. */
+    width: auto;
     height: 1;
+    margin: 0 1 0 0;
     padding: 0 1;
     border-left: vkey $ng-border-normal $ng-border-normal-a;
     border-right: vkey $ng-border-normal $ng-border-normal-a;
@@ -170,7 +176,12 @@ Screen {
     color: $foreground;
     transition: background 120ms linear, color 120ms linear;
 }
+.chip-label { width: auto; }
+/* Exactly one filled chip on the screen, ever: `edit`, the primary. It inverts to
+ * ink-on-ground, NOT to the accent — the accent reserve is a closed two-item list
+ * and a chip is not on it. */
 .chip.-primary { background: $foreground; color: $background; }
+.chip.-primary .chip-label { color: $background; }
 
 /* --- the hero (UI-SPEC 12) ------------------------------------------------
  * Greyscale on purpose, and boxless: the frame is the only outline on the
@@ -298,29 +309,35 @@ Tooltip {
 }
 
 /* --- regions (integrity, ledger) ------------------------------------------
- * Hairline band, not a box: $ng-border-style is the family the live radius
- * selects, and the ink is the keyline channel. The old rule used
- * $surface-lighten-1, and $surface == $background on 4 of the 28 installed
- * themes — which is the measured reason this file fills with alpha-on-ink
- * instead of with a surface role. */
-.panel {
-    border: $ng-border-style $foreground 12%;
-    padding: 0 1;
-    margin: 1 1 0 1;
-    height: auto;
+ * `.panel` and `.panel-title` are GONE, not merely unused. They drew a border
+ * around a region, and UI-SPEC 7.1 is that no region draws its own outline — the
+ * frame plus keylines plus one blank row is the whole separation on this screen.
+ * A dead rule that still says `border:` is an invitation to re-add the box.
+ *
+ * `#integrity` is now the hmac LINE (one row), not a container. */
+#integrity {
+    height: 1;
+    width: 1fr;
 }
 
-.panel-title {
-    text-style: bold;
-    color: $foreground;
-}
-
+/* The screen's ONLY 1fr region and its only scroller. Fixed rows total 39, so at
+ * 135x46 this gets 7 against a stated minimum of 4 — and those 3 rows of slack
+ * are the seam phase 12.2 takes its hairline, its row and its blank from. */
 #ledger {
-    height: 1fr;                      /* takes remaining space, scrollable */
+    height: 1fr;
+    width: 1fr;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 #ledger.collapsed {
     height: 6;                        /* last-5 collapsed view */
+}
+
+/* --- the chip strip (UI-SPEC 7.2 row 44, 10.7) ---------------------------- */
+#chips {
+    height: 1;
+    width: 1fr;
 }
 
 /* --- dim / secondary text (hmacs, hints, captions) --- */
@@ -328,8 +345,12 @@ Tooltip {
     color: $foreground 70%;
 }
 
+/* Row 45. A row in the budget, so no margin: margins do not appear in a row
+ * count, which is exactly how a 46-row budget stops being checkable. */
 .advisory {
-    margin: 1 1 0 1;
+    height: 1;
+    width: 1fr;
+    margin: 0;
     content-align: center middle;
 }
 

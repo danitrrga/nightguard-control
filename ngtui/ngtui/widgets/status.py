@@ -46,7 +46,7 @@ from dataclasses import replace
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Digits, Footer, Rule, Static
+from textual.widgets import Digits, Rule, Static
 
 from ngtui import backend
 from ngtui.backend import WEEKLY_TOKENS  # signer's constant (WR-03), never a local literal
@@ -320,24 +320,168 @@ class StatusScreen(Screen):
             yield from self._band(paint)                        # rows 12-17
             yield Static("", classes="blank")                   # row 18
 
-            # --- the lower surface, still as Wave 2 left it (Task 2 replaces it) ---
-            with Container(id="integrity", classes="panel"):
-                yield Static("integrity", classes="panel-title")
-                yield Static(self._integrity_text(paint["state"]), classes="dim")
+            yield Rule()                                        # row 19
+            yield from self._blocking(paint)                    # rows 20-29
+            yield Static("", classes="blank")                   # row 30
 
-            with VerticalScroll(id="ledger", classes="panel"):
-                yield Static("audit ledger", classes="panel-title")
-                rows = ledger_rows(paint["state"])
-                if isinstance(rows, str):
-                    yield Static(rows, classes="dim")
-                else:
-                    for row in rows:
-                        yield Static(row)
+            yield Rule()                                        # row 31
+            yield from self._integrity(paint)                   # rows 32-33
+            yield Static("", classes="blank")                   # row 34
 
+            yield from self._ledger(paint)                      # rows 35-42
+            yield Static("", classes="blank")                   # row 43
+
+            yield from self._chips(paint)                       # row 44
+
+            # Row 45. Verbatim, and load-bearing: the TUI cannot verify an HMAC and
+            # holds no key, so every verdict on this screen is advisory. The line
+            # says which side of that boundary the reader is on.
             yield Static(
                 "status reflects what the guard will enforce", classes="dim advisory"
             )
-            yield Footer()
+
+    #: UI-SPEC §8.6 stops 4-11 — the eight blocking rows, in cursor order. Named
+    #: rather than sliced out of the registry by index: a slice silently renders
+    #: the wrong eight the day a stop is inserted, and this list going stale is a
+    #: KeyError at compose instead.
+    BLOCKING_KEYS = (
+        "app-blocking",
+        "mode",
+        "blocked-apps",
+        "always-allowed",
+        "game-blocking",
+        "site-blocking",
+        "blocked-sites",
+        "enforcement",
+    )
+
+    #: UI-SPEC §8.6 stops 12-16 — the chip strip, in cursor order.
+    CHIP_KEYS = (
+        "chip-edit",
+        "chip-ledger",
+        "chip-refresh",
+        "chip-help",
+        "chip-quit",
+    )
+
+    def _blocking(self, paint: dict) -> ComposeResult:
+        """Rows 20-29. The label, a blank, then the eight blocking rows.
+
+        Rendered straight from the registry, so what a row *says* and where the
+        cursor *goes* have one source. Four of the eight carry a refusal instead of
+        a route and state it on the row — the refusal is the contract's copy and is
+        not paraphrased here.
+
+        The read-only notice on the right is **counted from the registry**, not
+        typed. A typed "4 of these" goes stale the moment 12.2 turns one refusal
+        into a route, and it goes stale silently.
+        """
+        controls = paint["controls"]
+        refused = sum(1 for key in self.BLOCKING_KEYS if controls[key].is_refused)
+        yield from self._section(
+            "BLOCKING", "%d of these are read-only" % refused, role="dim"
+        )
+        yield Static("", classes="blank")
+        for key in self.BLOCKING_KEYS:
+            yield ControlRow(controls[key])
+
+    def _integrity(self, paint: dict) -> ComposeResult:
+        """Rows 32-33. The label with the watchdog time, and the truncated hmacs.
+
+        The hmacs are non-secret and come verbatim from ``state``; the TUI holds no
+        key and recomputes nothing (PORT-03, T-10-08). They are truncated for
+        layout only.
+
+        ``watchdog`` degrades to ``never`` when the fact was not read, matching what
+        the ``enforcement`` row's own detail says — one degradation, rendered the
+        same in both places. ``never`` is also the fail-closed direction: with no
+        record of a tick, the honest claim is that none was seen.
+        """
+        facts = paint["facts"]
+        yield from self._section(
+            "INTEGRITY", "watchdog %s" % (facts.get("watchdog") or "never"), role="dim"
+        )
+        yield Static(self._integrity_text(paint["state"]), id="integrity", classes="dim")
+
+    def _ledger(self, paint: dict) -> ComposeResult:
+        """Rows 35-42. The label, then the screen's ONLY ``1fr`` region and scroller.
+
+        Fixed rows total 39, so at 135 x 46 the ledger gets 7 against a stated
+        minimum of 4. **Those three rows of slack are the seam for 12.2** — it needs
+        a hairline, one more row and a blank, and it takes them from here with the
+        budget still holding at 4.
+
+        Nothing is drawn for edits that cannot be staged yet. A permanent row saying
+        the tray is empty would be a claim that a tray exists, and on this surface in
+        this phase it does not (T-12.1-27).
+
+        ``ledger_rows`` is the carried-forward pure helper and is the EMPTINESS
+        signal here — it returns a string for empty and a list otherwise. The copy
+        the surface shows for empty is UI-SPEC §10.6's two lines, not the helper's
+        one-line sentinel, because the helper's exact output is pinned by
+        ``tests/test_status.py`` and is not the contract's wording.
+        """
+        yield from self._section("AUDIT LEDGER")
+        with VerticalScroll(id="ledger"):
+            rows = ledger_rows(paint["state"])
+            if isinstance(rows, str):
+                yield Static("no commit has been signed yet", classes="dim")
+                yield Static(
+                    "every accepted change lands here with its hour", classes="dim"
+                )
+            else:
+                for row in rows:
+                    yield Static(row)
+
+    def _chips(self, paint: dict) -> ComposeResult:
+        """Row 44. Five chips, generated from the registry, exactly one of them filled.
+
+        ``edit`` is the primary and inverts to ``$background`` on ``$foreground`` —
+        **not** to the accent. The accent reserve is a closed two-item list and a
+        chip is not on it.
+
+        Each chip carries the name of an action that already exists on the app.
+        This plan adds none: ``edit`` opens the existing ``EditScreen``, whose
+        confirm gate before a signed commit is untouched (T-12.1-25).
+        """
+        controls = paint["controls"]
+        with Horizontal(id="chips"):
+            for key in self.CHIP_KEYS:
+                yield ControlRow(controls[key])
+
+    # --- the two messages a row may post ---
+
+    async def on_control_row_activated(self, message: ControlRow.Activated) -> None:
+        """A reachable control was activated. Route it; decide nothing.
+
+        A chip runs its named action through the app's own action dispatch, so the
+        chip and the key binding reach one implementation rather than two.
+
+        A **routed row** opens the existing editor. It does not yet open it *on* its
+        field: ``EditScreen.__init__`` takes no argument, and giving it one is new
+        editing capability in a file this plan does not own. The route rides on the
+        stop and is what 12.2 will hand over; carrying it unused is the seam, and it
+        is deliberately not routed around here.
+        """
+        control = message.model
+        if control.action:
+            await self.app.run_action(control.action)
+            return
+        if control.route:
+            await self.app.run_action("edit")
+
+    def on_control_row_refused(self, message: ControlRow.Refused) -> None:
+        """A frozen control was activated. Surface the reason and stop.
+
+        The reason is already ON the row — a refusal the user has to hover to find
+        is a refusal he does not have at the moment he is deciding whether the app
+        is lying to him. This repeats it where the pointer just was, because a click
+        that appears to do nothing is indistinguishable from a broken control.
+
+        Nothing here decides anything. What refuses a weakening is the signer.
+        """
+        if message.reason:
+            self.app.notify(message.reason, severity="warning")
 
     # --- the read, done once ---
 

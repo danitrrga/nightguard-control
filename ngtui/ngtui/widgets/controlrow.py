@@ -474,8 +474,14 @@ class ControlRow(CursorStop, can_focus=True):
         self.control = control
         kwargs.setdefault("id", "ctl-%s" % control.key)
         kwargs.setdefault("classes", self._classes_for(control))
-        # A chip is its own label; a row composes three cells instead.
-        super().__init__(control.label if control.kind == "chip" else "", **kwargs)
+        # Both kinds compose their text into CELLS rather than carrying it as the
+        # widget's own renderable. Measured when the first composition mounted a
+        # chip strip: `ControlRow` declares `layout: horizontal`, which makes it a
+        # CONTAINER, and a container's `width: auto` is computed from its children —
+        # so a chip whose label was the widget's renderable and whose `compose()`
+        # yielded nothing resolved to width 0 and the whole strip rendered as five
+        # empty brackets, `|  | |  | |  |`.
+        super().__init__("", **kwargs)
 
     @staticmethod
     def _classes_for(control: Control) -> str:
@@ -497,7 +503,9 @@ class ControlRow(CursorStop, can_focus=True):
     def _cells(self) -> list[Static]:
         control = self.control
         if control.kind == "chip":
-            return []
+            # One cell, not three: a chip is its own label. It is still a cell
+            # rather than the widget's renderable — see `__init__`.
+            return [Static(control.label, classes="chip-label")]
         return [
             Static(control.label, classes="row-label"),
             Static(
