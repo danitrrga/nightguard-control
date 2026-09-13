@@ -1,18 +1,189 @@
-/* app.tcss — Textual CSS for the StatusScreen.
+/* app.tcss — Textual CSS for Nightguard Control.
  *
- * Colour is expressed ONLY through $-variable role names fed by the live omarchy
- * theme (theme.py -> register_theme). No fixed hex appears here: the brand is the
- * desktop theme (D-04, omarchy-native). Textual auto-derives shade variants like
- * $surface-lighten-1 from the base roles.
+ * TWO RULES, and a reader should not have to leave this header to learn them.
  *
- * Accent reserve (UI-SPEC accent reserved list): $primary/$accent is used ONLY on
- * the hero border, the countdown tint, and the grace word — NOT ordinary text,
- * panel fills, the footer, or the locked/open status (those use $error/$success).
+ * 1. NO FIXED HEX. Colour is expressed only through $-variable role names.
+ *    The PALETTE roles ($background, $foreground, $error, $success, $warning)
+ *    come from the live omarchy colors.toml via theme.py -> register_theme.
+ *    The STRUCTURAL roles — the whole $ng-* namespace: fills, outline colours,
+ *    outline alphas, the outline-style family, the popup and tooltip surfaces —
+ *    come from the live shell.toml via theme.py -> style_variables ->
+ *    NightguardApp.get_css_variables(). That second half is why a desktop theme
+ *    change moves shapes here and not only colours. The brand is the desktop
+ *    theme (D-04, omarchy-native), and tests/test_no_fixed_hex.py scans this
+ *    file to keep it that way.
+ *
+ *    Fixed-alpha ink channels need no variable and are written inline:
+ *      $foreground 70%   caption channel — section labels, secondary values
+ *      $foreground 50%   quiet channel   — right-hand detail, the hour axis
+ *      $foreground 12%   keylines
+ *    Textual's own HelpPanel stylesheet does exactly this. What does NOT work is
+ *    a $-variable whose VALUE is itself a $-reference (substitution is not
+ *    recursive), which is why style_variables() never emits one.
+ *
+ * 2. THE ACCENT RESERVE IS CLOSED — exactly two places, and nowhere else:
+ *      a) one dot beside the wordmark;
+ *      b) the verdict word and its countdown, when the verdict is GRACE.
+ *    Not the frame. Not a keyline. Not an outline. Not a chip — including the
+ *    one filled chip, which inverts to $background-on-$foreground. Not a focus
+ *    ring: the cursor rung is fed by the theme's own hover-cursor token, and a
+ *    theme that points that token at its accent is making its own decision
+ *    through the kit rather than breaching this list.
+ *    $primary / $accent / $secondary paint TEXT only, and only in the two places
+ *    named above. No outline in this file carries one of the three.
+ *
+ * Shapes come from $ng-border-style — the glyph family the compositor's live
+ * decoration:rounding selects — and from the hairline families hkey (top/bottom)
+ * and vkey (sides, and a control row's left spine). Two families are banned
+ * outright: `round`, because rounding is 0 and a rounded box plus a hairline
+ * frame is the hybrid the reference calls a mistake; and `panel`, because six
+ * filled strips on one screen is the version the sketches rejected.
  */
 
 Screen {
     background: $background;
-    color: $text;
+    color: $foreground;
+    overflow-x: hidden;                  /* horizontal scrolling never appears */
+}
+
+/* --- the device frame (UI-SPEC 7.1) ---------------------------------------
+ * Four per-edge hairlines and a 2-column inner gutter: 1 row top, 1 row bottom,
+ * 1 column each side. That is the WHOLE frame, and it is why nothing else on
+ * the screen needs a box. No region draws its own outline — regions are
+ * separated by keylines and by one blank row.
+ */
+#frame {
+    width: 1fr;
+    height: 1fr;
+    border-top: hkey $ng-border-normal $ng-border-normal-a;
+    border-bottom: hkey $ng-border-normal $ng-border-normal-a;
+    border-left: vkey $ng-border-normal $ng-border-normal-a;
+    border-right: vkey $ng-border-normal $ng-border-normal-a;
+    padding: 0 2;
+    overflow-x: hidden;
+}
+
+/* Degradation below 135x46 (UI-SPEC 7.4). Textual has no media queries, so an
+ * on_resize handler toggles these classes on #frame; that handler lands with the
+ * composition. The drop ORDER is the contract — advisory, then the readout row,
+ * then the hour axis, and only then the blanks and the integrity line. The hero
+ * is never dropped: it is the screen's one idea. `-tiny` assumes `-compact` is
+ * set too (the handler sets both), so it only adds.
+ */
+#frame.-compact .advisory  { display: none; }
+#frame.-compact #readout   { display: none; }
+#frame.-compact #hour-axis { display: none; }
+#frame.-tiny .blank        { display: none; }
+#frame.-tiny #integrity    { display: none; }
+#frame.-narrow #band       { layout: vertical; }
+
+/* --- the paint ladder (UI-SPEC 8.3) ---------------------------------------
+ * DECLARATION ORDER IS THE MECHANISM. `:focus` counts as a class for
+ * specificity, so `.ctl:focus` and `.ctl.-pressed` TIE and the LATER rule wins.
+ * Verified: with `-pressed` declared after `:focus`, a focused-and-pressed row
+ * painted the pressed colour. The order below — idle, selected, cursor, pressed,
+ * staged, refused — is therefore load-bearing and must not be re-sorted.
+ *
+ * The cursor rung serves pointer AND keyboard, because in this TUI the cursor IS
+ * focus. That is also what the theme intends: shell.toml's own comment on the
+ * focus-* tokens says to mirror the hover-cursor values so mouse hover, keyboard
+ * cursor and tab focus read as one state.
+ *
+ * NO REFLOW (UIX-05, D-05). Every rung reserves the same 1-column left spine —
+ * `border-left: vkey`, in EVERY state including idle, never `none` — and every
+ * row is `height: 1` with a 2-cell left inset. Only the colour changes, so no
+ * state change can relayout a neighbour.
+ *
+ * BORDER COLOUR CANNOT BE ANIMATED. Textual's ANIMATABLE set contains
+ * `background` and `color` but not `border`, so a state change cross-fades its
+ * fill over 120ms and SNAPS its spine colour. That is not a bug and it is not
+ * fixable from here — do not spend a day on it.
+ */
+.ctl {
+    width: 1fr;
+    height: 1;
+    padding: 0 0 0 2;
+    border-left: vkey $ng-border-normal $ng-border-normal-a;
+    background: $ng-color-normal $ng-fill-normal;
+    color: $foreground;
+    overflow-x: hidden;
+    transition: background 120ms linear, color 120ms linear;
+    /* Progressive enhancement only: this emits the Kitty pointer-shape protocol,
+     * which foot documents, but the terminal that launches ngtui is resolved by
+     * xdg-terminal-exec and is not pinned. Nothing depends on it and no test
+     * asserts it (OD-3/OD-4). */
+    pointer: pointer;
+}
+
+/* selected: the theme sets selected-border-width to 0, i.e. "fill only". The
+ * column is still RESERVED (D-05 forbids removing it), so the spine is painted
+ * in the row's own fill and reads as absent rather than as a louder border than
+ * the cursor's. */
+.ctl.-selected { border-left: vkey $ng-color-selected $ng-fill-selected; background: $ng-color-selected $ng-fill-selected; }
+.ctl:focus     { border-left: vkey $ng-border-cursor $ng-border-cursor-a; background: $ng-color-cursor $ng-fill-cursor; }
+.ctl.-pressed  { border-left: vkey $ng-border-cursor $ng-border-cursor-a; background: $ng-color-pressed $ng-fill-pressed; }
+/* staged (this product's own rung): the fill stays whatever rung the row is on;
+ * only the spine changes, so "staged" composes with cursor/pressed. */
+.ctl.-staged   { border-left: vkey $warning; }
+/* refused: fill and spine both inherit — the refusal is carried by the words. */
+.ctl.-refused .row-value  { color: $foreground 50%; }
+.ctl.-refused .row-detail { color: $error; }
+
+/* The three cells of a control row. The label width is a fixed layout constant,
+ * not a spacing token: a grid aligns by column count (UI-SPEC 4, exceptions). */
+.row-label  { width: 18; text-style: bold; color: $foreground; }
+.row-value  { width: 1fr; color: $foreground; }
+.row-detail { color: $foreground 50%; content-align: right middle; }
+
+/* Section labels are the caption channel: 70% ink, UPPERCASE with one space of
+ * tracking. Tracking is interleaved into the STRING (Textual has no
+ * letter-spacing) and is permitted for section labels only. */
+.section-label { color: $foreground 70%; }
+
+/* --- chips ---------------------------------------------------------------
+ * Outline chips, one row tall, spine on both sides. Exactly one chip on the
+ * strip is filled, and it inverts to ink-on-ground — NOT to the accent. */
+.chip {
+    height: 1;
+    padding: 0 1;
+    border-left: vkey $ng-border-normal $ng-border-normal-a;
+    border-right: vkey $ng-border-normal $ng-border-normal-a;
+    background: $ng-color-normal $ng-fill-normal;
+    color: $foreground;
+    transition: background 120ms linear, color 120ms linear;
+}
+.chip.-primary { background: $foreground; color: $background; }
+
+/* --- the hero (UI-SPEC 12) ------------------------------------------------
+ * Greyscale on purpose, and boxless: the frame is the only outline on the
+ * screen. Widths are 1fr and are measured at paint time — no literal ramp width
+ * lives in this file or in the code. */
+#ramp, #permission, #hour-axis, #readout {
+    width: 1fr;
+    height: 1;
+    overflow-x: hidden;
+}
+#hour-axis { color: $foreground 50%; }
+#readout   { color: $foreground 70%; }
+
+/* --- keylines -------------------------------------------------------------
+ * An unstyled Rule breaks two contracts at once: it ships `margin: 1 0`, so one
+ * keyline would cost 3 rows instead of 1 and blow the row budget by exactly 4;
+ * and it paints in $secondary, which on the omarchy theme equals the accent —
+ * about 258 reserved cells across two keylines. Override BOTH properties. */
+Rule {
+    margin: 0;
+    color: $foreground 12%;
+}
+
+/* --- tooltips (UI-SPEC 8.5, 10.5) -----------------------------------------
+ * The 400ms delay is NightguardApp.TOOLTIP_DELAY; the surface is the theme's own
+ * tooltip mapping. */
+Tooltip {
+    background: $ng-tip-bg;
+    color: $ng-tip-text;
+    border: $ng-border-style $ng-tip-border;
+    padding: 0 1;
 }
 
 /* --- not-initialized full-screen state --- */
@@ -21,14 +192,15 @@ Screen {
     height: auto;
     content-align: center middle;
     text-style: bold;
-    color: $text;
+    color: $foreground;
     padding: 2 1;
 }
 
-/* --- hero (status band) --- */
+/* --- hero (status band) ---
+ * The box is gone: no region draws its own outline (UI-SPEC 7.1), and the one it
+ * used to draw was also a reserve breach. */
 #hero {
     height: auto;
-    border: round $primary;          /* accent reserved: hero border */
     padding: 0 1;
     margin: 1 1 0 1;
     content-align: center top;
@@ -42,12 +214,12 @@ Screen {
 /* Status-word colour roles (glyph + word + colour — never colour alone). */
 #status-word.error   { color: $error; }
 #status-word.success { color: $success; }
-#status-word.accent  { color: $accent; }   /* grace word — accent reserved */
+#status-word.accent  { color: $accent; }   /* the GRACE word — reserve item (b) */
 #status-word.warning { color: $warning; }
 
 #countdown {
     text-style: bold;
-    color: $primary;                 /* accent reserved: countdown tint */
+    color: $primary;                 /* the GRACE countdown — reserve item (b) */
     content-align: center middle;
 }
 
@@ -64,17 +236,22 @@ Screen {
 .kv-label {
     width: 10;                        /* fixed label column (UI-SPEC label-col) */
     text-style: bold;
-    color: $text;
+    color: $foreground;
 }
 
 .kv-value {
     width: 1fr;
-    color: $text;
+    color: $foreground;
 }
 
-/* --- bordered panels (integrity, ledger) --- */
+/* --- regions (integrity, ledger) ------------------------------------------
+ * Hairline band, not a box: $ng-border-style is the family the live radius
+ * selects, and the ink is the keyline channel. The old rule used
+ * $surface-lighten-1, and $surface == $background on 4 of the 28 installed
+ * themes — which is the measured reason this file fills with alpha-on-ink
+ * instead of with a surface role. */
 .panel {
-    border: round $surface-lighten-1;
+    border: $ng-border-style $foreground 12%;
     padding: 0 1;
     margin: 1 1 0 1;
     height: auto;
@@ -82,7 +259,7 @@ Screen {
 
 .panel-title {
     text-style: bold;
-    color: $text;
+    color: $foreground;
 }
 
 #ledger {
@@ -95,7 +272,7 @@ Screen {
 
 /* --- dim / secondary text (hmacs, hints, captions) --- */
 .dim {
-    color: $text-muted;
+    color: $foreground 70%;
 }
 
 .advisory {
@@ -110,7 +287,7 @@ Screen {
 /* --- EditScreen: editable field list + anti-impulse preview --- */
 #edit-fields {
     height: 1fr;
-    border: round $surface-lighten-1;
+    border: $ng-border-style $foreground 12%;
     padding: 0 1;
     margin: 1 1 0 1;
 }
@@ -121,7 +298,7 @@ Screen {
 
 .edit-label {
     width: 42;                        /* fixed key column for aligned values */
-    color: $text;
+    color: $foreground;
 }
 
 /* Focused field: reverse video + accent label (accent reserved-list, focus). */
@@ -132,17 +309,28 @@ Screen {
 
 .edit-value {
     width: 1fr;
-    color: $text;
+    color: $foreground;
 }
 
-/* inline field editor: a one-line Input mounted in the row (no modal screen) */
+/* inline field editor: a one-line Input mounted in the row (no modal screen).
+ *
+ * This is the ONE place where Textual focus means something other than the
+ * cursor — a text field in edit mode — so it is where the theme's dedicated
+ * focus ring belongs, and it is what $ng-*-focus is reserved for. The spine is
+ * reserved at rest exactly as a .ctl row's is, so entering edit mode cannot
+ * reflow the row. */
 #inline-edit {
     width: 1fr;
     height: 1;
     border: none;
+    border-left: vkey $ng-border-normal $ng-border-normal-a;
     padding: 0;
-    background: $surface-lighten-1;
-    color: $text;
+    background: $ng-color-normal $ng-fill-normal;
+    color: $foreground;
+}
+#inline-edit:focus {
+    border-left: vkey $ng-border-focus $ng-border-focus-a;
+    background: $ng-color-focus $ng-fill-focus;
 }
 
 /* The edit-window state, above the fields. It is the first thing on the screen
@@ -156,7 +344,7 @@ Screen {
 #edit-window-banner.accent     { color: $accent; }
 #edit-window-banner.warning    { color: $warning; background: $warning 10%; }
 #edit-window-banner.error      { color: $error; background: $error 10%; }
-#edit-window-banner.text-muted { color: $text-muted; text-style: none; }
+#edit-window-banner.text-muted { color: $foreground 70%; text-style: none; }
 
 /* The per-field anti-impulse preview line (glyph + word + colour). */
 #edit-preview {
@@ -166,7 +354,7 @@ Screen {
 #edit-preview.accent     { color: $accent; }
 #edit-preview.warning    { color: $warning; }
 #edit-preview.error      { color: $error; }
-#edit-preview.text-muted { color: $text-muted; }
+#edit-preview.text-muted { color: $foreground 70%; }
 
 #edit-status {
     margin: 1 1 0 1;
@@ -174,9 +362,11 @@ Screen {
 #edit-status.success    { color: $success; }
 #edit-status.error      { color: $error; }
 #edit-status.warning    { color: $warning; }
-#edit-status.text-muted { color: $text-muted; }
+#edit-status.text-muted { color: $foreground 70%; }
 
-/* --- commit dialog (confirm gate + in-window password + result) --- */
+/* --- commit dialog (confirm gate + in-window password + result) ------------
+ * The card is a POPUP, so it takes the theme's popup surface mapping rather than
+ * a role of its own. Its outline used to be the reserve's third breach. */
 ConfirmScreen {
     align: center middle;            /* centre the dialog, not a tiny corner box */
     background: $background 55%;      /* dim the editor behind it */
@@ -186,9 +376,10 @@ ConfirmScreen {
     width: 66;
     max-width: 90%;
     height: auto;
-    border: round $primary;          /* accent reserved: the deliberate-friction gate */
+    border: $ng-border-style $ng-popup-border;
     padding: 1 2;
-    background: $surface;
+    background: $ng-popup-bg;
+    color: $ng-popup-text;
 }
 
 #confirm-title {
@@ -207,7 +398,7 @@ ConfirmScreen {
 #confirm-hint {
     margin-top: 1;
 }
-#confirm-hint.dim    { color: $text-muted; }
+#confirm-hint.dim    { color: $foreground 70%; }
 #confirm-hint.accent { color: $accent; }
 #confirm-hint.error  { color: $error; }
 
@@ -218,14 +409,26 @@ ConfirmScreen {
 #confirm-result.success    { color: $success; }
 #confirm-result.error      { color: $error; }
 #confirm-result.warning    { color: $warning; }
-#confirm-result.text-muted { color: $text-muted; }
-#confirm-result.dim        { color: $text-muted; }
+#confirm-result.text-muted { color: $foreground 70%; }
+#confirm-result.dim        { color: $foreground 70%; }
 #confirm-result.accent     { color: $accent; }
 
-/* masked password field revealed in the dialog on `y` */
+/* masked password field revealed in the dialog on `y` — the second reserved
+ * home of the focus ring, for the same reason as #inline-edit. */
 #commit-pass {
     width: 1fr;
     margin-top: 1;
-    border: round $primary;
-    background: $surface-lighten-1;
+    border: $ng-border-style $ng-popup-border;
+    background: $ng-color-normal $ng-fill-normal;
+    color: $foreground;
+}
+#commit-pass:focus {
+    border: $ng-border-style $ng-border-focus;
+    background: $ng-color-focus $ng-fill-focus;
+}
+
+/* Text selection inside both editors — the theme's own selection alpha. */
+#inline-edit > .input--selection,
+#commit-pass > .input--selection {
+    background: $ng-color-selected $ng-fill-selection;
 }
