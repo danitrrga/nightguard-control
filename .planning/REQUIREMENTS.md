@@ -41,7 +41,15 @@
 - [x] **UIX-05**: Hover never reflows — border widths are constant across states, as the shell kit guarantees by reserving the largest border. Colour transition ~120 ms, tooltip delay ~400 ms, matching the kit.
 - [x] **UIX-06**: No fixed hex in `app.tcss` or the widgets, and the layout fits the sanctioned window (135 × 46 cells at the live terminal font) with a test that fails on overflow.
 
-### Blocking becomes editable (BLK)
+### Omarchy Native Panel (PANEL)
+
+> **Scope amended 2026-09-13, by explicit decision.** Phase 12.1's live walkthrough rejected the restyled Textual TUI: it read as a terminal form, not a native Omarchy dashboard — no amount of theme-token following closes that gap while it stays a terminal app. Decision: retire the terminal app and rebuild the dashboard/editor as a Quickshell panel plugin, conforming to the shell's own `Ui/` component library and first-party panel patterns (monitor/audio/network/tailscale). This absorbs BLK-01..05 (delivered in the panel instead of the TUI) and supersedes UIX-01 (a Quickshell panel consumes the shell's structural tokens natively — there is no separate "follow the theme" task once the surface itself is native). Phase 12.1 stays on the record as rejected evidence and is not reopened.
+
+- [ ] **PANEL-01**: Privileged writes move from `sudo` on a PTY to `pkexec`/polkit against the same signer CLI, with every existing guarantee held: the signing key never enters the UI process, the backend stays the sole writer/signer, the pinned-path validation (`backend.py:27-53`) survives, and the authorisation is real (a live human-approved dialog) rather than cached-away. *(keystone — proven live before the phase opened: see 12.2.1-CONTEXT.md)*
+- [ ] **PANEL-02**: The panel conforms to the shell's own component library (`PanelHero`, `PanelSectionHeader`, `PanelSlider`, `Toggle`, `ConfirmDialog`, etc.) and first-party panel patterns — no hand-rolled component the library already has, no writes done in-process (always `Process` invoking a CLI, per the monitor/audio/network/tailscale precedent).
+- [ ] **PANEL-03**: The `ngtui` Textual terminal app is retired in one deliberate step, once the panel can do everything it did — not incrementally, and not until parity is reached.
+
+### Blocking becomes editable (BLK) — delivered via Phase 12.2.1 (PANEL), not the TUI
 
 - [ ] **BLK-01**: The four keys the signer already classifies but the editor never exposed become editable: the **site list** (`blocking.browser_extension.blocked_urls`), the **app mode** (`blocking.native_apps.mode`), **game blocking** (`blocking.native_apps.block_games`) and the **allowlist** (`blocking.native_apps.allowlist`). *(keystone)*
 - [ ] **BLK-02**: A commit that touches a list costs **one token per list touched**, and is gated by the clock edit window — enforced by the **signer**, not by the TUI. ⚠️ *Open decision:* whether that applies in both directions (as specified) or only when the edit loosens. Applied uniformly, adding a site to the blocklist is a *tightening* that still costs a token and is still refused outside the window, so the pact cannot be made stricter at midnight — which contradicts the rule the guard already applies to every other tightening. Both rules are live behind a switch in `.planning/sketches/004-native-dashboard/`.
@@ -81,16 +89,19 @@
 | BAR-02 | Phase 12 | Complete |
 | BAR-03 | Phase 12 | Complete |
 | BAR-04 | Phase 12 | Complete |
-| UIX-01 | Phase 12.1 | Pending |
+| UIX-01 | Phase 12.1 | Superseded by 12.2.1 — a native panel consumes the shell's structural tokens natively |
 | UIX-02 | Phase 12.1 | Complete |
 | UIX-03 | Phase 12.1 | Complete |
 | UIX-04 | Phase 12.1 | Complete |
 | UIX-05 | Phase 12.1 | Complete |
 | UIX-06 | Phase 12.1 | Complete |
-| BLK-01 | Phase 12.2 | Pending |
-| BLK-02 | Phase 12.2 | Pending |
-| BLK-03 | Phase 12.2 | Pending |
-| BLK-04 | Phase 12.2 | Pending |
-| BLK-05 | Phase 12.2 | Pending |
+| BLK-01 | Phase 12.2.1 (supersedes 12.2) | Pending |
+| BLK-02 | Phase 12.2.1 (supersedes 12.2) | Pending |
+| BLK-03 | Phase 12.2.1 (supersedes 12.2) | Pending |
+| BLK-04 | Phase 12.2.1 (supersedes 12.2) | Pending |
+| BLK-05 | Phase 12.2.1 (supersedes 12.2) | Pending |
+| PANEL-01 | Phase 12.2.1 | Pending |
+| PANEL-02 | Phase 12.2.1 | Pending |
+| PANEL-03 | Phase 12.2.1 | Pending |
 
 *(Phase column filled by the roadmapper.)*

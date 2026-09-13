@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
-status: completed
+status: "Phase 12.1 gate remains OPEN/rejected on the record. Phase 12.2.1 inserted after 12.2 to build the Omarchy shell panel as the full control surface and retire the ngtui terminal app; the polkit-vs-sudo/PTY gate is already proven live on this box. Run /gsd:discuss-phase 12.2.1 next."
 stopped_at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
-last_updated: "2026-09-13T11:37:40.431Z"
+last_updated: "2026-09-13T14:03:09.348Z"
 last_activity: 2026-09-13
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 3
   total_plans: 18
   completed_plans: 18
-  percent: 60
+  percent: 50
 ---
 
 # Project State
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts. *(v2.0: the wall is now root-backed; `sudo` is the past-the-impulse threshold.)*
-**Current focus:** Phase 12.1 — native-dashboard-pointer-first-omarchy-tui
+**Current focus:** Phase 12.2.1 — omarchy-native-panel
 
 ## Current Position
 
-Phase: 12.1 (native-dashboard-pointer-first-omarchy-tui) — AWAITING PHASE GATE
-Plan: 9 of 9
-Status: All nine plans executed and the control ledger is closed. The phase is NOT complete: 12.1-09 Task 2 (the live walkthrough — two real `omarchy theme set` switches with the app open, a real mouse, and the user's verdict on whether it reads as a native Omarchy application) has not been performed. The `ngtui` shim is already reinstalled from this tree, so the walkthrough will test this phase's UI.
+Phase: 12.2.1 (omarchy-native-panel) — NOT PLANNED
+Plan: 0 of 0
+Status: Phase 12.1 gate remains OPEN/rejected on the record. Phase 12.2.1 inserted after 12.2 to build the Omarchy shell panel as the full control surface and retire the ngtui terminal app; the polkit-vs-sudo/PTY gate is already proven live on this box. Run /gsd:discuss-phase 12.2.1 next.
 Last activity: 2026-09-13
 
 ## Performance Metrics
@@ -104,6 +104,7 @@ Last activity: 2026-09-13
 
 - Phase 12.1 inserted after Phase 12: Native dashboard — TUI restyled from shell.toml structural tokens, one cursor shared between pointer and keyboard
 - Phase 12.2 inserted after Phase 12.1: Blocking becomes editable — the four keys the signer classifies but the editor never exposed, at one token per list
+- Phase 12.2.1 inserted after Phase 12.2: Omarchy Native Panel — polkit gate proven live on this box before opening the phase; supersedes 12.2's editing scope, delivered in the panel instead of the TUI (URGENT)
 
 ### Decisions
 
@@ -260,9 +261,11 @@ complete. The next move is an iterative design session, not a gap-closure pass �
 problem is the visual language, not a missing control.
 
 Open items carried out of the phase:
+
 - The structural-token keystone (UIX-01) is still Pending: the style reader parses 31
   spacing keys and the base font, and the variable emitter emits no variable for either.
   No path exists, not merely no consumer.
+
 - Ten of the 34 style variables have no consumer; five structurally cannot have one.
 - The stated "under 4 seconds" validation latency is false — measured 42.75 s.
 - Deferred, not defects at 135x46: the editor has no on-screen legend since the footer was

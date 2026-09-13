@@ -170,6 +170,23 @@ Plans:
 
 **Plans**: TBD
 
+### Phase 12.2.1: Omarchy Native Panel (INSERTED)
+
+**Goal**: The dashboard and editor become a first-party-feeling Omarchy shell panel — the plugin at `packaging/omarchy/plugins/danitrrga.nightguard/` evolves from a read-only viewer into the full control surface (spend a token, grant grace, edit the four blocking keys), and the `ngtui` Textual terminal app is retired once it does. Privileged writes move from `sudo` on a PTY to `pkexec`/polkit against the same signer CLI — proven live on this box before this phase was opened: `pkexec` triggers Omarchy's own polkit agent for a real, human-authorized, non-cached auth dialog, no PTY required, same pinned `CTL_SCRIPT` invocation, backend stays the sole writer/signer, the signing key never reaches the UI process. (Fingerprint itself is blocked on this box by a pre-existing Elan MOC Sensors/libfprint driver bug, confirmed live and independent of this architecture — it equally affects the current `sudo` path.)
+**Depends on**: Phase 12.1 (the pointer-first cursor/interaction contract carries forward as the proven idiom; the phase itself is rejected and not reopened)
+**Supersedes**: Phase 12.2's editing scope (BLK-01..05) — same requirement, delivered in the panel instead of the TUI
+**Requirements**: BLK-01, BLK-02, BLK-03, BLK-04, BLK-05, PANEL-01 (polkit authorisation replaces sudo/PTY), PANEL-02 (conform to the shell's own `Ui/` component library and first-party panel patterns), PANEL-03 (terminal app retired in one deliberate step after parity)
+**Success Criteria** (what must be TRUE):
+
+  1. The panel opens from the bar beside the first-party panels (monitor/audio/network/tailscale) and reads as a native Omarchy panel, not a ported terminal UI.
+  2. A token spend, a grace grant, and an edit to each of the four blocking keys all work from the panel and commit through the signer.
+  3. A change attempted outside the sanctioned clock window is refused with the signer's own reason, shown on the panel before any authentication prompt.
+  4. Two live `omarchy theme set` switches restyle the panel with no restart.
+  5. The trust path is unchanged except the deliberate `sudo`+PTY → `pkexec`/polkit swap, documented with the evidence that proved it: the signing key never enters the UI process, the backend remains the sole writer/signer, the pinned-path validation (`backend.py:27-53`) survives, fail-closed behaviour and the guard's auto-revert of out-of-band edits are untouched.
+  6. The `ngtui` terminal app is retired in one deliberate step, once the panel can do everything it did — not incrementally.
+
+**Plans**: TBD
+
 ### Phase 13: Autostart + AUR Packaging
 
 **Goal**: Make the desktop app publish-ready — an optional, off-by-default login autostart for the status surface, plus an AUR `PKGBUILD` and documented README install path that declares (never vendors) the Python trust stack and fails loud when it is absent.
