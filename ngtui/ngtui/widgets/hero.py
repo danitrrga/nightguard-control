@@ -332,6 +332,8 @@ from textual.events import MouseMove, Resize  # noqa: E402
 from textual.style import Style as TStyle  # noqa: E402
 from textual.widgets import Static  # noqa: E402
 
+from ngtui.widgets.cursorstop import CursorStop  # noqa: E402
+
 # The greyscale ladder, as alphas over the RESOLVED foreground. UI-SPEC §12:
 # `0.30 + 0.055 x d`, with every hour inside the curfew pinned to 0.92 instead.
 #
@@ -351,7 +353,7 @@ RAMP_TOOLTIP = (
 )
 
 
-class DayRamp(Static, can_focus=True):
+class DayRamp(CursorStop, can_focus=True):
     """The day as one full-width instrument: ramp, permission channel, axis, read-out.
 
     Four rows, in the order UI-SPEC §12 fixes them: the density ramp, the permission
@@ -418,7 +420,9 @@ class DayRamp(Static, can_focus=True):
 
     # show=False everywhere: no bracket hint appears on this surface and the legend
     # lives in the help chip (UIX-03, OD-2). h/l rather than left/right because the
-    # ramp is a horizontal instrument and the cursor keys belong to the control walk.
+    # ramp is a horizontal instrument and the cursor keys belong to the control walk —
+    # which this widget is now ON, via `CursorStop`. `j`/`k`/`up`/`down` are inherited
+    # from there; before that the ramp was stop 1 of 16 and the walk skipped it.
     BINDINGS = [
         Binding("h", "readout_left", "Earlier hour", show=False),
         Binding("l", "readout_right", "Later hour", show=False),

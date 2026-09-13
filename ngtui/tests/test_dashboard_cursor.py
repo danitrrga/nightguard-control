@@ -38,6 +38,7 @@ from textual import events
 from textual.screen import Screen
 
 from ngtui.widgets.controlrow import PRESS_FLASH, Control, ControlRow, home_controls
+from ngtui.widgets.hero import DayRamp
 from tests.test_ui_harness import SANCTIONED_SIZE
 
 # Comfortably past the stylesheet's 120ms fill cross-fade. Derived from the widget's
@@ -89,13 +90,17 @@ class _ProbeScreen(Screen):
         self.refused.append(message.model.key)
 
 
-def _probe_app(controls: list[Control]):
+def _probe_app(controls: list[Control], screen: Screen | None = None):
     """The real NightguardApp showing a probe screen — real stylesheet, real tokens.
 
     Subclassed from the shipped app rather than from a bare ``App`` for the reason
     ``conftest.py`` gives: the ladder, the reserved spine and the ``$ng-*`` variables
     are all properties of the shipped app, and a hand-built App would let these
     controls pass while the real one stayed unstyled.
+
+    ``screen`` overrides the composition. Control 6d needs a screen whose stop 1 is a
+    ``DayRamp`` rather than a ``ControlRow``, which is the only arrangement the walk
+    seam is visible in.
     """
     import os
 
@@ -119,7 +124,7 @@ def _probe_app(controls: list[Control]):
             # (T-12.1-01).
             event.prevent_default()
             self._apply_omarchy_theme()
-            self.push_screen(_ProbeScreen(controls))
+            self.push_screen(screen if screen is not None else _ProbeScreen(controls))
 
         def action_edit(self) -> None:
             raise AssertionError(
@@ -456,5 +461,143 @@ def test_the_paint_ladder_keeps_its_priority(omarchy_theme_dir):
                 "a pressed AND selected row paints the selected rung — the ladder "
                 "has been re-sorted"
             )
+
+    asyncio.run(_body())
+
+
+# --- control 6d: the walk reaches the instrument, not only the rows ------------
+
+#: The config the registry and the ramp are both built from, so the sixteen stops
+#: below are the real ones rather than a hand-made list. Values match UI-SPEC §8.6's
+#: worked example.
+_WALK_CFG = {
+    "curfew": {"start": "21:30", "end": "05:30"},
+    "edit_window": {"start": "05:30", "end": "14:00"},
+    "blocking": {
+        "native_apps": {"enabled": True, "blacklist": ["steam"]},
+        "browser_extension": {"enabled": True},
+    },
+}
+
+
+class _MixedScreen(Screen):
+    """Stop 1 as a ``DayRamp``, stops 2-16 as ``ControlRow``s — the real shape.
+
+    This is the arrangement ``StatusScreen`` composes, and it is exactly the one
+    ``test_every_control_is_keyboard_reachable`` cannot see: that control renders all
+    sixteen stops as ``ControlRow``s, including ``ramp``, so a walk filtered to
+    ``ControlRow`` visits sixteen of sixteen there and fifteen of sixteen on the real
+    screen. The bug lives in the difference between the two compositions, which is why
+    this control needs its own.
+
+    The ramp takes its values handed in, so nothing here reads live guard state
+    (T-12.1-01).
+    """
+
+    def __init__(self, controls: list[Control]) -> None:
+        self._controls = controls
+        super().__init__()
+
+    def compose(self):
+        for control in self._controls:
+            if control.key == "ramp":
+                yield DayRamp(
+                    cfg=_WALK_CFG,
+                    window={"enabled": True, "start": "05:30", "end": "14:00"},
+                    now_minutes=9 * 60 + 14,
+                    id="ctl-ramp",
+                )
+            else:
+                yield ControlRow(control, id="ctl-%s" % control.key)
+
+
+def test_the_walk_visits_every_registered_stop_including_the_ramp():
+    """Control 6d. ``j`` walks all sixteen stops in registry order, ramp first.
+
+    UI-SPEC §8.6 makes the day ramp **stop 1 of 16** on the shared cursor. It is a
+    ``DayRamp``, not a ``ControlRow``, because it is a four-row instrument rather than
+    a one-row control — and ``ControlRow.action_cursor_down`` used to call
+    ``focus_next(ControlRow)``, which filtered it out. The cursor started on the ramp
+    (Textual focuses the first focusable widget on mount), the first ``j`` left it,
+    and it was never returned to: reachable by ``tab`` only, the one control on the
+    screen the keyboard could not walk to, and the screen's one idea.
+
+    Fixed by ``widgets/cursorstop.py``: both widgets inherit ``CursorStop``, which
+    owns the walk bindings and filters on itself.
+
+    **Negative control, demonstrated (measured 2026-09-13).** ``CursorStop``'s two
+    actions reverted to ``focus_next(ControlRow)`` / ``focus_previous(ControlRow)`` —
+    the pre-fix filter, which is the state plan 12.1-06 handed over::
+
+        E   AssertionError: the j-walk does not visit every registered stop
+        E     walked:   ['ctl-ramp', 'ctl-curfew', ... 'ctl-chip-quit',
+                         'ctl-curfew', 'ctl-may-weaken', ... 'ctl-chip-quit',
+                         'ctl-curfew', 'ctl-may-weaken']
+        E     expected: ['ctl-ramp', 'ctl-curfew', ... 'ctl-chip-quit']
+        E   Left contains 17 more items, first extra item: 'ctl-curfew'
+
+    The walk runs off the end and re-enters at **stop 2** instead of wrapping to stop
+    1, so the loop's "back where it started" exit never fires and it runs to its
+    bound. The ramp is visited once, by the mount's own focus, and never again.
+
+    **The other four controls in this file stay GREEN under that same arm** — measured
+    in the same run, ``1 failed, 4 passed``. That is the point of 6d existing
+    separately: control 6 renders every stop as a ``ControlRow``, so the filter that
+    skips the ramp on the real screen visits sixteen of sixteen on its probe.
+
+    ``k`` is asserted too, and not as a courtesy: the two actions are separate methods
+    and a fix applied to one of them is a fix applied to neither. The backwards walk
+    from stop 1 must reach stop 16.
+    """
+
+    async def _body():
+        registry = home_controls(_WALK_CFG)
+        expected = ["ctl-%s" % control.key for control in registry]
+        assert len(expected) == 16
+        assert expected[0] == "ctl-ramp", "the ramp is stop 1 (UI-SPEC §8.6)"
+
+        app = _probe_app([], screen=_MixedScreen(list(registry)))
+        async with app.run_test(size=SANCTIONED_SIZE) as pilot:
+            await pilot.pause()
+
+            # Vacuity guard: the ramp must really be a DayRamp and really not be a
+            # ControlRow, or this control is the one it was written to replace.
+            ramp = app.screen.query_one("#ctl-ramp")
+            assert isinstance(ramp, DayRamp)
+            assert not isinstance(ramp, ControlRow), (
+                "the probe rendered the ramp as a ControlRow — that composition is "
+                "already covered, and the seam only exists in the other one"
+            )
+
+            assert app.focused is ramp, (
+                "the cursor does not start on stop 1: %r" % (app.focused,)
+            )
+
+            start = app.focused.id
+            walked = [start]
+            for _ in range(len(expected) * 2):
+                await pilot.press("j")
+                await pilot.pause()
+                here = app.focused.id
+                if here == start:
+                    break
+                walked.append(here)
+
+            assert walked == expected, (
+                "the j-walk does not visit every registered stop\n"
+                "walked:   %s\nexpected: %s" % (walked, expected)
+            )
+
+            # ...and backwards. `k` is its own method; a fix to `j` alone is no fix.
+            app.screen.set_focus(app.screen.query_one("#ctl-ramp"))
+            await pilot.pause()
+            await pilot.press("k")
+            await pilot.pause()
+            assert app.focused.id == expected[-1], (
+                "k from stop 1 does not wrap to stop 16: %r" % (app.focused.id,)
+            )
+            await pilot.press("k")
+            await pilot.pause()
+            assert app.focused.id == expected[-2]
 
     asyncio.run(_body())
