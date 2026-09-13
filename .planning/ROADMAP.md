@@ -133,7 +133,7 @@ Plans:
 
 **Wave 3**
 
-- [ ] 12.1-04-PLAN.md — get_css_variables + the real repaint sequence + app.tcss rewritten with the paint ladder (controls 2/3)
+- [x] 12.1-04-PLAN.md — get_css_variables + the real repaint sequence + app.tcss rewritten with the paint ladder (controls 2/3)
 
 **Wave 4** *(parallel)*
 
@@ -200,6 +200,6 @@ Plans:
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
 | 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete    | 2026-06-25 |
 | 12. Launcher + Waybar Presence | v2.1 | 6/6 | Complete    | 2026-07-04 |
-| 12.1 Native dashboard | v2.1 | 3/9 | In Progress|  |
+| 12.1 Native dashboard | v2.1 | 4/9 | In Progress|  |
 | 12.2 Blocking editable | v2.1 | 0/? | Not started | — |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |

@@ -4,13 +4,13 @@ milestone: v2.1
 milestone_name: Desktop App
 status: executing
 stopped_at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
-last_updated: "2026-09-13T09:30:31.836Z"
+last_updated: "2026-09-13T09:55:54.346Z"
 last_activity: 2026-09-13
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 12
+  completed_plans: 13
   percent: 40
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 ## Current Position
 
 Phase: 12.1 (native-dashboard-pointer-first-omarchy-tui) — EXECUTING
-Plan: 5 of 9
+Plan: 6 of 9
 Status: Ready to execute
 Last activity: 2026-09-13
 
@@ -199,7 +199,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-13T09:30:28.939Z
+Last session: 2026-09-13T09:55:54.337Z
 Stopped at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
