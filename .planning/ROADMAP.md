@@ -118,7 +118,39 @@ Plans:
   5. No fixed hex in `app.tcss` or any widget, and the composed screen fits 135 × 46 cells — asserted by a test that fails on overflow, so the layout cannot quietly outgrow the sanctioned window.
   6. The trust path is untouched: `backend.commit()`, the inline `sudo` under `App.suspend()` with a real PTY, the direction classifier, and the refusal to accept a weakening keystroke outside the edit window all behave exactly as before, proven by the existing suite staying green.
 
-**Plans**: TBD
+**Plans**: 9 plans in 7 waves
+
+Plans:
+
+**Wave 1**
+
+- [ ] 12.1-01-PLAN.md — [BLOCKING] async test idiom + UI fixture group + the literal-hex scan (control 1)
+- [ ] 12.1-02-PLAN.md — colour-role pick chains in theme.py + the 28-theme Textual-role sweep (control 4)
+
+**Wave 2**
+
+- [ ] 12.1-03-PLAN.md — omarchy_style injection seam + full [controls] ladder + hypr_rounding + style_variables (controls 3b/4b/4c)
+
+**Wave 3**
+
+- [ ] 12.1-04-PLAN.md — get_css_variables + the real repaint sequence + app.tcss rewritten with the paint ladder (controls 2/3)
+
+**Wave 4** *(parallel)*
+
+- [ ] 12.1-05-PLAN.md — ControlRow + the 16-stop registry + the shared cursor and no-reflow controls (5/6/6b/6c/7/8)
+- [ ] 12.1-06-PLAN.md — DayRamp + the pure density/column helpers + the hero controls (11/11b/11c)
+
+**Wave 5**
+
+- [ ] 12.1-07-PLAN.md — StatusScreen recomposed across the 46-row budget; Header gone, chips in
+
+**Wave 6**
+
+- [ ] 12.1-08-PLAN.md — edit.py chrome removal + on_resize degradation + the window and accent budgets (controls 9/10)
+
+**Wave 7**
+
+- [ ] 12.1-09-PLAN.md — control-ledger close-out + trust-path diff audit + live walkthrough checkpoint
 
 ### Phase 12.2: Blocking becomes editable — the four frozen keys (INSERTED)
 
