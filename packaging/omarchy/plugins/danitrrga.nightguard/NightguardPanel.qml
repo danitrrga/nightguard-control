@@ -325,6 +325,117 @@ Panel {
 
   }
 
+  // One thing that dies tonight. A bordered, filled object rather than a line
+  // of text: the roster is the subject of this panel, and a run of flat
+  // label/value lines reads as a printout of the config no matter what the
+  // words say. An entry that names nothing is tinted urgent as a whole row --
+  // the defect belongs to the entry, not to a word at its right edge.
+  component EntryRow: Rectangle {
+    id: entryRow
+    property var entry: null
+    readonly property bool broken: !!entry && String(entry.state) === "unmatched"
+
+    implicitHeight: entryLabel.implicitHeight + Style.space(14)
+    radius: Style.cornerRadius
+    color: entryRow.broken ? root.alpha(root.urgent, 0.10)
+                           : Style.normalFillFor(root.foreground, Color.accent)
+    border.width: Style.normalBorderWidth
+    border.color: entryRow.broken ? root.alpha(root.urgent, 0.45)
+                                  : Style.normalBorderFor(root.foreground, Color.accent)
+
+    Text {
+      id: entryLabel
+      textFormat: Text.PlainText
+      anchors.left: parent.left
+      anchors.leftMargin: Style.spacing.rowPaddingX
+      anchors.verticalCenter: parent.verticalCenter
+      text: root.entryTitle(entryRow.entry)
+      color: root.foreground
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+
+    Text {
+      textFormat: Text.PlainText
+      anchors.right: parent.right
+      anchors.rightMargin: Style.spacing.rowPaddingX
+      anchors.left: entryLabel.right
+      anchors.leftMargin: Style.spacing.sm
+      anchors.verticalCenter: parent.verticalCenter
+      horizontalAlignment: Text.AlignRight
+      text: root.entryValue(entryRow.entry)
+      color: root.entryColor(entryRow.entry)
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      elide: Text.ElideRight
+    }
+  }
+
+  // A switch that does not exist yet would be a lie told by affordance, so
+  // these carry their state as a word instead. The card shape is the one the
+  // control will take when the signing path lands, so the panel does not have
+  // to be relaid out around it later.
+  component FactCard: Rectangle {
+    id: factCard
+    property string label: ""
+    property string detailText: ""
+    property string value: ""
+    property bool alarm: false
+
+    implicitHeight: factCol.implicitHeight + Style.space(16)
+    radius: Style.cornerRadius
+    color: Style.normalFillFor(root.foreground, Color.accent)
+    border.width: Style.normalBorderWidth
+    border.color: Style.normalBorderFor(root.foreground, Color.accent)
+
+    Column {
+      id: factCol
+      x: Style.spacing.rowPaddingX
+      y: Style.space(8)
+      width: parent.width - Style.spacing.rowPaddingX * 2
+      spacing: Style.spacing.labelGap
+
+      Item {
+        width: parent.width
+        implicitHeight: Math.max(factLabel.implicitHeight, factValue.implicitHeight)
+
+        Text {
+          id: factLabel
+          textFormat: Text.PlainText
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          text: factCard.label
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.subtitle
+          font.bold: true
+        }
+
+        Text {
+          id: factValue
+          textFormat: Text.PlainText
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          text: factCard.value
+          color: factCard.alarm ? root.urgent : root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        width: parent.width
+        visible: factCard.detailText !== ""
+        text: factCard.detailText
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WordWrap
+      }
+    }
+  }
+
   // Label left, value right — the shell's own row shape.
   component InfoRow: Item {
     id: infoRow
@@ -551,17 +662,18 @@ Panel {
             wrapMode: Text.WordWrap
           }
 
-          Repeater {
-            model: root.blockedEntries
+          Column {
+            width: parent.width
+            spacing: Style.spacing.xs
 
-            InfoRow {
-              required property var modelData
-              width: column.width
-              // PlainText is load-bearing on both halves: these strings come
-              // from the config, which is user-entered text.
-              title: root.entryTitle(modelData)
-              value: root.entryValue(modelData)
-              valueColor: root.entryColor(modelData)
+            Repeater {
+              model: root.blockedEntries
+
+              EntryRow {
+                required property var modelData
+                width: column.width
+                entry: modelData
+              }
             }
           }
 
@@ -581,19 +693,31 @@ Panel {
             wrapMode: Text.WordWrap
           }
 
-          InfoRow {
+          // Not part of the roster above. These are settings that decide what
+          // ELSE falls, and running them together as identical lines was what
+          // made the whole panel read as four loose facts.
+          FactCard {
             width: parent.width
-            title: "Juegos"
-            value: root.blocking
-                   ? (root.blocking.games ? "detectados solos" : "sin bloquear") : "—"
-            muted: !root.blocking || !root.blocking.games
+            label: "Bloquear juegos"
+            value: !root.blocking ? "—" : (root.blocking.games ? "activo" : "sin bloquear")
+            alarm: !!root.blocking && !root.blocking.games
+            detailText: !root.blocking ? ""
+                        : (root.blocking.games
+                           ? "Steam y Heroic, detectados solos según los instalas"
+                           : "los juegos que instales no quedan cubiertos")
           }
 
-          InfoRow {
+          FactCard {
             width: parent.width
-            title: "Sitios web"
-            value: root.blocking ? (root.blocking.sites + " bloqueados") : "—"
-            muted: !root.blocking || !root.blocking.sites_enabled
+            label: "Bloquear sitios"
+            value: !root.blocking ? "—" : (root.blocking.sites + " bloqueados")
+            alarm: !!root.blocking && root.blocking.sites_enabled && root.blocking.sites === 0
+            detailText: !root.blocking ? ""
+                        : (!root.blocking.sites_enabled
+                           ? "desactivado — la política del navegador no se aplica"
+                           : (root.blocking.sites === 0
+                              ? "activo, pero sin ninguna dirección que aplicar"
+                              : "vía la política del navegador"))
           }
 
           // ---------- warnings ----------
@@ -648,7 +772,7 @@ Panel {
 
             Button {
               id: tuiButton
-              width: (parent.width - Style.space(8)) / 2
+              width: (parent.width - Style.space(8)) * 0.62
               text: "Abrir ngtui"
               tooltipText: "La interfaz completa — lo único que puede cambiar algo"
               bordered: true
@@ -659,7 +783,7 @@ Panel {
             }
 
             Button {
-              width: (parent.width - Style.space(8)) / 2
+              width: (parent.width - Style.space(8)) * 0.38
               text: "Actualizar"
               tooltipText: "Volver a leer el estado"
               bordered: true
