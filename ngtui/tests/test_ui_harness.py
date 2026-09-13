@@ -89,3 +89,104 @@ def test_a_pilot_driven_test_runs_under_the_projects_own_runner():
             assert app.screen.size == Size(*SANCTIONED_SIZE)
 
     asyncio.run(_body())
+
+
+# --- the UI fixture group, proved to work ------------------------------------
+# Beyond the plan's letter, and for the reason the plan itself gives for control
+# 1: a fixture that is only ever *discovered* is a scan that matched nothing. The
+# phase's stated truth is "a test can build the real NightguardApp against a
+# fixture theme without touching the live desktop theme" — these two tests are
+# what make that assertable rather than claimed, and they are the first caller
+# the fixtures ever had.
+
+
+def test_the_probe_app_builds_the_real_app_against_the_fixture_theme(
+    probe_app, omarchy_theme_dir
+):
+    """The probe is the real NightguardApp, and its colour comes from tmp_path."""
+
+    async def _body():
+        from ngtui import theme
+
+        app = probe_app(rows=5)
+        async with app.run_test(size=SANCTIONED_SIZE) as pilot:
+            await pilot.pause()
+
+            # T-12.1-02: the loader is reading the fixture, not the live desktop
+            # theme that omarchy-theme-set rewrites out from under the suite.
+            assert theme.theme_dir() == str(omarchy_theme_dir)
+            assert "omarchy/current/theme" not in theme.theme_dir()
+
+            # The real _apply_omarchy_theme() ran and the fixture palette reached
+            # the app's variables — resolved value, not the file's text (Pitfall 8).
+            assert app.theme == "omarchy"
+            assert app.theme_variables["accent"].lower() == "#7fc9c4"
+
+            # The probe composition is there and carries the cursor.
+            #
+            # Query through `app.screen`, never `app`. `App.query` is scoped to the
+            # default screen, so after a push_screen it matches nothing: measured
+            # `app.children == [_ProbeScreen()]` yet `len(app.query(".ctl")) == 0`
+            # while `len(app.screen.query(".ctl")) == 5`. RESEARCH's control recipes
+            # are written as `app.query(ControlRow)` and must be read as
+            # `app.screen.query(...)` — the app-scoped form returns an empty query,
+            # which makes an "assert every row ..." control pass over zero rows.
+            assert len(app.query(".ctl")) == 0, (
+                "App.query now descends the screen stack — the harness rule that "
+                "controls must query app.screen can be relaxed"
+            )
+            assert len(app.screen.query(".ctl")) == 5
+
+            # The cursor starts ON the first row — Textual focuses the first
+            # focusable widget when the screen mounts, so `tab` moves to r1 rather
+            # than arriving at r0. The cursor controls read the position, so where
+            # it starts is part of the harness contract, not an accident.
+            assert app.focused is not None
+            assert app.focused.id == "r0"
+            await pilot.press("tab")
+            await pilot.pause()
+            assert app.focused.id == "r1"
+
+    asyncio.run(_body())
+
+
+def test_mutate_theme_rewrites_the_named_section_and_moves_the_mtime(
+    omarchy_theme_dir, mutate_theme
+):
+    """Replace, append, leave the neighbours alone, and bump the mtime.
+
+    All four matter to the live-restyle control: it mutates one token between
+    repaints and asserts the running app followed. A rewrite that landed on the
+    same mtime would make the poll report no change and the control fail with the
+    pipeline working.
+    """
+    import os
+    import tomllib
+
+    path = omarchy_theme_dir / "shell.toml"
+    before = os.stat(path).st_mtime
+
+    mutate_theme(
+        omarchy_theme_dir,
+        "controls",
+        normal_fill_alpha=0.9,       # key exists -> replaced in place
+        normal_border_style="hkey",  # key absent -> appended to the section
+    )
+
+    with open(path, "rb") as fh:
+        shell = tomllib.load(fh)
+
+    assert shell["controls"]["normal-fill-alpha"] == 0.9
+    assert shell["controls"]["normal-border-style"] == "hkey"
+    # Neighbouring keys and neighbouring sections survive the rewrite.
+    assert shell["controls"]["focus-fill-alpha"] == 0.08
+    assert shell["popups"]["border"] == "hyprland.active-border"
+    assert os.stat(path).st_mtime > before
+
+
+def test_mutating_a_section_that_is_not_there_is_loud(omarchy_theme_dir, mutate_theme):
+    """The vacuity guard fires rather than leaving the file at its old values."""
+    import pytest
+
+    with pytest.raises(AssertionError, match=r"no \[nosuch\] section"):
+        mutate_theme(omarchy_theme_dir, "nosuch", whatever=1)
