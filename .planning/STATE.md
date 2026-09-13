@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
 status: executing
-stopped_at: Completed 12.1-07-PLAN.md (Wave 5 — the composed home surface)
-last_updated: "2026-09-13T10:58:29.000Z"
+stopped_at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
+last_updated: "2026-09-13T11:17:49.569Z"
 last_activity: 2026-09-13
 progress:
   total_phases: 5
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 ## Current Position
 
 Phase: 12.1 (native-dashboard-pointer-first-omarchy-tui) — EXECUTING
-Plan: 8 of 9
+Plan: 9 of 9
 Status: Ready to execute
 Last activity: 2026-09-13
 
@@ -95,6 +95,7 @@ Last activity: 2026-09-13
 | Phase 12.1 P04 | 17min | 3 tasks | 3 files |
 | Phase 12.1 P06 | 25 | 3 tasks | 3 files |
 | Phase 12.1 P07 | 40 | 5 tasks | 9 files |
+| Phase 12.1 P08 | 48 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -175,6 +176,8 @@ Recent decisions affecting current work:
 - [Phase 12.1, 07]: DayRamp gave up h/l — l is one of the four single-key bindings pinned to NightguardApp (ledger) and the ramp holds the cursor on mount, so the ledger toggle was unreachable from the screen's opening state. left/right carry the read-out.
 - [Phase 12.1, 07]: backend.py was NOT touched (the plan's own stop condition), so eight of home_controls()'s nine machine facts have no reader and degrade to their documented defaults in _machine_facts(). The WEAK MODE header alarm is raised only when enforcement was actually READ, never by the unread default.
 - [Phase 12.1, 07]: A row budget needs three independent claims — measured: with one extra row, max_scroll_y stayed 0 because the 1fr ledger absorbed it. Assert that it fits, that exactly one region is flexible, AND that the flexible one keeps its slack. Plan 08's overflow control inherits the same blindness.
+- [Phase 12.1, 12.1-08]: The ledger's min-height: 4 is enforced in app.tcss rather than stated: measured, the degradation ladder runs out of things to drop at 31 rows and the audit record was the region that kept shrinking — 3 rows at a 30-row terminal, 1 at 24.
+- [Phase 12.1, 12.1-08]: The window budget is three claims, each armed to a different bug: max_scroll_y, the frame's own region, and every widget's bottom edge. Claims 1-2 are blind to a 1-3 row overrun the ledger absorbs; test_dashboard_home's ledger-slack claim catches those.
 
 ### Pending Todos
 
@@ -211,7 +214,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-13T10:58:29.000Z
+Last session: 2026-09-13T11:17:36.352Z
 Stopped at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
 Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).

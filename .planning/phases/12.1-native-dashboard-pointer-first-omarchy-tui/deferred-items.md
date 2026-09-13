@@ -66,3 +66,73 @@ from a real one at the moment it appears.
 from the transition's own duration rather than typed (plan 05's shape). Do **not** weaken
 the 0.42 assertion — that value is the whole point of the fixture's
 `normal-fill-alpha = 0.42`.
+
+---
+
+## The editor has no on-screen legend now — plan 12.1-08, Task 1
+
+**Found during:** 12.1-08 Task 1, removing the framework chrome from `edit.py`.
+**Owner:** phase 12.2 (it owns the edit flow) or a follow-up to 12.1.
+
+The home surface traded the `Footer`'s key legend for the `help` chip plus an
+`escape` that closes the panel. `EditScreen` has no chip strip, so after this plan
+its seven bindings — `j` `k` `enter` `space` `c` (commit) `u` (discard) `escape`
+(back) — have **no affordance on screen at all**. `c` and `u` are the consequential
+ones and they are now undiscoverable.
+
+**Measured:** `textual 8.2.7` binds nothing to `f1` by default. `App.BINDINGS` is
+`ctrl+q` and `ctrl+c` only; `Screen.BINDINGS` is `tab`, `shift+tab` and
+`ctrl+c,super+c`. So there is no free fallback — the legend is simply gone.
+
+**Not fixed here, deliberately.** Plan 12.1-08 fences `edit.py` to "three `yield`
+lines and one import" (T-12.1-31), and the obvious fix collides with the editor's
+own semantics: `escape` is already this screen's *cancel*, so a help panel that
+`escape` both closes and escapes out of is a rework of the edit flow. That is
+12.2's subject, not this phase's.
+
+**When someone owns it:** the shape that works on the home surface is a `help`
+control plus `action_close_help`, with the panel's close bound to a key that is not
+already cancel — or a one-line hint row inside the editor, which costs a row of the
+edit screen's own budget and does not have the escape collision.
+
+---
+
+## The degradation classes cannot see a `split` panel — plan 12.1-08, Task 2
+
+**Found during:** 12.1-08 Task 2, writing control 9's help-panel-open assertion.
+**Owner:** unassigned. Below the sanctioned window; the shipped window is unaffected.
+
+`StatusScreen.on_resize` keys on the **screen's** size. Mounting Textual's
+`HelpPanel` does not resize the screen — `split: right` re-lays out inside it — so
+the degradation triggers never see the ~45 columns the panel takes.
+
+**Measured**, frame width with the help panel open:
+
+```
+terminal 135 -> frame 91 cols   (above the 80-col -narrow threshold: fine)
+terminal 120 -> frame 81
+terminal 110 -> frame 74        \
+terminal 100 -> frame 67         |  below 80, and `-narrow` does not fire:
+terminal  90 -> frame 60         |  #frame wears no class at any of these
+terminal  80 -> frame 50        /
+```
+
+At the sanctioned 135 × 46 the panel leaves 91 columns, comfortably above the
+threshold, so **nothing the windowrule pins is affected**. Below about 120 columns
+the band stays side-by-side while its fixed 62-column left half no longer leaves
+room for the right one, and `overflow-x: hidden` clips `THIS WEEK` rather than
+stacking it. Vertically the frame still fits at every width measured
+(`virtual == container == 44`, `max_scroll_y == 0`), so nothing scrolls or hides a
+ledger row — this is a narrow-terminal cosmetic loss while a transient panel is
+open.
+
+**A second, separate observation from the same measurement:** below roughly 120
+columns Textual's own `HelpPanel` places a `Static` at row **47**, one past the
+window. That is a third-party widget we mount but do not lay out, which is why
+control 9's widget-bottom scan is scoped to `#frame` and its descendants.
+
+**When someone owns it:** the trigger has to move from the screen's size to the
+frame's own, i.e. a resize seam on `#frame` rather than on the screen. That is a new
+widget subclass or a `Resize` handler on the container, and it changes what the
+"< 80 columns" in UI-SPEC §7.4 is measured against — so the contract's table needs
+updating with it, not just the code.

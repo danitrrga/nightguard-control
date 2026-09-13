@@ -39,7 +39,7 @@
 - [x] **UIX-03**: Every changeable value on the home surface is a **clickable control** — switch row, segmented control, list row — and the whole row is the click target. Nothing requires memorising a bracket hint. The keyboard still drives everything (`j`/`k`, arrows, `Enter`/`Space`, `Escape`).
 - [x] **UIX-04**: The day is an **instrument, not a number**: a full-width ASCII density ramp whose density is hours-until-curfew, a separate channel marking the hours a loosening is accepted, and a marker for now. Hovering any column reads out that hour and whether a loosening would be accepted there.
 - [x] **UIX-05**: Hover never reflows — border widths are constant across states, as the shell kit guarantees by reserving the largest border. Colour transition ~120 ms, tooltip delay ~400 ms, matching the kit.
-- [ ] **UIX-06**: No fixed hex in `app.tcss` or the widgets, and the layout fits the sanctioned window (135 × 46 cells at the live terminal font) with a test that fails on overflow.
+- [x] **UIX-06**: No fixed hex in `app.tcss` or the widgets, and the layout fits the sanctioned window (135 × 46 cells at the live terminal font) with a test that fails on overflow.
 
 ### Blocking becomes editable (BLK)
 
@@ -86,7 +86,7 @@
 | UIX-03 | Phase 12.1 | Complete |
 | UIX-04 | Phase 12.1 | Complete |
 | UIX-05 | Phase 12.1 | Complete |
-| UIX-06 | Phase 12.1 | Pending |
+| UIX-06 | Phase 12.1 | Complete |
 | BLK-01 | Phase 12.2 | Pending |
 | BLK-02 | Phase 12.2 | Pending |
 | BLK-03 | Phase 12.2 | Pending |
