@@ -124,7 +124,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 12.1-01-PLAN.md — [BLOCKING] async test idiom + UI fixture group + the literal-hex scan (control 1)
+- [x] 12.1-01-PLAN.md — [BLOCKING] async test idiom + UI fixture group + the literal-hex scan (control 1)
 - [ ] 12.1-02-PLAN.md — colour-role pick chains in theme.py + the 28-theme Textual-role sweep (control 4)
 
 **Wave 2**
@@ -200,6 +200,6 @@ Plans:
 | 10. Linux App (omarchy TUI) | v2.0 | 3/3 | Complete | 2026-06-24 |
 | 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete    | 2026-06-25 |
 | 12. Launcher + Waybar Presence | v2.1 | 6/6 | Complete    | 2026-07-04 |
-| 12.1 Native dashboard | v2.1 | 0/? | Not started | — |
+| 12.1 Native dashboard | v2.1 | 1/9 | In Progress|  |
 | 12.2 Blocking editable | v2.1 | 0/? | Not started | — |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |

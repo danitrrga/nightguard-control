@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Desktop App
 status: executing
-stopped_at: Both design contracts approved (12.1 and 12.2); three decisions await the user; nothing built yet
-last_updated: "2026-09-13T08:31:37.422Z"
-last_activity: 2026-09-13 -- Phase 12.1 planning complete
+stopped_at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
+last_updated: "2026-09-13T08:49:48.073Z"
+last_activity: 2026-09-13
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 9
+  completed_plans: 10
   percent: 40
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-24 — opened v2.1 · Desktop App)
 
 **Core value:** A late-night, impulsive version of the user cannot quietly loosen their own curfew — loosening costs a limited weekly token, and hand-editing the raw config silently reverts. *(v2.0: the wall is now root-backed; `sudo` is the past-the-impulse threshold.)*
-**Current focus:** Phase 12.1 — native dashboard (pointer-first Omarchy TUI)
+**Current focus:** Phase 12.1 — native-dashboard-pointer-first-omarchy-tui
 
 ## Current Position
 
-Phase: 12.1
-Plan: Not started
+Phase: 12.1 (native-dashboard-pointer-first-omarchy-tui) — EXECUTING
+Plan: 2 of 9
 Status: Ready to execute
-Last activity: 2026-09-13 -- Phase 12.1 planning complete
+Last activity: 2026-09-13
 
 ## Performance Metrics
 
@@ -89,6 +89,7 @@ Last activity: 2026-09-13 -- Phase 12.1 planning complete
 | Phase 12 P04 | 5 | 3 tasks | 5 files |
 | Phase 12 P05 | 12 | 2 tasks | 5 files |
 | Phase 12 P06 | 40 | 2 tasks | 2 files |
+| Phase 12.1 P01 | 22 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -148,6 +149,11 @@ Recent decisions affecting current work:
 - [Phase 12]: [Phase 12, 12-02]: D-11/BAR-04 shipped — backend.commit() fires pkill -RTMIN+11 waybar ONLY on returncode==0, inside check=False + swallow-all try/except; result dict built independently so a refused commit never flips the bar (T-12-02) and a raising/absent pkill never perturbs the outcome (T-12-03). SIGRTMIN+11 free (7/8/9/10 taken). 71 ngtui tests (67 baseline +4).
 - [Phase ?]: [Phase 12, 12-04]: five canonical omarchy artifacts shipped (D-06) — nightguard.desktop (app-id=org.omarchy.ngtui, Terminal=false, -e ngtui), explicit 3-line Hyprland float rule keyed on class not title (SC-1/T-12-07), key-less custom/nightguard module (signal 11, on-click omarchy-launch-or-focus-tui, on-click-right ngtui-menu), six-class semantic style.css (D-09), ngtui-menu walker --dmenu read-only/open-only menu (no loosen action, T-12-06). Marker-guarded for Plan 05. No ngtui code touched -> D-10 71-test baseline intact.
 - [Phase 12]: [Phase 12, 12-06]: live omarchy integration landed + phase-gated. install.sh ran on the author's box (backup-first, idempotent); auto-verify 12/12; human-verify APPROVED for float/icon/bar/read-only-menu/SIGRTMIN+11 commit-refresh. Installer hardened for the live single-line modules-center array + no-match-grep abort under set -euo pipefail (1db34ff). Phase 12 COMPLETE (6/6).
+- [Phase ?]: [Phase 12.1, 12.1-01]: async idiom for every Pilot control is asyncio.run(_body()) inside a plain sync test — no marker, no asyncio_mode; the suite stays runnable under a bare pytest. Rejected idiom's message recorded verbatim: 'async def functions are not natively supported.' reported as a FAILURE not an error (Pitfall 9/T-12.1-03).
+- [Phase ?]: [Phase 12.1, 12.1-01]: UI controls must query through app.screen, never app — App.query is scoped to the default screen and returns 0 after push_screen (measured: app.query('.ctl')=0 vs app.screen.query('.ctl')=5). Every app.query(...) in RESEARCH/PATTERNS must be read as app.screen.query(...).
+- [Phase ?]: [Phase 12.1, 12.1-01]: a Textual event handler cannot be replaced by overriding it — every on_mount in the MRO runs (message_pump.py:758). probe_app calls event.prevent_default(); without it the base pushed StatusScreen on top of the probe screen, which would have routed UI controls into live guard state (T-12.1-01).
+- [Phase ?]: [Phase 12.1, 12.1-01]: a relative CSS_PATH resolves against the directory of the module where the App subclass is DEFINED — a probe subclass in tests/ resolved 'app.tcss' to tests/app.tcss. probe_app pins it absolute from ngtui.app.__file__.
+- [Phase ?]: [Phase 12.1, 12.1-01]: Wave 1 complete — 4 UI fixtures + control 1 (literal-hex scan, seen to catch an injected #7aa2f7) + the async canary. Suite 459 passed / 1 failed / 3 skipped; baseline is 453 (not 458 — a theme was removed mid-planning, c40df13). No file under ngtui/ngtui/ touched.
 
 ### Pending Todos
 
@@ -183,9 +189,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-12T18:46:15.955Z
-Stopped at: Both design contracts approved (12.1 and 12.2); three decisions await the user; nothing built yet
-Resume file: .planning/phases/12.2-blocking-becomes-editable-the-four-frozen-keys/12.2-UI-SPEC.md
+Last session: 2026-09-13T08:49:48.060Z
+Stopped at: Completed 12.1-01-PLAN.md (Wave 1 — test harness + hex ban)
+Resume file: None
 Env note: this machine has Windows PowerShell 5.1 (NOT pwsh 7) — PowerShell scripts/harnesses must stay 5.1-compatible (ASCII, no em-dash literals in -File scripts, gate on $LASTEXITCODE).
 
 ## Deferred Items
