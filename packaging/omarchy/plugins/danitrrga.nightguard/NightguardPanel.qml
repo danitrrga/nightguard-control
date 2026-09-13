@@ -701,10 +701,19 @@ Panel {
           // otherwise the control the user just flipped snaps back while the
           // change sits waiting in the pending list, which reads as the click
           // having failed.
+          // The explanation is a sibling Text and NOT the Toggle's own
+          // `description`, and that is a measurement fix rather than a taste
+          // one. `Toggle` lays its description out inside an anchored Row, so a
+          // string long enough to wrap grows the drawn row without growing the
+          // `implicitHeight` the enclosing Column adds up. Two wrapped
+          // descriptions under-reported this panel by about forty pixels each,
+          // the popup asked to be shorter than its own contents, and the sites
+          // card and both buttons were simply below the fold with nothing on
+          // screen to say so. A wrapping Text with a known width, laid out by
+          // the Column itself, measures correctly.
           Toggle {
             width: parent.width
             label: "Bloquear juegos"
-            description: root.gamesDescription
             foreground: root.foreground
             fontFamily: root.fontFamily
             checked: writer.stagedValue("blocking.native_apps.block_games",
@@ -713,16 +722,35 @@ Panel {
                                     checked ? "Dejar de bloquear juegos" : "Bloquear juegos")
           }
 
+          Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            text: root.gamesDescription
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
+
           Toggle {
             width: parent.width
             label: "Bloquear sitios"
-            description: root.sitesDescription
             foreground: root.foreground
             fontFamily: root.fontFamily
             checked: writer.stagedValue("blocking.browser_extension.enabled",
                                         !!root.blocking && root.blocking.sites_enabled === true) === true
             onClicked: writer.stage("blocking.browser_extension.enabled", "set", !checked,
                                     checked ? "Dejar de bloquear sitios" : "Bloquear sitios")
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            text: root.sitesDescription
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
           }
 
           // ---------- what is waiting to be signed ----------
