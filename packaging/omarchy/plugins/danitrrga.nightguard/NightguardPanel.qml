@@ -429,7 +429,18 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(340))
+    // 380, which is what every first-party panel in this shell asks for —
+    // audio, network, bluetooth, monitor, power, tailscale and dropbox all use
+    // the same number. This one was 340 and had been since it held two rows of
+    // label/value text; at seven roster rows plus two switches it is the
+    // narrowest popup in the bar, and the crowding reads as the cards being
+    // cut off rather than as the panel being too tight.
+    //
+    // Measured on the reported screenshot before changing it: the cards sit 16
+    // physical pixels from the popup's inner edge on BOTH sides, so nothing was
+    // actually clipped. The complaint was real and the diagnosis it suggested
+    // was not — what was wrong is the measure, not the margin.
+    contentWidth: panel.fittedContentWidth(Style.space(380))
     // The footer is pinned, so its height is part of what the popup must be
     // tall enough for -- leaving it out let the scroll area eat the apply
     // button whenever the content was long, which is exactly when it matters.
@@ -724,7 +735,11 @@ Panel {
 
           Text {
             textFormat: Text.PlainText
-            width: parent.width
+            // Indented to the switch's own label rather than to the card's
+            // outer edge. A caption that explains a control and does not line
+            // up under it reads as a loose remark about the section.
+            x: Style.spacing.rowPaddingX
+            width: parent.width - Style.spacing.rowPaddingX * 2
             text: root.gamesDescription
             color: root.dim
             font.family: root.fontFamily
@@ -745,7 +760,11 @@ Panel {
 
           Text {
             textFormat: Text.PlainText
-            width: parent.width
+            // Indented to the switch's own label rather than to the card's
+            // outer edge. A caption that explains a control and does not line
+            // up under it reads as a loose remark about the section.
+            x: Style.spacing.rowPaddingX
+            width: parent.width - Style.spacing.rowPaddingX * 2
             text: root.sitesDescription
             color: root.dim
             font.family: root.fontFamily
