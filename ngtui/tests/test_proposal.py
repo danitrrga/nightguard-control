@@ -17,8 +17,9 @@ import sys
 
 import pytest
 
-_STACK = os.environ.get(
-    "NIGHTGUARD_STACK_DIR", "/home/danitrrga/dev/Projects/nightguard-control/scripts/linux"
+_STACK = os.environ.get("NIGHTGUARD_STACK_DIR") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "scripts", "linux",
 )
 if _STACK not in sys.path:
     sys.path.insert(0, _STACK)

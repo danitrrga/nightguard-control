@@ -32,14 +32,22 @@ def test_resolve_stack_dir_rejects_dir_without_ctl(tmp_path, monkeypatch):
     assert "nightguard_ctl.py" in str(exc.value)
 
 
-def test_legit_override_still_works(monkeypatch):
-    """The real LifeOS override resolves cleanly (no regression for the author box)."""
-    monkeypatch.setenv(
-        "NIGHTGUARD_STACK_DIR",
-        "/home/danitrrga/dev/Projects/nightguard-control/scripts/linux",
-    )
+def test_legit_override_still_works(monkeypatch, tmp_path):
+    """A valid override resolves cleanly.
+
+    This used to pin the author's absolute checkout path and assert the result
+    ended with "nightguard-control/scripts/linux" — so it proved the override
+    works only for a directory named after one person's clone, and on any other
+    machine it asserted against a path that does not exist.
+    """
+    stack = tmp_path / "scripts" / "linux"
+    stack.mkdir(parents=True)
+    # The resolver accepts a directory because it CONTAINS the signer, not
+    # because of what it is called — which is the property worth asserting.
+    (stack / "nightguard_ctl.py").write_text("# stand-in\n")
+    monkeypatch.setenv("NIGHTGUARD_STACK_DIR", str(stack))
     resolved = backend._resolve_stack_dir()
-    assert resolved.endswith("nightguard-control/scripts/linux")
+    assert resolved == str(stack)
 
 
 def test_ctl_script_lives_under_pinned_stack_dir():

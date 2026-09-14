@@ -144,6 +144,24 @@ _IMPORTED_TYPES = {
 }
 
 
+def _plugin_qml(plugin=None):
+    """Every QML file of the plugin, and never an empty list.
+
+    Three scans in this file walked a glob and asserted things about what they
+    found. Renaming the plugin directory left all three green while ten
+    neighbouring tests went red — a scan that finds nothing proves nothing, and
+    the one time you need it is exactly the time the path moved.
+    """
+    import glob
+
+    plugin = plugin or _plugin_dir()
+    paths = sorted(glob.glob(os.path.join(plugin, "*.qml")))
+    assert paths, (
+        "no QML found under %s — this scan would pass by looking at nothing" % plugin
+    )
+    return paths
+
+
 def test_every_component_a_qml_file_instantiates_actually_resolves():
     """Same-directory type resolution is what makes `NightguardWriter {}` work
     inside the panel. A component referenced but not shipped resolves to
@@ -174,7 +192,7 @@ def test_every_component_a_qml_file_instantiates_actually_resolves():
 
     known = local | kit | _IMPORTED_TYPES
 
-    for path in sorted(glob.glob(os.path.join(plugin, "*.qml"))):
+    for path in _plugin_qml(plugin):
         with open(path, encoding="utf-8") as fh:
             lines = fh.read().split("\n")
         name = os.path.basename(path)
@@ -236,7 +254,7 @@ def test_no_qml_ever_builds_a_privileged_argv_itself():
     import glob
     import re as _re
 
-    for path in glob.glob(os.path.join(_plugin_dir(), "*.qml")):
+    for path in _plugin_qml():
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
         # Comments are stripped first. The QML SHOULD say, in prose, that a
@@ -285,7 +303,7 @@ def test_no_wrapping_text_hides_its_height_from_the_layout():
     import glob
     import re as _re
 
-    for path in glob.glob(os.path.join(_plugin_dir(), "*.qml")):
+    for path in _plugin_qml():
         with open(path, encoding="utf-8") as fh:
             lines = fh.read().split("\n")
         name = os.path.basename(path)

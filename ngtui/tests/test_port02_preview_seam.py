@@ -98,9 +98,9 @@ def test_preview_change_uses_live_classify_change():
     original_classify = backend.ctl.classify_change
     calls: list[tuple] = []
 
-    def spy_classify(old, new):
-        calls.append((old, new))
-        return original_classify(old, new)
+    def spy_classify(*args, **kwargs):
+        calls.append((args, kwargs))
+        return original_classify(*args, **kwargs)
 
     backend.ctl.classify_change = spy_classify  # type: ignore[assignment]
     try:
@@ -130,9 +130,15 @@ def test_preview_change_uses_live_quota_decide():
     original_quota = backend.ctl.quota_decide
     calls: list[tuple] = []
 
-    def spy_quota(dirs, state, tzname):
-        calls.append((dirs, state, tzname))
-        return original_quota(dirs, state, tzname)
+    # *args/**kwargs on purpose. This spy pinned the three-argument signature,
+    # and when the edit-window gate added `edit_window=` and `now_minutes=` to
+    # quota_decide, the spy started raising TypeError. Nobody noticed for weeks:
+    # the test skips on a machine with no sanctioned config, which is every
+    # machine running the suite, so the failure was never reached. A spy exists
+    # to observe a call, not to restate a signature.
+    def spy_quota(*args, **kwargs):
+        calls.append((args, kwargs))
+        return original_quota(*args, **kwargs)
 
     backend.ctl.quota_decide = spy_quota  # type: ignore[assignment]
     try:

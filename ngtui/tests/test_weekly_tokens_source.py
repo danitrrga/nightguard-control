@@ -70,13 +70,23 @@ def test_the_writers_placeholder_is_overridden_by_every_consumer():
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
         "packaging", "omarchy", "plugins", "danitrrga.nightguard",
     )
+    checked = 0
     for name in ("NightguardPanel.qml", "NightguardWorkshop.qml"):
         with open(os.path.join(plugin, name), encoding="utf-8") as fh:
             text = fh.read()
         if "NightguardWriter {" not in text:
             continue
+        checked += 1
         block = text.split("NightguardWriter {", 1)[1]
         assert "tokensTotal:" in block.split("}", 1)[0], (
             "%s instantiates the writer without giving it the signer's ceiling, "
             "so its cost line would count down from a placeholder" % name
         )
+
+    # Neither file instantiating the writer is not "nothing to check" -- it is
+    # the surface having lost its write path, which is a far larger problem than
+    # the one this test was written for.
+    assert checked, (
+        "neither the dropdown nor the window instantiates NightguardWriter — "
+        "this check passed by finding nothing to check"
+    )

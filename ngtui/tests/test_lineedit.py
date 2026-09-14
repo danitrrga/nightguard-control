@@ -21,8 +21,13 @@ import sys
 import pytest
 
 # Import the live ngcommon via the same bootstrap backend uses, to round-trip the edits.
-_STACK = os.environ.get(
-    "NIGHTGUARD_STACK_DIR", "/home/danitrrga/dev/Projects/nightguard-control/scripts/linux"
+# The fallback is derived, not written out. conftest.py sets the variable before
+# collection so this branch is normally dead -- which is exactly why the author's
+# absolute path sat here unnoticed, ready to be the live value the moment anyone
+# ran this file with the variable unset.
+_STACK = os.environ.get("NIGHTGUARD_STACK_DIR") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "scripts", "linux",
 )
 if _STACK not in sys.path:
     sys.path.insert(0, _STACK)
