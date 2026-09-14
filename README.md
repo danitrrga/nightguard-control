@@ -170,6 +170,16 @@ rm -rf ~/.config/omarchy/plugins/danitrrga.nightguard
 Deliberately not a script. Removing the thing that stops you removing it should
 take more than one command at two in the morning.
 
+## Documentation
+
+| | |
+|---|---|
+| [Getting started](docs/GETTING-STARTED.md) | The install, walked through, and what to check when it does not work. |
+| [Configuration](docs/CONFIGURATION.md) | Every key in `config.yaml`: what reads it, what it costs to change, and which ones the panel deliberately cannot touch. |
+| [Architecture](docs/ARCHITECTURE.md) | The trust boundary, one change end to end, and what the design does not defend against. |
+| [Development](docs/DEVELOPMENT.md) | Changing the code. The repo is not what runs — start here. |
+| [Testing](docs/TESTING.md) | How to run the suite, what each guard defends, and what nothing covers. |
+
 ## The retired Windows version
 
 This started as a Tauri/Rust application for Windows, driven by PowerShell hooks.

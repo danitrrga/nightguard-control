@@ -143,7 +143,13 @@ def test_the_readme_points_at_things_that_exist():
     readme = _read(os.path.join(_ROOT, "README.md"))
 
     for path in ("scripts/linux/deploy.sh", "config.example.yaml", "banner.png",
-                 "docs/panel.png", "LICENSE"):
+                 "docs/panel.png", "LICENSE",
+                 # The generated set. A README that stops linking these is a
+                 # repository where five documents exist and nothing points at
+                 # them, which is the same as not having written them.
+                 "docs/GETTING-STARTED.md", "docs/CONFIGURATION.md",
+                 "docs/ARCHITECTURE.md", "docs/DEVELOPMENT.md",
+                 "docs/TESTING.md"):
         assert path in readme, "the README no longer mentions %s" % path
         assert os.path.exists(os.path.join(_ROOT, path)), (
             "the README points at %s, which is not in the repo" % path
