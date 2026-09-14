@@ -4,7 +4,7 @@
 
 **Your late-night self is smart. Nightguard is smarter.**
 
-A digital discipline system for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that enforces bedtime curfews, keeps your screen-time blockers alive, and catches you when you try to cheat the clock.
+A digital discipline system for AI agents that enforces bedtime curfews, keeps your screen-time blockers alive, and catches you when you try to cheat the clock.
 
 > *"I'll just fix one more thing..."* — You, at 2 AM, every night.
 
@@ -12,7 +12,7 @@ Nightguard makes the disciplined choice the default — and the undisciplined ch
 
 ## Features
 
-**Curfew Guard** — Blocks Claude Code during the hours you choose. Set different schedules for weekdays vs weekends, or disable specific days entirely.
+**Curfew Guard** — Blocks Codex, Claude Code, Opencode... during the hours you choose. Set different schedules for weekdays vs weekends, or disable specific days entirely.
 
 **Clock Protection** — Verifies time against NTP servers. Changed your system clock to 2 PM? Nightguard knows it's actually midnight. Nice try.
 
