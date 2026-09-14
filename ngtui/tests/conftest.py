@@ -10,11 +10,21 @@ from __future__ import annotations
 
 import os
 
+# Derived from this file, not written out. Both of these were absolute paths in
+# the author's home, which meant the suite only ran on the author's clone: on any
+# other checkout the stack directory did not exist and every test that imports
+# the signer died with ModuleNotFoundError before it could assert anything. The
+# same defect class as the panel's hard-coded CLI path.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault(
-    "NIGHTGUARD_STACK_DIR", "/home/danitrrga/dev/Projects/nightguard-control/scripts/linux"
+    "NIGHTGUARD_STACK_DIR", os.path.join(_REPO_ROOT, "scripts", "linux")
 )
+# A path that deliberately does not exist. Every test that touches an instance
+# points NIGHTGUARD_DIR at its own tmp_path; this default exists only so that a
+# test which forgets to fails loudly instead of reading, or writing, the real
+# instance on the machine running the suite.
 os.environ.setdefault(
-    "NIGHTGUARD_DIR", "/home/danitrrga/.local/share/nightguard"
+    "NIGHTGUARD_DIR", os.path.join(_REPO_ROOT, ".pytest-no-instance")
 )
 
 import json  # noqa: E402

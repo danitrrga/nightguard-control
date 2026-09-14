@@ -382,6 +382,13 @@ def test_every_shell_script_is_executable_in_the_index():
     import subprocess
 
     root = os.path.dirname(os.path.dirname(_LINUX.rstrip(os.sep)))
+    inside = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=root, capture_output=True, text=True,
+    )
+    if inside.returncode != 0 or inside.stdout.strip() != "true":
+        pytest.skip("not a git checkout — there is no index to read modes from")
+
     listing = subprocess.run(
         ["git", "ls-files", "-s", "--", "*.sh"],
         cwd=root, capture_output=True, text=True, check=True,

@@ -36,7 +36,13 @@ import os
 import subprocess
 import tomllib
 
-from textual.theme import Theme
+# Textual is NOT a dependency of this package (pyproject declares none). It was
+# one when the terminal app existed; the three functions below still build its
+# Theme object and are the only things here that need it, so the import moved
+# inside them. At module level it made `import ngtui.theme` fail outright on any
+# machine without a leftover virtualenv — which is every machine but the one
+# this was written on, and is why three test modules could not even be collected
+# from a fresh checkout while the suite looked green here.
 
 # Live omarchy theme directories, newest layout first. Omarchy 4 moved the staged
 # theme out of ~/.config into ~/.local/state; on a v4 box the old path does not
@@ -588,7 +594,7 @@ def style_variables(style: dict) -> dict[str, str]:
     return variables
 
 
-def _theme_from_colors(c: dict) -> Theme:
+def _theme_from_colors(c: dict) -> "Theme":
     """Build the omarchy ``Theme`` from a parsed ``colors.toml`` dict.
 
     **The bug this fixes (D-09).** Until now every role was a single
@@ -616,6 +622,7 @@ def _theme_from_colors(c: dict) -> Theme:
     reads: a ``KeyError`` here is what makes ``load_omarchy_theme`` fall through
     to ``alacritty.toml``, and a chain would swallow it.
     """
+    from textual.theme import Theme
 
     def pick(*names):
         """First name whose value is a ``#``-prefixed colour that parses."""
@@ -654,7 +661,7 @@ def _theme_from_colors(c: dict) -> Theme:
     )
 
 
-def _theme_from_alacritty(a: dict) -> Theme:
+def _theme_from_alacritty(a: dict) -> "Theme":
     """Fallback: build the omarchy ``Theme`` from a parsed ``alacritty.toml`` dict.
 
     Maps the same roles: ``[colors.primary]`` background/foreground and
@@ -662,6 +669,7 @@ def _theme_from_alacritty(a: dict) -> Theme:
     no direct alacritty key, so it borrows ``[colors.normal].blue`` (color4 ==
     omarchy ``accent`` on this box) and finally foreground as a last resort.
     """
+    from textual.theme import Theme
     primary = a.get("colors", {}).get("primary", {})
     normal = a.get("colors", {}).get("normal", {})
     foreground = primary.get("foreground", "#d3c6aa")
@@ -681,13 +689,14 @@ def _theme_from_alacritty(a: dict) -> Theme:
     )
 
 
-def load_omarchy_theme(path: str | None = None) -> Theme:
+def load_omarchy_theme(path: str | None = None) -> "Theme":
     """Parse the live omarchy theme into a Textual ``Theme`` named ``"omarchy"``.
 
     ``path`` overrides the default ``colors.toml`` location (tests pass a fixture).
     When ``colors.toml`` is absent, falls back to ``alacritty.toml`` in the same
     directory (Pitfall 6). Both formats are TOML.
     """
+    from textual.theme import Theme
     resolved = path if path is not None else colors_path()
     try:
         with open(resolved, "rb") as fh:

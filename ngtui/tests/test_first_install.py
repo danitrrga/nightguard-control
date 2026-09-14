@@ -286,3 +286,45 @@ def test_nothing_shipped_describes_the_grace_window_as_a_feature():
         "CLAUDE.md no longer says the bypass does not exist, so the next reader "
         "has nothing to stop them looking for it"
     )
+
+
+def test_no_package_module_imports_a_dependency_this_package_does_not_declare():
+    """`ngtui/ngtui/theme.py` did `from textual.theme import Theme` at module
+    level. Textual was a dependency when the terminal app existed; pyproject now
+    declares none. So three test modules could not be COLLECTED on any machine
+    without a leftover virtualenv — which is every machine but the author's,
+    where a stale `ngtui/.venv` carrying textual 8.2.7 made the suite look green.
+
+    A suite that passes only on one disk is not a suite. This asserts the import
+    surface, which is the part that decides whether a module can be loaded at
+    all; a lazy import inside a function is fine and is what the Theme builders
+    use now.
+    """
+    import ast
+
+    package = os.path.join(_ROOT, "ngtui", "ngtui")
+    # First-party. The four trust-stack modules are not in this package: they
+    # live in scripts/linux and are reached through NIGHTGUARD_STACK_DIR, which
+    # is the whole point — the repo is not what runs, /usr/local/lib is.
+    declared = {"ngtui", "ngcommon", "guard", "nightguard_ctl", "appblock"}
+    stdlib = set(sys.stdlib_module_names)
+
+    offenders = []
+    for name in sorted(os.listdir(package)):
+        if not name.endswith(".py"):
+            continue
+        tree = ast.parse(_read(os.path.join(package, name)), filename=name)
+        for node in tree.body:  # module level only — nested imports are deliberate
+            roots = []
+            if isinstance(node, ast.Import):
+                roots = [alias.name.split(".")[0] for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                roots = [node.module.split(".")[0]]
+            for root in roots:
+                if root not in stdlib and root not in declared:
+                    offenders.append("%s imports %s" % (name, root))
+
+    assert not offenders, (
+        "these modules import something pyproject does not declare, so they "
+        "cannot be imported on a clean checkout: " + ", ".join(offenders)
+    )

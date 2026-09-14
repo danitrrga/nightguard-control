@@ -42,7 +42,9 @@ LOOSEN, TIGHTEN, NOOP = "loosen", "tighten", "noop"
 WEEKLY_TOKENS = 3
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
-# (label, key path, kind) — mirrors crates/mutation-engine/src/classify.rs FIELD_TABLE.
+# (label, key path, kind). This is the only classifier now. It began as a mirror of a
+# Rust one in the retired Windows tree; that tree is gone (archive/windows-tauri), so
+# there is nothing to keep in step with and nowhere else to look.
 FIELD_TABLE = [
     ("curfew.enabled", ["curfew", "enabled"], "bool"),
     ("curfew.allow_commands", ["curfew", "allow_commands"], "list_add"),

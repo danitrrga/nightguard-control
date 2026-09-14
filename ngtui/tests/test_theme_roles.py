@@ -36,6 +36,15 @@ import pytest
 
 from ngtui import theme
 
+# These cover the palette mapping that fed the retired terminal app's Textual
+# Theme object. Textual is not a dependency of this package, so on a clean
+# checkout there is nothing to map to and the cover is skipped rather than
+# erroring at collection. Everything the SHIPPED product reads out of theme.py
+# -- raw_tokens() and omarchy_style() -- is covered by test_theme_sync.py, which
+# needs no Textual at all.
+pytest.importorskip("textual", reason="the terminal app it themed is retired")
+
+
 _THEME_ROOTS = [
     "/usr/share/omarchy/themes",
     os.path.expanduser("~/.config/omarchy/themes"),
