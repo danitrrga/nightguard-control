@@ -69,8 +69,8 @@ Item {
   // programs that survive under the heading of the ones that die.
   readonly property string rosterTitle: allowlistMode ? "SOBREVIVEN AL CURFEW" : "MUEREN ESTA NOCHE"
   readonly property string rosterEmpty: allowlistMode
-    ? "La lista de permitidas está vacía. En este modo eso significa que en curfew muere todo, incluida tu terminal."
-    : "Todavía no muere nada en curfew. El curfew se cumple en la hora, pero no cierra ninguna aplicación."
+    ? "Lista vacía: en este modo muere todo, incluida tu terminal."
+    : "Todavía no muere nada en curfew."
   readonly property bool rosterEmptyIsDangerous: allowlistMode
 
   // How many rows fit before the list stops being a glance and becomes the
@@ -317,9 +317,10 @@ Item {
 
           Text {
             width: parent.width
+            visible: text !== ""
             textFormat: Text.PlainText
             text: clock.curfewSentence
-            color: glance.dimColor
+            color: clock.curfewSentenceIsWarning ? glance.urgentColor : glance.dimColor
             font.family: glance.fontFamily
             font.pixelSize: Style.font.bodySmall
             wrapMode: Text.WordWrap
@@ -409,32 +410,6 @@ Item {
               font.pixelSize: Style.font.caption
             }
           }
-        }
-      }
-
-      // ---------- pending, if anything is ----------
-      Rectangle {
-        width: parent.width
-        visible: glance.pendingCount > 0
-        implicitHeight: pendingText.implicitHeight + Style.space(18)
-        radius: Style.cornerRadius
-        color: glance.alpha(Color.accent, 0.10)
-        border.width: Style.normalBorderWidth
-        border.color: glance.alpha(Color.accent, 0.55)
-
-        Text {
-          id: pendingText
-          x: Style.spacing.rowPaddingX
-          anchors.verticalCenter: parent.verticalCenter
-          width: parent.width - Style.spacing.rowPaddingX * 2
-          textFormat: Text.PlainText
-          text: glance.pendingCount === 1
-                ? "Hay 1 cambio sin aplicar. Lo de arriba es lo que sigue firmado."
-                : "Hay " + glance.pendingCount + " cambios sin aplicar. Lo de arriba es lo que sigue firmado."
-          color: glance.foregroundColor
-          font.family: glance.fontFamily
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WordWrap
         }
       }
 
@@ -558,8 +533,8 @@ Item {
                  ? "Los juegos nuevos no quedan cubiertos"
                  : "Los juegos nuevos quedan cubiertos solos"
           note: !glance.blocking || !glance.blocking.games
-                ? "el detector está apagado: un juego instalado mañana sigue abriéndose esta noche"
-                : "Steam y Heroic, detectados según los instalas"
+                ? "un juego instalado mañana seguiría abriéndose esta noche"
+                : "Steam y Heroic, según los instalas"
           on: !!glance.blocking && glance.blocking.games === true
         }
 
@@ -639,15 +614,6 @@ Item {
                    : "un desfase con la hora real se lee como manipulación"
           }
           on: !!glance.defences && glance.defences.clock_protection.enabled === true
-        }
-
-        FactRow {
-          width: parent.width
-          label: clock.windowOpen ? "La ventana de edición está abierta"
-                                  : "La ventana de edición está cerrada"
-          note: clock.gateDetail
-          on: true
-          neutral: true
         }
       }
 

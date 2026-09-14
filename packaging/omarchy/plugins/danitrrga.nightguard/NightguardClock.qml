@@ -89,18 +89,18 @@ Item {
     return locked ? "hasta que abra" : "hasta el curfew"
   }
 
-  // What the curfew does tonight, as a sentence rather than two times. Two
-  // times are a fact; a reader still has to work out which side of them they
-  // are on, and at one in the morning that is exactly the arithmetic nobody
-  // does.
+  // Empty when the curfew is ordinary. The dial prints both hours on the ring
+  // and counts down to the next one in the middle, and the state word says
+  // which side of them we are on -- a sentence repeating all three is the kind
+  // of caption that makes a screen feel like a manual. What is left is the
+  // cases the ring cannot draw.
   readonly property string curfewSentence: {
     if (!detail) return "leyendo…"
-    if (!curfewEnabled) return "El curfew está apagado. Nada se cierra por la noche."
+    if (!curfewEnabled) return "El curfew está apagado. No se cierra nada."
     if (curfewStartText === "" || curfewEndText === "") return "El curfew no tiene horas válidas."
-    if (locked)
-      return "Cerrado desde las " + curfewStartText + ". Abre a las " + curfewEndText + "."
-    return "Cierra a las " + curfewStartText + " y abre a las " + curfewEndText + "."
+    return ""
   }
+  readonly property bool curfewSentenceIsWarning: curfewSentence !== "" && !!detail
 
   // The payload describes the edit window in English because it is also read by
   // non-Spanish surfaces; these panels are Spanish throughout, so the ordinary

@@ -334,7 +334,7 @@ Item {
       return "Si aplicas esto: sólo mueren estas " + survivors
            + (survivors === 1 ? " aplicación." : " aplicaciones.")
            + " Las otras " + casualties + " se salvan."
-    return "Mueren sólo las de esta lista. Las demás siguen abiertas."
+    return "Mueren sólo las de esta lista."
   }
 
   // --- the schedule -----------------------------------------------------
@@ -556,6 +556,11 @@ Item {
       ? (catalogRow.host !== "" && root.isSiteListed(catalogRow.host))
       : (!!item && root.isListed(String(item.identity)))
     readonly property bool actionable: catalogRow.isSite ? catalogRow.host !== "" : true
+    // A game's executable IS its title, so the row was printing one string
+    // twice and truncating both halves to do it. When they are the same, the
+    // name takes the whole width and the second column is not drawn.
+    readonly property bool namesDiffer: !!item
+      && String(item.identity) !== String(item.name)
 
     implicitHeight: rowText.implicitHeight + Style.space(14)
     radius: Style.cornerRadius
@@ -591,7 +596,8 @@ Item {
 
       Text {
         textFormat: Text.PlainText
-        width: rowText.namesWidth * 0.5
+        width: catalogRow.namesDiffer || catalogRow.isSite
+               ? rowText.namesWidth * 0.5 : rowText.namesWidth
         text: catalogRow.on ? "✓ " + String(catalogRow.item.name) : String(catalogRow.item.name)
         color: root.foreground
         font.family: root.fontFamily
@@ -605,7 +611,8 @@ Item {
       // sit on a kill list for months doing nothing.
       Text {
         textFormat: Text.PlainText
-        width: rowText.namesWidth * 0.5
+        visible: catalogRow.namesDiffer || catalogRow.isSite
+        width: visible ? rowText.namesWidth * 0.5 : 0
         text: catalogRow.isSite ? (catalogRow.host !== "" ? catalogRow.host : String(catalogRow.item.url))
                                 : String(catalogRow.item.identity)
         color: root.dim
@@ -936,10 +943,9 @@ Item {
               Text {
                 width: parent.width
                 textFormat: Text.PlainText
-                text: root.gateOn
-                      ? "La franja fina es cuándo puedes aflojar. Si cae dentro del curfew, podrías aflojarlo estando ya cerrado."
-                      : "Sin puerta: el pacto se puede aflojar a cualquier hora, incluida esta noche."
-                color: root.gateOn ? root.dim : root.urgent
+                visible: !root.gateOn
+                text: "Sin puerta: se puede aflojar a cualquier hora, incluida esta noche."
+                color: root.urgent
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
                 wrapMode: Text.WordWrap
@@ -974,9 +980,11 @@ Item {
               FieldRow {
                 width: parent.width
                 label: "Curfew activo"
+                // A note only on the state that costs something. "Curfew
+                // activo / la casa se cierra todas las noches" says one thing
+                // twice.
                 note: root.stagedBool("curfew.enabled", !!root.curfew && root.curfew.enabled === true)
-                      ? "La casa se cierra todas las noches."
-                      : "Apagado. No se cierra nada, a ninguna hora."
+                      ? "" : "No se cierra nada, a ninguna hora."
                 staged: writer.staged("curfew.enabled", "set", true)
                         || writer.staged("curfew.enabled", "set", false)
                 ToggleSwitch {
@@ -991,7 +999,6 @@ Item {
               FieldRow {
                 width: parent.width
                 label: "Se cierra a las"
-                note: "A partir de esta hora mueren las de la lista."
                 staged: root.stagedText("curfew.start", "") !== ""
                         && writer.stagedValue("curfew.start", null) !== null
                 TextField {
@@ -1008,7 +1015,6 @@ Item {
               FieldRow {
                 width: parent.width
                 label: "Se abre a las"
-                note: "A esta hora vuelven a poder abrirse."
                 TextField {
                   width: Style.space(90)
                   text: root.stagedText("curfew.end", root.curfew ? root.curfew.end : "")
@@ -1030,7 +1036,7 @@ Item {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "Fuera de estas horas, aflojar el pacto se rechaza antes de mirar siquiera las fichas. Existe porque una cuota semanal limita cuántas veces cedes, no a qué hora — y la hora en que peor juzgas es exactamente cuando vas a por la ficha."
+                text: "Fuera de estas horas, aflojar el pacto se rechaza antes de mirar las fichas."
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
@@ -1042,8 +1048,7 @@ Item {
                 label: "Puerta activa"
                 note: root.stagedBool("edit_window.enabled",
                                       !!root.editWindow && root.editWindow.enabled === true)
-                      ? "Sólo se puede aflojar dentro de la franja."
-                      : "Apagada. Se puede aflojar a cualquier hora — sólo cuesta ficha."
+                      ? "" : "Se puede aflojar a cualquier hora — sólo cuesta ficha."
                 ToggleSwitch {
                   checked: root.stagedBool("edit_window.enabled",
                                            !!root.editWindow && root.editWindow.enabled === true)
@@ -1094,7 +1099,10 @@ Item {
               FieldRow {
                 width: parent.width
                 label: "Comprobar el reloj"
-                note: "Sin esto, mover la hora del sistema abre la noche."
+                note: root.stagedBool("clock_protection.enabled",
+                                      !!root.defences
+                                      && root.defences.clock_protection.enabled === true)
+                      ? "" : "Mover la hora del sistema abriría la noche."
                 ToggleSwitch {
                   checked: root.stagedBool("clock_protection.enabled",
                                            !!root.defences
@@ -1111,7 +1119,10 @@ Item {
               FieldRow {
                 width: parent.width
                 label: "Vigilante activo"
-                note: "Es lo que deshace una edición a mano de la configuración."
+                note: root.stagedBool("watchdog.enabled",
+                                      !!root.defences
+                                      && root.defences.watchdog.enabled === true)
+                      ? "" : "Una edición a mano de la configuración se queda."
                 ToggleSwitch {
                   checked: root.stagedBool("watchdog.enabled",
                                            !!root.defences
@@ -1127,7 +1138,9 @@ Item {
               FieldRow {
                 width: parent.width
                 label: "Bloqueo de aplicaciones"
-                note: "El interruptor maestro de todo lo de la otra pestaña."
+                note: root.stagedBool("blocking.native_apps.enabled",
+                                      !!root.blocking && root.blocking.apps_enabled === true)
+                      ? "" : "No se cierra ninguna aplicación, esté en la lista o no."
                 ToggleSwitch {
                   checked: root.stagedBool("blocking.native_apps.enabled",
                                            !!root.blocking && root.blocking.apps_enabled === true)
@@ -1435,14 +1448,12 @@ Item {
               textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - applyButton.width - discardButton.width - Style.space(16)
-              text: {
-                if (writer.count > 0)
-                  return writer.count + (writer.count === 1 ? " cambio sin aplicar"
-                                                            : " cambios sin aplicar")
-                if (root.view === "glance")
-                  return "Esto es lo que está firmado. Para cambiarlo, elige a la izquierda."
-                return "Elige a la izquierda. Nada se escribe hasta que lo apliques."
-              }
+              // Empty when nothing is staged. The buttons beside it are already
+              // greyed out; a sentence telling somebody to use the rail they
+              // can see is furniture.
+              text: writer.count === 0 ? ""
+                    : writer.count + (writer.count === 1 ? " cambio sin aplicar"
+                                                         : " cambios sin aplicar")
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
