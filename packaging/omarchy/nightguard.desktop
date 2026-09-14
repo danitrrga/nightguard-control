@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name=Nightguard
+GenericName=Curfew control
+Comment=Elegir qué aplicaciones y qué sitios mueren en curfew
+Icon=org.omarchy.nightguard
+Categories=Settings;
+Keywords=curfew;nightguard;bloqueo;horario;
+Terminal=false
+StartupNotify=false
+# Opens the workshop — the plugin's `panel`-kind window. `toggle` and not
+# `summon` so launching it twice puts it away instead of summoning a second.
+#
+# This runs no shell, so the `{}` payload is passed as one literal argument
+# exactly as typed. It used to read `xdg-terminal-exec ... -e ngtui`, which
+# opened the terminal editor; that editor is retired and this entry follows it
+# rather than being left pointing at a command that exits 2.
+Exec=omarchy-shell shell toggle danitrrga.nightguard {}

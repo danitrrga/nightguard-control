@@ -271,3 +271,50 @@ def test_no_wrapping_text_hides_its_height_from_the_layout():
                 "until after layout, so whatever sums it sums the wrong number"
                 % (name, index + 1)
             )
+
+
+def test_the_deploy_installs_a_launcher_entry_that_opens_the_workshop():
+    """Searching the launcher for "nightguard" must find something.
+
+    The terminal editor's .desktop entry was removed with the editor, and
+    nothing replaced it — so for a while Nightguard was reachable only from the
+    bar icon, and the launcher answered "No matches for nightguard". An
+    application with no way in from the launcher reads as an application that
+    is not installed.
+    """
+    root = os.path.dirname(os.path.dirname(_LINUX))
+    entry = os.path.join(root, "packaging", "omarchy", "nightguard.desktop")
+    assert os.path.isfile(entry), "the launcher entry is not in the repo"
+
+    with open(entry, encoding="utf-8") as fh:
+        lines = [l.strip() for l in fh if not l.lstrip().startswith("#")]
+    exec_line = next((l for l in lines if l.startswith("Exec=")), "")
+    assert "danitrrga.nightguard" in exec_line, "the entry does not open the plugin"
+    # Checked on the Exec line and not the whole file: the file SHOULD explain in
+    # prose what it used to launch. What must not be there is the command.
+    assert "ngtui" not in exec_line, (
+        "the entry still launches the retired terminal app, which now exits 2 — "
+        "clicking it would look like the application being broken, not gone"
+    )
+    assert "Terminal=false" in lines
+
+    with open(_DEPLOY, encoding="utf-8") as fh:
+        deploy = fh.read()
+    assert "nightguard.desktop" in deploy, (
+        "deploy.sh does not install the launcher entry, so a fresh deploy leaves "
+        "the application invisible to the launcher"
+    )
+    assert "update-desktop-database" in deploy, (
+        "without refreshing the database the entry does not appear until the next "
+        "login, which is the same symptom as a broken install"
+    )
+
+
+def test_the_deploy_clears_the_retired_terminal_entry():
+    """A previous deploy installed an entry pointing at `ngtui`. Left behind, it
+    exits 2 the moment it is clicked."""
+    with open(_DEPLOY, encoding="utf-8") as fh:
+        deploy = fh.read()
+    assert "org.omarchy.ngtui.png" in deploy and "rm -f" in deploy, (
+        "deploy.sh does not clean up the retired editor's icons"
+    )

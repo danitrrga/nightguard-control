@@ -136,11 +136,13 @@ install -o root -g root -m 0644 "$REPO_CODE/polkit/00-nightguard.rules" /etc/pol
 echo "== sudoers =="
 install -o root -g root -m 0440 "$REPO_CODE/nightguard.sudoers" /etc/sudoers.d/nightguard
 
-echo "== reinstalling the TUI so the launcher tracks these paths =="
+echo "== reinstalling the ngtui CLI so it tracks these paths =="
 # ngtui is a uv tool: an installed SNAPSHOT of ngtui/, with the stack and instance paths
-# baked in. It silently rotted when the runtime moved out of LifeOS — backend.py kept
-# pointing at the deleted LifeOS tree, so `ngtui` from the launcher died on import with a
-# RuntimeError and the desktop entry appeared to do nothing. A path change is exactly when
+# baked in. It is no longer a terminal app — it is the five head-less subcommands the
+# desktop panel runs (status, panel, apps, propose, commit). It silently rotted once when
+# the runtime moved out of LifeOS — backend.py kept pointing at the deleted LifeOS tree,
+# so every subcommand died on import with a RuntimeError and the panel showed
+# "detalle no disponible" with no other clue. A path change is exactly when
 # it must be rebuilt, so the deploy owns it rather than leaving it to be rediscovered.
 # `command -v uv` was checked against ROOT's PATH, which does not contain the
 # owner's ~/.local/bin -- so on this box it always missed and the TUI was never
@@ -153,13 +155,13 @@ if [[ -n $NG_UV ]]; then
     if runuser -u "$OWNER" -- "$NG_UV" tool install --force "$REPO_CODE/../../ngtui" >/dev/null 2>&1; then
         echo "   ngtui reinstalled ($NG_UV)"
     else
-        echo "   !! ngtui reinstall FAILED — the edit screen will not show the"
+        echo "   !! ngtui reinstall FAILED — the panel will not show the cost or the"
         echo "      edit-window refusal before authentication. Run yourself:"
         echo "      uv tool install --force $REPO_CODE/../../ngtui"
     fi
 else
     echo "   !! uv not found even as $OWNER — ngtui NOT updated."
-    echo "      The edit screen will not show the edit-window refusal before"
+    echo "      The panel will not show the cost or the edit-window refusal before"
     echo "      authentication until you run: uv tool install --force ./ngtui"
 fi
 
@@ -183,6 +185,60 @@ for f in "$PLUGIN_SRC"/*.qml "$PLUGIN_SRC"/manifest.json; do
     runuser -u "$OWNER" -- install -m 0644 "$f" "$PLUGIN_DIR/$(basename "$f")"
 done
 echo "   the shell hot-reloads a changed plugin on its own"
+
+# The launcher entry. Without it Nightguard is reachable only from the bar icon,
+# which is exactly what happened when the terminal app's entry was removed with
+# the app: searching the launcher for "nightguard" returned nothing.
+#
+# It opens the WORKSHOP, not a terminal. Installed as the owner, into his own
+# applications dir, because that is where a user-level launcher entry belongs
+# and a root-owned file there would be a root-writable path in his session.
+echo "== launcher entry + icons =="
+APPS_DIR="/home/$OWNER/.local/share/applications"
+ICON_BASE="/home/$OWNER/.local/share/icons/hicolor"
+runuser -u "$OWNER" -- install -d -m 0755 "$APPS_DIR"
+runuser -u "$OWNER" -- install -m 0644 \
+    "$REPO_ROOT/packaging/omarchy/nightguard.desktop" "$APPS_DIR/nightguard.desktop"
+echo "   installed nightguard.desktop -> $APPS_DIR"
+
+# The icon the entry names. Rasterized at the sizes a launcher actually asks
+# for; the scalable SVG is what a HiDPI one prefers.
+ICON_SRC="$REPO_ROOT/packaging/omarchy/icons/nightguard.svg"
+if command -v rsvg-convert >/dev/null 2>&1; then
+    for S in 16 32 48 64 128 256 512; do
+        runuser -u "$OWNER" -- install -d -m 0755 "$ICON_BASE/${S}x${S}/apps"
+        runuser -u "$OWNER" -- rsvg-convert -w "$S" -h "$S" "$ICON_SRC" \
+            -o "$ICON_BASE/${S}x${S}/apps/org.omarchy.nightguard.png"
+    done
+    runuser -u "$OWNER" -- install -d -m 0755 "$ICON_BASE/scalable/apps"
+    runuser -u "$OWNER" -- install -m 0644 "$ICON_SRC" \
+        "$ICON_BASE/scalable/apps/org.omarchy.nightguard.svg"
+    echo "   rasterized icons -> $ICON_BASE"
+else
+    echo "   !! rsvg-convert absent — the entry will show a generic icon."
+    echo "      pacman -S librsvg, then re-run this script."
+fi
+
+# The retired terminal editor's entry and icons, if a previous deploy left them.
+# An entry pointing at `ngtui` now exits 2 the moment it is clicked, which looks
+# like the application being broken rather than gone.
+runuser -u "$OWNER" -- rm -f "$APPS_DIR/nightguard-ngtui.desktop" 2>/dev/null || true
+for S in 16 32 48 64 128 256 512; do
+    runuser -u "$OWNER" -- rm -f "$ICON_BASE/${S}x${S}/apps/org.omarchy.ngtui.png" 2>/dev/null || true
+done
+runuser -u "$OWNER" -- rm -f "$ICON_BASE/scalable/apps/org.omarchy.ngtui.svg" 2>/dev/null || true
+runuser -u "$OWNER" -- rm -f "/home/$OWNER/.local/bin/ngtui-menu" 2>/dev/null || true
+
+# Without these the entry does not appear until the next login, and "I installed
+# it and nothing happened" is the same symptom as a broken install.
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    runuser -u "$OWNER" -- gtk-update-icon-cache -f -t "$ICON_BASE" >/dev/null 2>&1 \
+        || echo "   gtk-update-icon-cache non-zero (non-fatal)"
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+    runuser -u "$OWNER" -- update-desktop-database "$APPS_DIR" >/dev/null 2>&1 \
+        || echo "   update-desktop-database non-zero (non-fatal)"
+fi
 
 systemctl daemon-reload
 
