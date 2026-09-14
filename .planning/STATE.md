@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.1
-milestone_name: Desktop App
-status: "Phase 12.1 gate remains OPEN/rejected on the record. Phase 12.2.1 inserted after 12.2 to build the Omarchy shell panel as the full control surface and retire the ngtui terminal app; the polkit-vs-sudo/PTY gate is already proven live on this box. Run /gsd:discuss-phase 12.2.1 next."
-stopped_at: Phase 12.2.1 UI-SPEC approved
-last_updated: "2026-09-13T14:40:36.779Z"
-last_activity: 2026-09-13
+milestone: v2.2
+milestone_name: Deferred maintenance
+status: "Phase 12.2.1 shipped: the Omarchy panel is the control surface and the ngtui terminal app is retired. Phase 12.3 published it — main is the project branch, the installer works on a machine that is not the author's, and five reference documents describe what ships. Phases 14 through 17 are recorded and DEFERRED by the owner: none is broken for a user base of one, and each carries the condition that should reopen it. Nothing is in flight."
+stopped_at: Phase 12.3 complete; 14-17 deferred with triggers
+last_updated: "2026-09-14T14:30:00.000Z"
+last_activity: 2026-09-14
 progress:
   total_phases: 6
   completed_phases: 3

@@ -50,6 +50,20 @@ Package the existing `ngtui` Textual TUI as a first-class omarchy desktop app �
 
 Run `/gsd:new-milestone` to scope the next milestone. Carried-forward candidates (from the v2.0 audit tech debt): offline StayFree blocklist import (TRAK), Nyquist backfill for phases 6/7/7.1, browser-policy root-lock, ROOT-02 watchdog wording, grace-as-action (`sudo`-gated) once grace-commit lands in the TUI (D-11).
 
+<details open>
+<summary>🕓 v2.2 · Deferred maintenance — opened when the trigger fires, not before</summary>
+
+The owner's call, recorded so it is written down rather than remembered: none of
+these is broken for the current user base, which is one person on one machine.
+Each carries the condition that should reopen it.
+
+- [ ] Phase 14: A stranger's first install fails loudly or not at all — PUB-01..03 · *trigger: the first time somebody else's install fails*
+- [ ] Phase 15: Browser lock covers the browsers that are installed — LOCK-01/02 · *trigger: a third browser, or someone asks on GitHub (issue #1)*
+- [ ] Phase 16: Every key does something, and every key the code reads is written down — CFG-01..04 · *trigger: somebody changes one of the dead keys and nothing happens*
+- [ ] Phase 17: The suite carries no dead weight and nothing skips silently — TEST-01..03 · *trigger: collection time, or somebody trusting a fixture that no test uses*
+
+</details>
+
 ## Phase Details
 
 ### Phase 11: Global Install + Status Subcommand
@@ -187,6 +201,20 @@ Plans:
 
 **Plans**: TBD
 
+### Phase 12.3: Publish — one command, any machine (INSERTED)
+
+**Goal**: Turn a personal instance into something a stranger can install. `main` becomes the project's branch and the Omarchy product its only content; the retired Windows tree moves to `archive/windows-tauri`; the installer stops carrying one username and learns to install from nothing; the README, the example config and five reference documents describe what actually ships.
+**Depends on**: Phase 12.2.1 (the panel is the control surface, so there is something worth publishing)
+**Requirements**: PUB-00
+**Success Criteria** (what must be TRUE):
+
+  1. `git clone && sudo scripts/linux/deploy.sh` installs on a machine that has never run this, creating the instance, seeding a config and writing the first signature.
+  2. No file in the install path, the plugin or the test bootstrap contains a literal username or home directory.
+  3. The suite runs from a checkout at any path, with no leftover virtualenv and no git index.
+  4. Every path the README names exists, and nothing describes the retired Windows product as if it ships.
+
+**Plans**: delivered ad hoc in session 2026-09-14; see commits `1ecca59`, `4ce3f41`, `bebd41b`, `0aa45e0`, `200474d`, `609e75e`.
+
 ### Phase 13: Autostart + AUR Packaging
 
 **Goal**: Make the desktop app publish-ready — an optional, off-by-default login autostart for the status surface, plus an AUR `PKGBUILD` and documented README install path that declares (never vendors) the Python trust stack and fails loud when it is absent.
@@ -201,6 +229,59 @@ Plans:
   5. Flag resolved: `python-textual 8.2.7` availability in Arch repos/AUR confirmed at publish time (else documented as a bundled/AUR-dep contingency).
 
 **Plans**: TBD
+
+### Phase 14: A stranger's first install fails loudly or not at all
+
+**Goal**: Close the three ways the installer can leave somebody with a product that looks installed and is not. Found while publishing; none of them affect the author's machine, which is exactly why they survived.
+**Depends on**: Phase 12.3
+**Requirements**: PUB-01, PUB-02, PUB-03
+**Deferred because**: nothing here is broken for the current user base, which is one person. Pick this up the first time somebody else's install fails.
+**Success Criteria** (what must be TRUE):
+
+  1. `sudo -i scripts/linux/deploy.sh` and a multi-user machine both resolve an owner or stop with the message that names the fix — today `sudo -i` clears `SUDO_USER` and a two-account box hits the hard exit with no warning in the README.
+  2. A machine without `uv` does not end up with a panel that opens, shows a reading and can change nothing. Today the deploy prints a warning, exits 0, and the only on-screen clue is "Detalle no disponible"; the install either refuses or the panel says why it is read-only.
+  3. A first install does not print `Old instance left at ~/.local/share/nightguard — remove it once you have verified this one` for a directory that never existed.
+  4. Each of the three is covered by a test that was proved able to fail.
+
+### Phase 15: The browser lock covers the browsers that are installed
+
+**Goal**: `verify_browser_lock.py` can never report `LOCKED: yes` for a Gecko browser it did not check. Tracked as issue #1.
+**Depends on**: —
+**Requirements**: LOCK-01, LOCK-02
+**Deferred because**: the owner runs the two browsers the hard-coded map knows about. It becomes real the moment anyone installs a third, and it is written down rather than remembered.
+**Success Criteria** (what must be TRUE):
+
+  1. Installed Gecko browsers are enumerated rather than read from a two-entry map hard-coded in both `deploy.sh` and `verify_browser_lock.py` (today: Zen at `/opt/zen-browser-bin`, Firefox at `/usr/lib/firefox` — both Arch-specific).
+  2. LibreWolf, Floorp, Waterfox and a Flatpak Firefox each get a policy directory and a probe, or are named in the verifier's output as unchecked.
+  3. The verifier never prints a bare `LOCKED: yes`: it says what it checked, so the answer cannot mean "yes, for the two I happened to know about".
+  4. A test installs a fake Gecko browser outside the known set and proves the verifier stops claiming locked.
+
+### Phase 16: Every key does something, and every key the code reads is written down
+
+**Goal**: Close the gap between `config.example.yaml` and the code. Four keys are priced and editable but nothing in this repository reads them; four keys the code does read appear in no example. The signer charges a weekly token for some of both.
+**Depends on**: —
+**Requirements**: CFG-01, CFG-02, CFG-03, CFG-04
+**Deferred because**: the live config happens to sit on values where the gap costs nothing. It costs something the first time somebody changes one of them and nothing happens.
+**Success Criteria** (what must be TRUE):
+
+  1. `curfew.message`, `curfew.tamper_message`, `curfew.offline_message` and `curfew.allow_commands` either have a reader in this repository or are gone from the example and the signer's field table. Today they are consumed only by an adapter that lives outside this repo, and `allow_commands` costs a token to edit.
+  2. `watchdog.enabled` and `watchdog.check_interval_seconds` stop being priced as if they govern anything. Neither does: the watchdog is a systemd oneshot that reads neither, and stopping it is `systemctl`, not a config key. Raising the interval currently classifies as a loosening.
+  3. `curfew.schedule.<day>` — a whole per-weekday override that `guard.py` honours and the signer prices for all seven days — is documented in the example and reachable or explicitly not reachable from the panel.
+  4. `blocking.browser_extension.block_incognito`, `firefox_extension_id` and `firefox_install_url` are documented; the first is classified, since today a hand edit to `false` is free.
+  5. `blocking.browser_extension.extension_id` either gains a direction in the signer's field table or the refusal to give it one is recorded where somebody changing that table will read it. Today it classifies as nothing, prices as free, and is the quiet way to disable site blocking.
+
+### Phase 17: The suite carries no dead weight and nothing skips silently
+
+**Goal**: Remove the parts of the test suite that cannot run, and resolve the ones that never do.
+**Depends on**: —
+**Requirements**: TEST-01, TEST-02, TEST-03
+**Deferred because**: none of it is wrong, only dead. The trigger is when it starts costing collection time or when somebody reads a fixture and believes it is used.
+**Success Criteria** (what must be TRUE):
+
+  1. `ngtui/tests/conftest.py` carries no fixture that no test uses. Today four of eight — about 250 of 579 lines — are unused, and `probe_app` imports `ngtui.app.NightguardApp`, a module that does not exist.
+  2. The three live-stack tests in `test_port02_preview_seam.py` either run against an instance the suite builds, or are removed. Today they skip on every machine, which is how one of them hid a `TypeError` for weeks.
+  3. The two retired-palette modules are resolved: kept with their skip and a reason, or deleted with the Textual code they cover. Today they account for the whole 65-test difference between a fresh checkout and the author's box.
+  4. A fresh checkout and the author's checkout report the same counts, or the difference is one line in the testing document.
 
 ## Progress
 
@@ -220,5 +301,11 @@ Plans:
 | 11. Global Install + Status Subcommand | v2.1 | 3/3 | Complete    | 2026-06-25 |
 | 12. Launcher + Waybar Presence | v2.1 | 6/6 | Complete    | 2026-07-04 |
 | 12.1 Native dashboard | v2.1 | 9/9 | Complete   | 2026-09-13 |
-| 12.2 Blocking editable | v2.1 | 0/? | Not started | — |
+| 12.2 Blocking editable | v2.1 | — | Superseded by 12.2.1 | — |
+| 12.2.1 Omarchy Native Panel | v2.1 | — | Complete | 2026-09-14 |
+| 12.3 Publish — one command, any machine | v2.1 | — | Complete | 2026-09-14 |
 | 13. Autostart + AUR Packaging | v2.1 | 0/? | Not started | — |
+| 14. A stranger's first install | v2.2 | 0/? | Deferred | — |
+| 15. Browser lock coverage | v2.2 | 0/? | Deferred (issue #1) | — |
+| 16. Config surface truth | v2.2 | 0/? | Deferred | — |
+| 17. Suite carries no dead weight | v2.2 | 0/? | Deferred | — |

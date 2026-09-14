@@ -22,3 +22,35 @@
 - Textual EditScreen that edits the D-09 field set via single-key nav, composes the proposed config by format-preserving per-field line edits (no YAML emit), front-loads the signer's own tighten/loosen + token-cost verdict BEFORE any sudo prompt, and commits inside App.suspend() so sudo's prompt is inline — the core anti-impulse moment the product exists for.
 
 ---
+
+---
+
+## v2.2 · Deferred maintenance — opened 2026-09-14
+
+The milestone that exists to be *not* worked on yet. Four phases, all recorded on
+the day they were found, all deferred by the owner with the same reasoning: the
+product works for the one person using it, and a defect that costs nothing today
+is not worth the churn. Each carries the condition that should reopen it, so the
+decision is a decision rather than a thing that was forgotten.
+
+- **Phase 14 — a stranger's first install.** Three ways the installer leaves
+  somebody with a product that looks installed and is not: `sudo -i` clears the
+  variable owner detection reads, a missing `uv` degrades into a read-only panel
+  with no explanation, and a first install tells you to clean up a directory that
+  never existed. *Reopens when somebody else's install fails.*
+- **Phase 15 — browser lock coverage.** The Gecko browser map is two hard-coded
+  Arch paths, in both the installer and the verifier. A third browser gets no
+  policy and no probe, and the verifier still prints `LOCKED: yes`. Tracked as
+  issue #1. *Reopens on a third browser, or when someone asks.*
+- **Phase 16 — config surface truth.** Four keys are priced and editable that
+  nothing in this repository reads; four keys the code does read appear in no
+  example. *Reopens when somebody changes one of the dead keys and nothing
+  happens.*
+- **Phase 17 — suite dead weight.** Four unused fixtures (about 250 of 579
+  lines), one importing a module that no longer exists; three live-stack tests
+  that skip on every machine. *Reopens on collection time, or on somebody
+  trusting a fixture that no test uses.*
+
+Everything above was found by agents reading the code while writing the
+reference documentation, not by a test failing. That is the point worth keeping:
+the suite was green for all of it.

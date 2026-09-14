@@ -97,13 +97,26 @@
 | UIX-04 | Phase 12.1 | Complete |
 | UIX-05 | Phase 12.1 | Complete |
 | UIX-06 | Phase 12.1 | Complete |
-| BLK-01 | Phase 12.2.1 (supersedes 12.2) | Pending |
-| BLK-02 | Phase 12.2.1 (supersedes 12.2) | Pending |
-| BLK-03 | Phase 12.2.1 (supersedes 12.2) | Pending |
-| BLK-04 | Phase 12.2.1 (supersedes 12.2) | Pending |
-| BLK-05 | Phase 12.2.1 (supersedes 12.2) | Pending |
-| PANEL-01 | Phase 12.2.1 | Pending |
-| PANEL-02 | Phase 12.2.1 | Pending |
-| PANEL-03 | Phase 12.2.1 | Pending |
+| BLK-01 | Phase 12.2.1 (supersedes 12.2) | Complete |
+| BLK-02 | Phase 12.2.1 (supersedes 12.2) | Complete |
+| BLK-03 | Phase 12.2.1 (supersedes 12.2) | Complete |
+| BLK-04 | Phase 12.2.1 (supersedes 12.2) | Complete |
+| BLK-05 | Phase 12.2.1 (supersedes 12.2) | Complete |
+| PANEL-01 | Phase 12.2.1 | Complete |
+| PANEL-02 | Phase 12.2.1 | Complete |
+| PANEL-03 | Phase 12.2.1 | Complete |
+| PUB-00 | Phase 12.3 | Complete |
+| PUB-01 | Phase 14 | Deferred — owner detection under `sudo -i` and on a multi-user machine |
+| PUB-02 | Phase 14 | Deferred — a missing `uv` must not produce a panel that looks installed and can change nothing |
+| PUB-03 | Phase 14 | Deferred — a first install must not name a legacy directory that never existed |
+| LOCK-01 | Phase 15 | Deferred — enumerate installed Gecko browsers instead of a two-entry hard-coded map |
+| LOCK-02 | Phase 15 | Deferred — the verifier reports its own coverage; no bare `LOCKED: yes` |
+| CFG-01 | Phase 16 | Deferred — keys with no reader in this repo get one or go (`curfew.*_message`, `allow_commands`) |
+| CFG-02 | Phase 16 | Deferred — `watchdog.enabled` / `check_interval_seconds` stop being priced as if they govern |
+| CFG-03 | Phase 16 | Deferred — document `curfew.schedule.<day>` and the three browser keys the code reads |
+| CFG-04 | Phase 16 | Deferred — `extension_id` gains a direction, or the refusal is recorded in the field table |
+| TEST-01 | Phase 17 | Deferred — no fixture that no test uses (~250 of 579 lines) |
+| TEST-02 | Phase 17 | Deferred — the three live-stack tests run against a built instance or go |
+| TEST-03 | Phase 17 | Deferred — the two retired-palette modules resolved |
 
 *(Phase column filled by the roadmapper.)*
