@@ -318,3 +318,44 @@ def test_the_deploy_clears_the_retired_terminal_entry():
     assert "org.omarchy.ngtui.png" in deploy and "rm -f" in deploy, (
         "deploy.sh does not clean up the retired editor's icons"
     )
+
+
+def test_every_shell_script_is_executable_in_the_index():
+    """`core.filemode=false` in this repo, so chmod on disk never reaches git.
+
+    A shell script committed 100644 is unrunnable after any fresh clone or
+    checkout: `sudo /path/to/deploy.sh` answers `command not found`, which reads
+    like a missing file rather than a missing permission bit. deploy.sh itself
+    shipped that way and blocked the install.
+
+    Only .sh files are checked. The Python modules carry shebangs but are always
+    invoked as `python3 <path>` (the signer deliberately so, through pkexec), and
+    deploy.sh installs each with an explicit `install -m 0644`, so their mode in
+    the repo reaches nothing.
+    """
+    import subprocess
+
+    root = os.path.dirname(os.path.dirname(_LINUX.rstrip(os.sep)))
+    listing = subprocess.run(
+        ["git", "ls-files", "-s", "--", "*.sh"],
+        cwd=root, capture_output=True, text=True, check=True,
+    ).stdout
+    assert listing.strip(), "git listed no shell scripts; this test stopped measuring anything"
+
+    offenders = []
+    for line in listing.splitlines():
+        mode = line.split(" ", 1)[0]
+        path = line.split("\t", 1)[1]
+        full = os.path.join(root, path)
+        if not os.path.isfile(full):
+            continue
+        with open(full, "rb") as fh:
+            if fh.read(2) != b"#!":
+                continue
+        if mode != "100755":
+            offenders.append(f"{path} is {mode}")
+
+    assert not offenders, (
+        "these scripts start with a shebang but are not executable in git, so a "
+        "fresh checkout cannot run them: " + ", ".join(offenders)
+    )
