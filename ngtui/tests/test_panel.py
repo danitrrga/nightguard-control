@@ -332,3 +332,60 @@ def test_a_malformed_or_unverified_window_is_still_an_enabled_one():
     for view in (panel.edit_window_view(_cfg(start="half past five"), 10 * 60),
                  panel.edit_window_view(_cfg(), None)):
         assert view["open"] is False and view["enabled"] is True
+
+
+# --- the defences ---------------------------------------------------------
+#
+# The editor draws a switch for each of these. Before this reading existed it
+# had nothing to draw them from and defaulted both to ON, so a config with the
+# watchdog off produced a panel that said hand edits were being reverted while
+# nothing reverted them.
+
+
+def test_defences_report_what_the_config_actually_says():
+    view = panel.defences_view({
+        "clock_protection": {"enabled": True, "max_offset_minutes": 5},
+        "watchdog": {"enabled": False, "check_interval_seconds": 60},
+    })
+    assert view["clock_protection"]["enabled"] is True
+    assert view["clock_protection"]["max_offset_minutes"] == 5
+    assert view["watchdog"]["enabled"] is False, (
+        "a disabled watchdog read as enabled is a panel claiming a protection "
+        "that is not running"
+    )
+    assert view["watchdog"]["check_interval_seconds"] == 60
+
+
+def test_a_missing_defence_block_is_reported_as_unconfigured_not_as_on():
+    view = panel.defences_view({})
+    assert view["clock_protection"]["configured"] is False
+    assert view["clock_protection"]["enabled"] is False
+    assert view["watchdog"]["configured"] is False
+    assert view["watchdog"]["enabled"] is False
+
+
+def test_a_defence_block_that_is_not_a_mapping_does_not_raise():
+    view = panel.defences_view({"watchdog": "yes", "clock_protection": None})
+    assert view["watchdog"]["configured"] is False
+    assert view["clock_protection"]["configured"] is False
+
+
+def test_unparseable_numbers_read_as_minus_one_rather_than_crashing():
+    view = panel.defences_view({
+        "clock_protection": {"enabled": True, "max_offset_minutes": "soon"},
+        "watchdog": {"enabled": True, "check_interval_seconds": ""},
+    })
+    assert view["clock_protection"]["max_offset_minutes"] == -1
+    assert view["watchdog"]["check_interval_seconds"] == -1
+
+
+def test_the_built_payload_and_the_unavailable_payload_agree_on_shape():
+    """The editor reads one shape. When the stack cannot be reached it still
+    reads a payload, and a key missing only from that one is a binding that
+    silently resolves to undefined at exactly the moment things are wrong."""
+    built = panel.build("outside_curfew", 3, {}, {})
+    assert set(panel.UNAVAILABLE) == set(built), (
+        "the unavailable payload no longer carries the same keys as a built one"
+    )
+    for section in ("clock_protection", "watchdog"):
+        assert set(panel.UNAVAILABLE["defences"][section]) == set(built["defences"][section])

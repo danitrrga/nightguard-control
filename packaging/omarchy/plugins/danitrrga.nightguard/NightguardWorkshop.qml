@@ -41,11 +41,26 @@ Item {
 
   readonly property bool opened: window.visible
 
+  // The payload may name the view to land on: `{"view":"apps"}` opens straight
+  // on the picker. The launcher entry passes `{}` and gets the glance, which is
+  // the right landing for somebody who opened the application rather than
+  // followed a link into one of its rooms.
   function open(payloadJson) {
     closingFromHost = false
+    var asked = ""
+    try {
+      var payload = JSON.parse(payloadJson || "{}")
+      if (payload && payload.view) asked = String(payload.view)
+    } catch (e) { /* an unreadable payload is not a reason to refuse to open */ }
+    if (asked === "glance" || asked === "apps" || asked === "schedule")
+      root.view = asked
     window.visible = true
     root.reload()
-    Qt.callLater(function() { filterField.forceActiveFocus() })
+    // Only where there is something to type into. Landing on the glance and
+    // stealing the keyboard for a field that is not on screen is how a window
+    // eats the first thing somebody types.
+    if (root.view === "apps")
+      Qt.callLater(function() { filterField.forceActiveFocus() })
   }
 
   function close() {
@@ -75,12 +90,17 @@ Item {
   property string catalogError: ""
   property string filter: ""
 
-  // Two views, one window. The roster and the clock are different questions —
+  // Three views, one window. The roster and the clock are different questions —
   // "what dies tonight" and "when is tonight" — and putting them in one scroll
   // made the clock look like a footnote to the app list. A rail rather than
   // tabs because the rail can carry counts, and a count is the fastest way to
   // see that a list is empty when it should not be.
-  property string view: "apps"
+  //
+  // It lands on the glance and not on the roster. Opening straight into a
+  // hundred-row picker answers a question nobody asked yet; the first thing
+  // somebody opening this wants to know is whether they are in curfew and
+  // whether they may change anything at this hour.
+  property string view: "glance"
 
   readonly property var blocking: detail && detail.blocking ? detail.blocking : null
   readonly property string signedMode: !!blocking && String(blocking.mode) === "allowlist"
@@ -107,6 +127,14 @@ Item {
   // this switch needs a warning at all. Only the catalog knows it.
   readonly property int survivorCount: root.listedRows.length
   readonly property int casualtyCount: Math.max(0, root.items.length - root.listedRows.length)
+
+  // Switching view is not only a visibility flip: the roster view has a filter
+  // field that is useless unless it has the keyboard, and the glance has none
+  // to give it to.
+  function showView(name) {
+    root.view = name
+    if (name === "apps") Qt.callLater(function() { filterField.forceActiveFocus() })
+  }
 
   function reload() {
     if (!appsProc.running) appsProc.running = true
@@ -168,6 +196,18 @@ Item {
     case "site":     return "es un sitio"
     default:         return "desconocida"
     }
+  }
+
+  // The verdict column is measured, not a percentage. A percentage narrows with
+  // the window and the first casualty is the word itself: "verifica…" is worse
+  // than no verdict at all, because it looks like a verdict and is not one.
+  // Every other column can elide -- a truncated name is still recognisable, a
+  // truncated one-word judgement is not.
+  TextMetrics {
+    id: confidenceMetrics
+    font.family: root.fontFamily
+    font.pixelSize: Style.font.caption
+    text: "desconocida"
   }
 
   function confidenceColor(c) {
@@ -304,6 +344,15 @@ Item {
   // value while the change sat in the pending list would read as the edit
   // having failed.
   readonly property var curfew: root.detail && root.detail.curfew ? root.detail.curfew : null
+
+  // The two defence switches used to default to ON when nothing was staged,
+  // because the payload carried no reading of them. That drew a panel claiming
+  // hand edits were being reverted on a machine where the watchdog was off --
+  // a true-looking picture of a protection that is not running. They now read
+  // the signed config, and refuse to be touched until that reading has arrived.
+  readonly property var defences: root.detail && root.detail.defences
+    ? root.detail.defences : null
+  readonly property bool defencesRead: !!defences
   readonly property var editWindow: root.detail && root.detail.edit_window
     ? root.detail.edit_window : null
 
@@ -315,6 +364,27 @@ Item {
     var v = writer.stagedValue(key, fallback)
     return v === undefined || v === null ? "" : String(v)
   }
+
+  // "HH:MM" to minutes past midnight, or -1. The ring beside these fields
+  // reads the STAGED value, so typing a new hour moves the arc before anything
+  // is signed -- which is the whole point of staging a curfew you cannot see.
+  function hhmmToMinutes(text) {
+    var m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(text).trim())
+    return m ? Number(m[1]) * 60 + Number(m[2]) : -1
+  }
+
+  readonly property bool curfewOn: root.stagedBool("curfew.enabled",
+                                                   !!root.curfew && root.curfew.enabled === true)
+  readonly property bool gateOn: root.stagedBool("edit_window.enabled",
+                                                 !!root.editWindow && root.editWindow.enabled === true)
+  readonly property int stagedCurfewStart: curfewOn
+    ? hhmmToMinutes(root.stagedText("curfew.start", root.curfew ? root.curfew.start : "")) : -1
+  readonly property int stagedCurfewEnd: curfewOn
+    ? hhmmToMinutes(root.stagedText("curfew.end", root.curfew ? root.curfew.end : "")) : -1
+  readonly property int stagedGateStart: gateOn
+    ? hhmmToMinutes(root.stagedText("edit_window.start", root.editWindow ? root.editWindow.start : "")) : -1
+  readonly property int stagedGateEnd: gateOn
+    ? hhmmToMinutes(root.stagedText("edit_window.end", root.editWindow ? root.editWindow.end : "")) : -1
 
   function setTime(key, value, label) {
     var text = String(value).trim()
@@ -516,9 +586,12 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(8)
 
+      readonly property real verdictWidth: confidenceMetrics.width + Style.space(2)
+      readonly property real namesWidth: Math.max(0, rowText.width - verdictWidth - Style.space(16))
+
       Text {
         textFormat: Text.PlainText
-        width: Math.max(0, rowText.width * 0.42)
+        width: rowText.namesWidth * 0.5
         text: catalogRow.on ? "✓ " + String(catalogRow.item.name) : String(catalogRow.item.name)
         color: root.foreground
         font.family: root.fontFamily
@@ -532,18 +605,21 @@ Item {
       // sit on a kill list for months doing nothing.
       Text {
         textFormat: Text.PlainText
-        width: Math.max(0, rowText.width * 0.36)
+        width: rowText.namesWidth * 0.5
         text: catalogRow.isSite ? (catalogRow.host !== "" ? catalogRow.host : String(catalogRow.item.url))
                                 : String(catalogRow.item.identity)
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
-        elide: Text.ElideLeft
+        // Right, not left. These are basenames, not paths: the distinguishing
+        // part of "BlackmagicRAWSpeedTest" is the front, and eliding from the
+        // left hid exactly the half that tells two of them apart.
+        elide: Text.ElideRight
       }
 
       Text {
         textFormat: Text.PlainText
-        width: Math.max(0, rowText.width * 0.22 - Style.space(16))
+        width: rowText.verdictWidth
         horizontalAlignment: Text.AlignRight
         text: root.confidenceWord(catalogRow.item.confidence)
         color: root.confidenceColor(catalogRow.item.confidence)
@@ -618,10 +694,13 @@ Item {
 
   FloatingWindow {
     id: window
-    title: "Nightguard — el taller"
+    title: "Nightguard Control"
     color: root.background
-    implicitWidth: 900
-    implicitHeight: 700
+    // Sized so the glance lands whole. The roster and the schedule both scroll
+    // by nature -- a catalogue of a hundred always will -- but a landing screen
+    // that opens already scrolled has hidden the one thing it exists to show.
+    implicitWidth: 940
+    implicitHeight: 820
     minimumSize: Qt.size(700, 520)
 
     onVisibleChanged: {
@@ -673,8 +752,15 @@ Item {
 
         PanelHero {
           width: parent.width
-          title: "El taller"
-          meta: root.allowlistMode ? "SOLO SOBREVIVEN LAS PERMITIDAS" : "MUEREN LAS DE LA LISTA"
+          title: "Nightguard"
+          meta: {
+            switch (root.view) {
+            case "glance":   return "LO QUE ESTÁ FIRMADO AHORA MISMO"
+            case "schedule": return "LAS HORAS Y LAS DEFENSAS"
+            default:         return root.allowlistMode ? "SOLO SOBREVIVEN LAS PERMITIDAS"
+                                                       : "MUEREN LAS DE LA LISTA"
+            }
+          }
           foreground: root.foreground
           fontFamily: root.fontFamily
 
@@ -690,6 +776,10 @@ Item {
 
           trailingControl: Component {
             Row {
+              // The glance carries these with a sentence beside them. Two
+              // copies of the same three marks on one screen reads as two
+              // different counts.
+              visible: root.view !== "glance"
               spacing: Style.space(4)
               Repeater {
                 model: root.detail ? Number(root.detail.tokens_total) : 0
@@ -728,6 +818,7 @@ Item {
 
             Repeater {
               model: [
+                { id: "glance",   label: "El vistazo", count: -1 },
                 { id: "apps",     label: "Qué muere",  count: root.listedRows.length + root.siteRows.length },
                 { id: "schedule", label: "El horario", count: -1 },
               ]
@@ -748,7 +839,7 @@ Item {
                   anchors.fill: parent
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
-                  onClicked: root.view = parent.modelData.id
+                  onClicked: root.showView(parent.modelData.id)
                 }
 
                 Text {
@@ -778,11 +869,89 @@ Item {
             }
           }
 
+          // --- the glance --------------------------------------------------
+          NightguardGlance {
+            visible: root.view === "glance"
+            x: rail.width + Style.space(20)
+            width: parent.width - rail.width - Style.space(20)
+            height: parent.height
+            detail: root.detail
+            mode: root.mode
+            pendingCount: writer.count
+            foregroundColor: root.foreground
+            dimColor: root.dim
+            trackColor: root.track
+            urgentColor: root.urgent
+            voidColor: root.background
+            fontFamily: root.fontFamily
+            onGoToApps: root.showView("apps")
+            onGoToSchedule: root.showView("schedule")
+          }
+
           // --- the schedule ------------------------------------------------
+          //
+          // The fields on the left, the day they describe on the right. Four
+          // times in four boxes are not a schedule until something shows them
+          // as one shape -- and the ring answers the question the boxes cannot:
+          // whether the hours you may weaken the pact fall inside the hours it
+          // is enforced. It reads the staged values, so the arc moves as you
+          // type, before anything is signed.
+          readonly property real scheduleSpace: width - rail.width - Style.space(20)
+          readonly property bool scheduleWide: scheduleSpace > Style.space(500)
+          readonly property real schedulePreview: scheduleWide ? Style.space(180) : 0
+
+          Item {
+            id: schedulePreviewPane
+            visible: root.view === "schedule" && middle.scheduleWide
+            anchors.right: parent.right
+            anchors.top: parent.top
+            width: middle.schedulePreview
+            height: previewColumn.implicitHeight
+
+            Column {
+              id: previewColumn
+              width: parent.width
+              spacing: Style.space(8)
+
+              DayDial {
+                width: parent.width
+                height: width
+                curfewStart: root.stagedCurfewStart
+                curfewEnd: root.stagedCurfewEnd
+                windowStart: root.stagedGateStart
+                windowEnd: root.stagedGateEnd
+                nowMinutes: -1
+                headline: root.curfewOn ? "el día" : "sin curfew"
+                caption: writer.count > 0 ? "como quedaría" : "como está"
+                headlineColor: root.foreground
+                foregroundColor: root.foreground
+                dimColor: root.dim
+                trackColor: root.track
+                curfewColor: root.urgent
+                fontFamily: root.fontFamily
+                voidColor: root.background
+                headlineSize: Style.font.title
+              }
+
+              Text {
+                width: parent.width
+                textFormat: Text.PlainText
+                text: root.gateOn
+                      ? "La franja fina es cuándo puedes aflojar. Si cae dentro del curfew, podrías aflojarlo estando ya cerrado."
+                      : "Sin puerta: el pacto se puede aflojar a cualquier hora, incluida esta noche."
+                color: root.gateOn ? root.dim : root.urgent
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
+              }
+            }
+          }
+
           Flickable {
             visible: root.view === "schedule"
-            x: rail.width + Style.space(16)
-            width: parent.width - rail.width - Style.space(16)
+            x: rail.width + Style.space(20)
+            width: middle.scheduleSpace - middle.schedulePreview
+                   - (middle.scheduleWide ? Style.space(20) : 0)
             height: parent.height
             contentWidth: width
             contentHeight: scheduleColumn.implicitHeight
@@ -927,7 +1096,11 @@ Item {
                 label: "Comprobar el reloj"
                 note: "Sin esto, mover la hora del sistema abre la noche."
                 ToggleSwitch {
-                  checked: root.stagedBool("clock_protection.enabled", true)
+                  checked: root.stagedBool("clock_protection.enabled",
+                                           !!root.defences
+                                           && root.defences.clock_protection.enabled === true)
+                  enabled: root.defencesRead
+                  opacity: root.defencesRead ? 1 : 0.45
                   foreground: root.foreground
                   onToggled: writer.stage("clock_protection.enabled", "set", !checked,
                                           checked ? "Dejar de comprobar el reloj"
@@ -940,7 +1113,11 @@ Item {
                 label: "Vigilante activo"
                 note: "Es lo que deshace una edición a mano de la configuración."
                 ToggleSwitch {
-                  checked: root.stagedBool("watchdog.enabled", true)
+                  checked: root.stagedBool("watchdog.enabled",
+                                           !!root.defences
+                                           && root.defences.watchdog.enabled === true)
+                  enabled: root.defencesRead
+                  opacity: root.defencesRead ? 1 : 0.45
                   foreground: root.foreground
                   onToggled: writer.stage("watchdog.enabled", "set", !checked,
                                           checked ? "Parar el vigilante" : "Arrancar el vigilante")
@@ -963,12 +1140,22 @@ Item {
             }
           }
 
+          // The two columns of the picker. The right one holds fixed-shape
+          // rows -- a name, a verdict and a remove button -- so it gets a floor
+          // and the catalogue takes what is left. A straight percentage split
+          // crushed it first on a tiled window, which is most of them.
+          readonly property real pickerSpace: width - rail.width - Style.space(32)
+          readonly property real pickerRight: Math.min(pickerSpace * 0.5,
+                                                       Math.max(Style.space(280),
+                                                                pickerSpace * 0.44))
+          readonly property real pickerLeft: pickerSpace - pickerRight
+
           // --- left: the catalog -------------------------------------------
           Column {
             id: leftColumn
             visible: root.view === "apps"
-            x: rail.width + Style.space(16)
-            width: (parent.width - rail.width - Style.space(32)) * 0.56
+            x: rail.width + Style.space(20)
+            width: middle.pickerLeft
             height: parent.height
             spacing: Style.space(8)
 
@@ -1080,7 +1267,7 @@ Item {
           Flickable {
             visible: root.view === "apps"
             anchors.right: parent.right
-            width: (parent.width - rail.width - Style.space(32)) * 0.44
+            width: middle.pickerRight
             height: parent.height
             contentWidth: width
             contentHeight: rightColumn.implicitHeight
@@ -1194,8 +1381,12 @@ Item {
                 textFormat: Text.PlainText
                 width: parent.width
                 visible: root.siteRows.length === 0
+                // Not urgent. Blocking no sites is a configuration somebody can
+                // reasonably choose -- this machine blocks applications, not
+                // addresses -- and painting a choice red is how a reader learns
+                // to ignore red on the screen where it means something.
                 text: "Ningún sitio bloqueado — la política del navegador no tiene nada que aplicar."
-                color: root.urgent
+                color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
                 wrapMode: Text.WordWrap
@@ -1244,9 +1435,14 @@ Item {
               textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - applyButton.width - discardButton.width - Style.space(16)
-              text: writer.count === 0
-                    ? "Elige a la izquierda. Nada se escribe hasta que lo apliques."
-                    : writer.count + (writer.count === 1 ? " cambio sin aplicar" : " cambios sin aplicar")
+              text: {
+                if (writer.count > 0)
+                  return writer.count + (writer.count === 1 ? " cambio sin aplicar"
+                                                            : " cambios sin aplicar")
+                if (root.view === "glance")
+                  return "Esto es lo que está firmado. Para cambiarlo, elige a la izquierda."
+                return "Elige a la izquierda. Nada se escribe hasta que lo apliques."
+              }
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

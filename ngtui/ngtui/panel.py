@@ -114,6 +114,43 @@ def curfew_view(cfg):
     }
 
 
+def defences_view(cfg):
+    """The two defences that are not about hours: the clock check and the revert.
+
+    These have switches in the editor, and until this existed the editor had no
+    reading to draw them from -- it defaulted both to ON. A config with the
+    watchdog disabled therefore showed a panel claiming hand edits were being
+    reverted while nothing was reverting them, which is the worst thing this
+    surface can do: a true-looking picture of a protection that is off.
+
+    ``configured`` distinguishes "the block says false" from "there is no block",
+    because a missing block means the signer reads the default, not nothing.
+    """
+    clock = (cfg or {}).get("clock_protection")
+    watch = (cfg or {}).get("watchdog")
+    clock_block = clock if isinstance(clock, dict) else {}
+    watch_block = watch if isinstance(watch, dict) else {}
+
+    def _int_or(value, fallback):
+        try:
+            return int(str(value).strip().strip('"'))
+        except (TypeError, ValueError):
+            return fallback
+
+    return {
+        "clock_protection": {
+            "configured": isinstance(clock, dict),
+            "enabled": bool(clock_block.get("enabled")),
+            "max_offset_minutes": _int_or(clock_block.get("max_offset_minutes"), -1),
+        },
+        "watchdog": {
+            "configured": isinstance(watch, dict),
+            "enabled": bool(watch_block.get("enabled")),
+            "check_interval_seconds": _int_or(watch_block.get("check_interval_seconds"), -1),
+        },
+    }
+
+
 def blocking_view(cfg, resolution=None):
     """What the curfew blocks, named and -- where known -- resolved.
 
@@ -375,6 +412,7 @@ def build(verdict, tokens_left, cfg, state, now_minutes=None, warnings=None,
         "week_anchor": str((state or {}).get("week_anchor") or ""),
         "edit_window": edit_window_view(cfg, now_minutes),
         "curfew": curfew_view(cfg),
+        "defences": defences_view(cfg),
         # -1 when the clock could not be verified: the strip then draws no "now"
         # marker rather than putting one at midnight.
         "now_minutes": now_minutes if now_minutes is not None else -1,
@@ -398,6 +436,10 @@ UNAVAILABLE = {
                     "detail": "the guard could not be reached"},
     "curfew": {"enabled": False, "start": "", "end": "",
                "start_minutes": -1, "end_minutes": -1},
+    "defences": {"clock_protection": {"configured": False, "enabled": False,
+                                      "max_offset_minutes": -1},
+                 "watchdog": {"configured": False, "enabled": False,
+                              "check_interval_seconds": -1}},
     "now_minutes": -1,
     "blocking": {"apps_enabled": False, "mode": "blocklist", "games": False, "apps": 0,
                  "entries": [], "blacklist": [], "allowlist": [],

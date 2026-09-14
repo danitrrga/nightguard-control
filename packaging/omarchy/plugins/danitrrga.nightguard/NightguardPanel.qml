@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Shapes
 import Quickshell
 import qs.Commons
 import qs.Ui
@@ -95,25 +94,8 @@ Panel {
     }
   }
 
-  // The payload's verdict word is English because the terminal UI and the bar
-  // widget read the same field. This surface is Spanish throughout, so it is
-  // translated here rather than in the payload -- and an unrecognised verdict
-  // falls through to whatever the payload said, so a verdict added later shows
-  // up untranslated instead of vanishing.
-  readonly property string stateWord: {
-    if (!detail) return "…"
-    switch (String(detail.verdict)) {
-    case "locked":          return "CERRADO"
-    case "outside_curfew":  return "ABIERTO"
-    case "grace_active":    return "GRACIA"
-    case "clock_tamper":    return "RELOJ MANIPULADO"
-    case "offline_blocked": return "SIN RED"
-    case "unavailable":     return "NO DISPONIBLE"
-    default:                return String(detail.word)
-    }
-  }
-  readonly property bool windowOpen: !!detail && detail.edit_window
-                                     && detail.edit_window.open === true
+  readonly property string stateWord: clock.stateWord
+  readonly property bool windowOpen: clock.windowOpen
 
   readonly property color stateColor: {
     switch (root.verdict) {
@@ -184,195 +166,17 @@ Panel {
     root.close()
   }
 
-  // A missing or non-numeric minute reads as "absent" rather than as undefined,
-  // which QML complains about once per binding per repaint. An older ngtui has
-  // no minute fields at all, and that must not fill the log.
-  function minuteOr(value) {
-    var n = Number(value)
-    return isFinite(n) ? n : -1
+  // Every reading of the hours comes from one place, shared with the workshop
+  // window. See NightguardClock.qml for why.
+  NightguardClock {
+    id: clock
+    detail: root.detail
+    verdict: root.verdict
   }
 
-  readonly property int nowMinutes: minuteOr(detail ? detail.now_minutes : -1)
-  readonly property int curfewStartMin: minuteOr(detail && detail.curfew ? detail.curfew.start_minutes : -1)
-  readonly property int curfewEndMin: minuteOr(detail && detail.curfew ? detail.curfew.end_minutes : -1)
-  readonly property int windowStartMin: minuteOr(detail && detail.edit_window ? detail.edit_window.start_minutes : -1)
-  readonly property int windowEndMin: minuteOr(detail && detail.edit_window ? detail.edit_window.end_minutes : -1)
-
-  function untilMinutes(target) {
-    if (nowMinutes < 0 || target < 0) return -1
-    var d = target - nowMinutes
-    return d < 0 ? d + 1440 : d
-  }
-
-  function humanDuration(minutes) {
-    if (minutes < 0) return "—"
-    var h = Math.floor(minutes / 60)
-    var m = minutes % 60
-    if (h === 0) return m + " min"
-    if (m === 0) return h + " h"
-    return h + " h " + m
-  }
-
-  // The single number worth putting in the middle of the dial: how long until
-  // the thing that is about to change, changes.
-  readonly property int curfewLocked: verdict === "locked" ? 1 : 0
-  readonly property string dialHeadline: {
-    if (!detail || nowMinutes < 0) return "—"
-    if (curfewLocked === 1) return humanDuration(untilMinutes(curfewEndMin))
-    return humanDuration(untilMinutes(curfewStartMin))
-  }
-  readonly property string dialCaption: {
-    if (!detail || nowMinutes < 0) return "hora sin verificar"
-    return curfewLocked === 1 ? "hasta que abra" : "hasta el curfew"
-  }
-
-  // The payload describes the window in English because it is also read by
-  // non-Spanish surfaces; this panel is Spanish throughout, so the ordinary
-  // open/closed cases are composed here from the structured minutes. The edge
-  // states (unconfigured, disabled, malformed, clock unverified) keep the
-  // payload's own wording -- those are judgements, not descriptions, and
-  // rewording a judgement is how a panel starts disagreeing with the signer.
-  readonly property string gateDetail: {
-    if (!detail || !detail.edit_window) return "leyendo…"
-    var w = detail.edit_window
-    if (w.configured !== true) return String(w.detail)
-    if (nowMinutes < 0) return String(w.detail)
-    if (windowStartMin < 0 || windowEndMin < 0) return String(w.detail)
-    if (w.open === true)
-      return "abierta hasta las " + w.end + " · quedan " + humanDuration(untilMinutes(windowEndMin))
-    return "se abre a las " + w.start + " · quedan " + humanDuration(untilMinutes(windowStartMin))
-  }
+  readonly property string gateDetail: clock.gateDetail
 
   // --- pieces ---------------------------------------------------------------
-
-  // A 24-hour dial: the whole day as a ring, the curfew as one arc and the
-  // hours the pact may be weakened as another, with a mark at now and the next
-  // transition counted down in the middle.
-  //
-  // A ring rather than another bar because a day is a cycle, and the question
-  // it answers — "how long until this changes?" — is a distance around a
-  // circle. Built with Shape/PathAngleArc, which is how the shell draws its own
-  // dial (Ui/SpeedTestOverlay.qml:265-321); Canvas is used nowhere in the tree.
-  component DayDial: Item {
-    id: dial
-
-    property int curfewStart: -1
-    property int curfewEnd: -1
-    property int windowStart: -1
-    property int windowEnd: -1
-    property int nowMinutes: -1
-    property string headline: ""
-    property string caption: ""
-    property color headlineColor: root.foreground
-
-    readonly property real ringRadius: Math.min(width, height) / 2 - Style.space(7)
-    readonly property real ringWidth: Math.max(Style.space(6), Style.space(7))
-
-    // Midnight at the top, clockwise. PathAngleArc puts 0 degrees at 3 o'clock,
-    // so the day starts a quarter turn back.
-    function angleOf(minutes) { return -90 + (minutes / 1440) * 360 }
-
-    // An arc that wraps midnight is still one arc here — unlike the flat strip,
-    // a ring has no seam to split at, which is half the reason it reads better.
-    function sweepOf(from, to) {
-      var span = to - from
-      if (span < 0) span += 1440
-      return (span / 1440) * 360
-    }
-    function drawable(from, to) { return from >= 0 && to >= 0 && from !== to }
-
-    implicitHeight: Style.space(150)
-
-    Shape {
-      anchors.fill: parent
-      preferredRendererType: Shape.CurveRenderer
-
-      // The day itself.
-      ShapePath {
-        strokeWidth: dial.ringWidth
-        strokeColor: root.track
-        fillColor: "transparent"
-        capStyle: ShapePath.FlatCap
-        PathAngleArc {
-          centerX: dial.width / 2; centerY: dial.height / 2
-          radiusX: dial.ringRadius; radiusY: dial.ringRadius
-          startAngle: -90; sweepAngle: 360
-        }
-      }
-
-      // The curfew.
-      ShapePath {
-        strokeWidth: dial.ringWidth
-        strokeColor: dial.drawable(dial.curfewStart, dial.curfewEnd)
-                     ? root.alpha(root.urgent, 0.85) : "transparent"
-        fillColor: "transparent"
-        capStyle: ShapePath.FlatCap
-        PathAngleArc {
-          centerX: dial.width / 2; centerY: dial.height / 2
-          radiusX: dial.ringRadius; radiusY: dial.ringRadius
-          startAngle: dial.angleOf(dial.curfewStart)
-          sweepAngle: dial.drawable(dial.curfewStart, dial.curfewEnd)
-                      ? dial.sweepOf(dial.curfewStart, dial.curfewEnd) : 0
-        }
-      }
-
-      // When the pact may be weakened, on an inner track so the two never
-      // overlap into an unreadable smear.
-      ShapePath {
-        strokeWidth: Math.max(2, Style.space(3))
-        strokeColor: dial.drawable(dial.windowStart, dial.windowEnd)
-                     ? Color.accent : "transparent"
-        fillColor: "transparent"
-        capStyle: ShapePath.FlatCap
-        PathAngleArc {
-          centerX: dial.width / 2; centerY: dial.height / 2
-          radiusX: dial.ringRadius - dial.ringWidth
-          radiusY: dial.ringRadius - dial.ringWidth
-          startAngle: dial.angleOf(dial.windowStart)
-          sweepAngle: dial.drawable(dial.windowStart, dial.windowEnd)
-                      ? dial.sweepOf(dial.windowStart, dial.windowEnd) : 0
-        }
-      }
-    }
-
-    // Now.
-    Rectangle {
-      visible: dial.nowMinutes >= 0
-      width: Style.space(7)
-      height: width
-      radius: width / 2
-      color: root.foreground
-      border.width: Math.max(1, Style.space(2))
-      border.color: Color.popups.background
-      x: dial.width / 2 + dial.ringRadius * Math.cos(dial.angleOf(dial.nowMinutes) * Math.PI / 180) - width / 2
-      y: dial.height / 2 + dial.ringRadius * Math.sin(dial.angleOf(dial.nowMinutes) * Math.PI / 180) - height / 2
-    }
-
-    // The one number worth reading, in the middle where the eye lands.
-    Column {
-      anchors.centerIn: parent
-      spacing: Style.space(2)
-
-      Text {
-        anchors.horizontalCenter: parent.horizontalCenter
-        textFormat: Text.PlainText
-        text: dial.headline
-        color: dial.headlineColor
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.heading
-        font.bold: true
-      }
-      Text {
-        anchors.horizontalCenter: parent.horizontalCenter
-        textFormat: Text.PlainText
-        text: dial.caption
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-      }
-    }
-
-  }
 
   // One thing that dies tonight. A bordered, filled object rather than a line
   // of text: the roster is the subject of this panel, and a run of flat
@@ -582,14 +386,20 @@ Panel {
 
           DayDial {
             width: parent.width
-            curfewStart: root.curfewStartMin
-            curfewEnd: root.curfewEndMin
-            windowStart: root.windowStartMin
-            windowEnd: root.windowEndMin
-            nowMinutes: root.nowMinutes
-            headline: root.dialHeadline
-            caption: root.dialCaption
-            headlineColor: root.curfewLocked === 1 ? root.urgent : root.foreground
+            curfewStart: clock.curfewStartMin
+            curfewEnd: clock.curfewEndMin
+            windowStart: clock.windowStartMin
+            windowEnd: clock.windowEndMin
+            nowMinutes: clock.nowMinutes
+            headline: clock.dialHeadline
+            caption: clock.dialCaption
+            headlineColor: clock.locked ? root.urgent : root.foreground
+            foregroundColor: root.foreground
+            dimColor: root.dim
+            trackColor: root.track
+            curfewColor: root.urgent
+            fontFamily: root.fontFamily
+            voidColor: Color.popups.background
           }
 
           // ---------- may the pact be weakened right now ----------

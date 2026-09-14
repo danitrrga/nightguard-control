@@ -127,23 +127,69 @@ def test_the_manifest_entry_points_all_exist():
         )
 
 
-def test_every_qml_file_the_plugin_references_is_in_the_plugin():
+# Types that come from QtQuick, QtQuick.Controls or Quickshell rather than from
+# this plugin or the shell's kit. Listing them is the point: anything
+# capitalised that is NOT here and NOT a file must be a local component, and a
+# local component that is not a file resolves to nothing.
+_IMPORTED_TYPES = {
+    "Item", "Rectangle", "Text", "Column", "Row", "Grid", "Flow", "Flickable",
+    "Repeater", "MouseArea", "Component", "Loader", "Timer", "Connections",
+    "FocusScope", "Behavior", "NumberAnimation", "PropertyAnimation",
+    "SequentialAnimation", "ScrollBar", "Shape", "ShapePath", "PathAngleArc",
+    "TextMetrics", "Process", "StdioCollector", "Image", "Canvas", "Keys",
+    "QtObject", "Binding", "ListModel", "ListElement", "Scope", "Variants",
+    "IpcHandler", "IpcCall", "SystemClock", "FileView", "Socket",
+    "FloatingWindow", "PanelWindow", "PopupWindow", "ShellRoot", "Singleton",
+    "WrapperItem", "WrapperRectangle", "MarginWrapperManager", "ClippingRectangle",
+}
+
+
+def test_every_component_a_qml_file_instantiates_actually_resolves():
     """Same-directory type resolution is what makes `NightguardWriter {}` work
     inside the panel. A component referenced but not shipped resolves to
-    nothing, and QML says so once, quietly, at load."""
+    nothing, and QML says so once, quietly, at load.
+
+    This used to look only at names beginning with "Nightguard", which meant
+    `DayDial {}` -- extracted out of the panel into its own file -- was not
+    covered by anything. qmllint does not cover it either: with no qmldir it
+    resolves no local types at all, and returns 0 on a file that instantiates
+    a name that does not exist (checked, by renaming one).
+    """
     import glob
     import re as _re
 
     plugin = _plugin_dir()
-    present = {os.path.basename(p)[:-4]
-               for p in glob.glob(os.path.join(plugin, "*.qml"))}
-    for path in glob.glob(os.path.join(plugin, "*.qml")):
+    local = {os.path.basename(p)[:-4]
+             for p in glob.glob(os.path.join(plugin, "*.qml"))}
+
+    shell = os.environ.get("OMARCHY_PATH", "/usr/share/omarchy") + "/shell"
+    kit = set()
+    for sub in ("Ui", "Commons", "services", "Services", "Widgets"):
+        kit |= {os.path.basename(p)[:-4]
+                for p in glob.glob(os.path.join(shell, sub, "*.qml"))}
+    assert "Panel" in kit and "Button" in kit, (
+        "the shell kit was not found at %s — this test would pass by knowing "
+        "nothing" % shell
+    )
+
+    known = local | kit | _IMPORTED_TYPES
+
+    for path in sorted(glob.glob(os.path.join(plugin, "*.qml"))):
         with open(path, encoding="utf-8") as fh:
-            text = fh.read()
-        for referenced in _re.findall(r"\b(Nightguard[A-Za-z]*)\s*\{", text):
-            assert referenced in present, (
-                "%s instantiates %s, which is not a file in the plugin"
-                % (os.path.basename(path), referenced)
+            lines = fh.read().split("\n")
+        name = os.path.basename(path)
+        declared = set(_re.findall(r"^\s*component\s+([A-Z][A-Za-z0-9]*)\s*:",
+                                   "\n".join(lines), _re.MULTILINE))
+        for index, line in enumerate(lines):
+            match = _re.match(r"\s*([A-Z][A-Za-z0-9]*)\s*\{\s*$", line)
+            if not match:
+                continue
+            kind = match.group(1)
+            assert kind in known or kind in declared, (
+                "%s:%d instantiates %s, which is neither a file in the plugin, "
+                "a component in the shell kit, an inline component of this "
+                "file, nor a listed imported type — it resolves to nothing"
+                % (name, index + 1, kind)
             )
 
 
