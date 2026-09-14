@@ -11,7 +11,8 @@ Pipeline per fire:
   4. resolve verified true-time (NTP/HTTP, monotonic-anchored cache, test seam)
   5. clock-tamper check (|true - system| > max_offset)
   6. curfew window evaluation (per-day schedule, overnight wrap)
-  7. daily grace window override
+  7. daily grace window override -- honoured if the SIGNED state carries a grace
+     record, but nothing in this build writes one. Inert; not a feature.
   8. append one HMAC-chained audit record
 """
 import json

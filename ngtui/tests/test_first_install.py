@@ -185,3 +185,104 @@ def test_the_readme_does_not_promise_a_feature_nothing_grants():
     assert "grace" not in readme, (
         "the README mentions grace; nothing in this build can grant it"
     )
+
+
+def test_the_plugin_does_not_carry_anyones_home_directory():
+    """Both QML surfaces hard-coded /home/danitrrga/.local/bin/ngtui.
+
+    The shell does not inherit the login PATH, so an absolute path is right --
+    but a literal one meant that on any machine but the author's, every Process
+    call in the panel failed and the panel showed a reading that never arrived.
+    The deploy resolves an arbitrary owner and installs into THEIR home, so this
+    was the one thing left that made the product personal.
+    """
+    import glob
+
+    plugin = os.path.join(_ROOT, "packaging", "omarchy", "plugins",
+                          "danitrrga.nightguard")
+    paths = sorted(glob.glob(os.path.join(plugin, "*.qml")))
+    assert paths, "no QML found — this test would pass by looking at nothing"
+
+    users = set()
+    for path in paths:
+        text = _read(path)
+        for match in re.finditer(r"/home/([A-Za-z0-9._-]+)", text):
+            users.add((os.path.basename(path), match.group(1)))
+    assert not users, (
+        "these QML files name a literal home directory: %s"
+        % ", ".join("%s -> /home/%s" % pair for pair in sorted(users))
+    )
+
+    # And the path it does use has to be derived, not merely absent.
+    # Declarations only. NightguardWorkshop.qml reads `writer.ngtuiPath`; it is
+    # the declaring file that has to derive it.
+    declared = [p for p in paths
+                if re.search(r"property string ngtuiPath:", _read(p))]
+    assert declared, "nothing declares where the CLI is any more"
+    for path in declared:
+        assert 'Quickshell.env("HOME")' in _read(path), (
+            "%s declares ngtuiPath without deriving it from HOME"
+            % os.path.basename(path)
+        )
+
+
+def test_no_surface_presents_the_config_key_as_the_watchdog_cadence():
+    """`watchdog.check_interval_seconds` does not govern anything: the watchdog
+    is a systemd oneshot and never reads it; the cadence is OnUnitActiveSec in
+    the timer. A panel that printed the key as the cadence stated a number that
+    changing the key would not change -- and raising the key classifies as a
+    loosening, so it cost a weekly token to make the panel lie."""
+    import glob
+
+    timer = _read(os.path.join(_LINUX, "systemd", "nightguard-watchdog.timer"))
+    assert "OnUnitActiveSec=" in timer, "the timer no longer sets the cadence"
+
+    watchdog = _read(os.path.join(_LINUX, "nightguard_watchdog.py"))
+    assert "check_interval_seconds" not in watchdog.split('"""')[2], (
+        "the watchdog now reads check_interval_seconds outside its docstring — "
+        "if that is deliberate, this test and the panel wording both need to "
+        "change with it"
+    )
+
+    plugin = os.path.join(_ROOT, "packaging", "omarchy", "plugins",
+                          "danitrrga.nightguard")
+    for path in sorted(glob.glob(os.path.join(plugin, "*.qml"))):
+        text = _read(path)
+        for index, line in enumerate(text.split("\n")):
+            if "check_interval_seconds" not in line or line.strip().startswith("//"):
+                continue
+            assert False, (
+                "%s:%d puts check_interval_seconds on screen"
+                % (os.path.basename(path), index + 1)
+            )
+
+
+def test_nothing_shipped_describes_the_grace_window_as_a_feature():
+    """`guard.py` honours a grace record in the signed state, and the surfaces
+    can render the verdict, but nothing in this build writes one. It was still
+    advertised in CLAUDE.md as "a small once-daily timed bypass" — in the file
+    contributors and agents read first, describing a button that does not
+    exist. The plumbing half-exists, so a superficial grep confirms the lie."""
+    granters = []
+    for root, _dirs, files in os.walk(_ROOT):
+        if any(part in root for part in (".git", "__pycache__", ".planning", "node_modules")):
+            continue
+        for name in files:
+            if not name.endswith((".py", ".qml", ".sh")):
+                continue
+            if name == os.path.basename(__file__):
+                continue  # this file names the patterns it forbids
+            text = _read(os.path.join(root, name))
+            if re.search(r'state\[["\']grace["\']\]\s*=\s*\{|use_grace|grant_grace', text):
+                granters.append(os.path.relpath(os.path.join(root, name), _ROOT))
+    assert not granters, (
+        "something grants a grace window now (%s) — if that is deliberate, the "
+        "docs may describe it again and this test should go" % granters
+    )
+
+    claude = _read(os.path.join(_ROOT, "CLAUDE.md"))
+    assert "once-daily timed bypass" not in claude
+    assert "There is NO daily bypass" in claude, (
+        "CLAUDE.md no longer says the bypass does not exist, so the next reader "
+        "has nothing to stop them looking for it"
+    )

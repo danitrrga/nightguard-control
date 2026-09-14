@@ -1,0 +1,29 @@
+{
+  "project_root": "/home/danitrrga/dev/Projects/nightguard-control",
+  "primary_type": "open-source-library",
+  "docs_structure": "flat",
+  "doc_writer_model": "opus",
+  "commit_docs": true,
+  "decisions": {
+    "readme": "preserve — hand-written this session, guarded by tests",
+    "contributing": "skipped by the owner"
+  },
+  "canonical_queue": [
+    {"type": "architecture",    "path": "docs/ARCHITECTURE.md",    "mode": "create", "wave": 1},
+    {"type": "configuration",   "path": "docs/CONFIGURATION.md",   "mode": "create", "wave": 1},
+    {"type": "getting_started", "path": "docs/GETTING-STARTED.md", "mode": "create", "wave": 2},
+    {"type": "development",     "path": "docs/DEVELOPMENT.md",     "mode": "create", "wave": 2},
+    {"type": "testing",         "path": "docs/TESTING.md",         "mode": "create", "wave": 2}
+  ],
+  "review_queue": [
+    "CLAUDE.md",
+    "HARDENING-SUMMARY.md",
+    "docs/browser-lock.md",
+    "docs/design-spec.md",
+    "docs/2026-06-04-nightguard-control-design.md",
+    "docs/focus-mode-brief.md",
+    "docs/linux-port-brief.md",
+    "docs/superpowers/specs/2026-06-11-ui-polish-design.md"
+  ],
+  "excluded": ["README.md", "CONTRIBUTING.md", "CHANGELOG.md"]
+}

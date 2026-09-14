@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import qs.Commons
 
@@ -28,9 +29,11 @@ import qs.Commons
 Item {
   id: writer
 
-  // Absolute on purpose: the shell does not inherit the login PATH and
-  // ~/.local/bin is not on its own.
-  property string ngtuiPath: "/home/danitrrga/.local/bin/ngtui"
+  // Absolute on purpose: the shell does not inherit the login PATH, and
+  // ~/.local/bin is not on its own. Derived from HOME, not written out: the
+  // author's home was hard-coded here, so the plugin worked on exactly one
+  // machine and every Process call in the panel failed silently anywhere else.
+  property string ngtuiPath: Quickshell.env("HOME") + "/.local/bin/ngtui"
 
   // Staged edits, in the order the user made them. Each is
   // { key, action, value, label } — `label` is what the pending list shows and

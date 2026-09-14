@@ -1,17 +1,6 @@
-# Defend HMAC byte-stability against Git autocrlf rewriting (PITFALLS Pitfall 2).
-# The config and key files are signed over raw bytes — Git must never normalize them.
+# Defend HMAC byte-stability against Git autocrlf rewriting.
+# The config and key files are signed over raw bytes — Git must never normalize
+# them, or a fresh checkout on a machine with autocrlf on would produce a file
+# whose bytes no longer match the signature over them.
 config*.yaml -text
 *.guardkey -text
-
-# Guard scripts are SHA256-baselined (verify_hook_integrity.ps1 / GARD-06) over raw bytes.
-# Git must never normalize their line endings, or a fresh autocrlf checkout would produce
-# CRLF working-tree files whose hash no longer matches the LF baseline (false drift).
-scripts/guard/*.ps1 -text
-
-# CR-02: the interop scripts are dot-sourced by the guard and SHA256-baselined alongside it.
-# Pin them -text for the same reason -- a fresh autocrlf checkout must not rewrite their line
-# endings (false drift) and any future here-string / byte literal in them must stay byte-stable.
-scripts/interop/*.ps1 -text
-
-# The deploy helper byte-copies LF-stable scripts; keep it LF-pinned for consistency (no autocrlf churn).
-scripts/deploy/*.ps1 -text

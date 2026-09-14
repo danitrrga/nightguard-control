@@ -35,8 +35,10 @@ BarWidget {
   moduleName: "danitrrga.nightguard"
 
   // Absolute on purpose: the shell does not inherit the login PATH, and
-  // ~/.local/bin is not on its own.
-  readonly property string ngtuiPath: "/home/danitrrga/.local/bin/ngtui"
+  // ~/.local/bin is not on its own. Derived from HOME, not written out: the
+  // author's home was hard-coded here, so the plugin worked on exactly one
+  // machine and every Process call in the panel failed silently anywhere else.
+  readonly property string ngtuiPath: Quickshell.env("HOME") + "/.local/bin/ngtui"
 
   // Last good readings, kept when a poll fails so the bar does not blink to
   // empty over one hiccup.

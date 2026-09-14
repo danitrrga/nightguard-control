@@ -6,10 +6,14 @@
 A Linux desktop surface — an omarchy-shell (Quickshell/QML) plugin — that is the
 **single sanctioned editor** for a
 "nightguard" curfew configuration — a self-binding ("anti-me") discipline tool. It
-rate-limits how often you can *weaken* your own curfew, grants a small once-daily timed
-bypass, and pairs with a guard hook that **auto-reverts any out-of-band hand edits** to
-the config. The repo is the clean, publishable product; the author runs a personal
-instance wired into his LifeOS (see Context).
+rate-limits how often you can *weaken* your own curfew, refuses to weaken it at all
+outside a daily edit window, and pairs with a root watchdog that **auto-reverts any
+out-of-band hand edits** to the config.
+
+There is NO daily bypass. `guard.py` honours a grace window if the signed state carries
+one (`scripts/linux/guard.py:331-336`, verdict `grace_active`) and the surfaces can
+display it, but nothing in this build writes one — no subcommand, no button. It is inert
+plumbing inherited from the retired Windows design. Do not describe it as a feature.
 
 **Core Value:** A late-night, impulsive version of the user **cannot quietly loosen their own curfew** —
 loosening costs a limited weekly token, and editing the raw config by hand silently
@@ -21,9 +25,11 @@ reverts. Everything else is secondary to that guarantee holding.
   dependency-free Python CLI (`ngtui`) behind it, and a root Python signer
   (`nightguard_ctl.py`) as the sole writer. Authorisation is `pkexec`/polkit.
 - **Platform**: Linux / Omarchy 4 / Hyprland.
-- **Retired and removed**: the Windows Tauri/Rust tree and the `ngtui` Textual
-  terminal app. They are not in this branch; `archive/windows-tauri` holds them
-  whole. Anything anywhere describing Tauri, DPAPI or PowerShell is about that.
+- **Retired and removed**: the Windows product — the Tauri/Rust tree, the Vite
+  frontend and the PowerShell guard, deploy and interop scripts — and the `ngtui`
+  Textual terminal app. None of it is in this branch; `archive/windows-tauri`
+  holds it whole. Several files under `docs/` still describe it as if current;
+  they are dated records, not instructions.
 - **Security**: HMAC-SHA256 over config + state; the 32-byte key is a root-owned
   `0600` file under `/var/lib/nightguard`, in a root-owned directory — rename and
   unlink are governed by the directory's mode, which is why the directory matters

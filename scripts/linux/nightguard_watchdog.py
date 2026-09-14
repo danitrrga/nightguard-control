@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """nightguard_watchdog.py — Linux revert-watchdog (systemd --user oneshot, 60s timer).
 
-One tick per invocation (the systemd timer fires this every check_interval_seconds):
+One tick per invocation. The cadence is the systemd timer's (OnUnitActiveSec=60),
+NOT config.yaml's watchdog.check_interval_seconds -- this is a oneshot and never reads
+that key. The key is carried in the payload as configuration, and no surface may
+present it as the cadence.
   1. verify config integrity; revert config.yaml -> config.sanctioned.yaml on HMAC
      mismatch (skipped while the control CLI holds .nightguard.lock mid-commit).
   2. verify the root-managed browser policies still force-install the StayFree

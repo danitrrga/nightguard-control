@@ -82,9 +82,25 @@ sudo NIGHTGUARD_OWNER=yourname scripts/linux/deploy.sh
 Re-run it after `git pull`. It is idempotent, and if it fails part-way it
 restarts the watchdog timer before exiting, so it never leaves you unprotected.
 
-Then edit `/var/lib/nightguard/config.yaml` for your hours — the first edit, before
-anything is signed into place, is the one you make by hand. Re-run the deploy and
-everything after that goes through the panel.
+### Setting your own hours
+
+Edit `config.example.yaml` **before the first install**. That file is what a fresh machine
+copies into place, and the deploy signs whatever it finds there.
+
+After that first signature, a hand edit does not take: the watchdog puts the file back on
+its next tick, and re-running the deploy does not re-sign it — the signing step only runs
+on a machine that had no instance. Changes go through the panel, which is the point.
+
+If you do need to re-sign a hand edit — recovering a mangled file, or changing one of the
+few keys the panel deliberately cannot reach — that is what the root password is for:
+
+```bash
+sudo NIGHTGUARD_DIR=/var/lib/nightguard /usr/bin/python3 \
+     /usr/local/lib/nightguard/nightguard_ctl.py init
+```
+
+It signs the current file without classifying or pricing it, which is exactly why it is not
+in the sudoers list and never runs from the panel.
 
 ### Requirements
 

@@ -592,9 +592,12 @@ Item {
             if (!glance.defences) return ""
             var w = glance.defences.watchdog
             if (!w.enabled) return "el vigilante está apagado — cualquiera que edite el archivo a mano gana"
-            return w.check_interval_seconds > 0
-                   ? "el vigilante comprueba cada " + w.check_interval_seconds + " s y devuelve el archivo firmado"
-                   : "el vigilante devuelve el archivo firmado"
+            // No number here. The cadence is the systemd timer's, not this
+            // config key's -- the watchdog is a oneshot and never reads the
+            // key. Printing it made the panel state a cadence that raising the
+            // key would not change, and raising it classifies as a loosening,
+            // so it cost a token to make the panel lie.
+            return "el vigilante devuelve el archivo firmado"
           }
           on: !!glance.defences && glance.defences.watchdog.enabled === true
         }
