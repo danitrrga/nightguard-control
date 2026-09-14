@@ -25,7 +25,12 @@ _THIS = os.path.dirname(os.path.abspath(__file__))
 # root:root 0755; only config.yaml inside it stays user-writable (the revert model needs the
 # hand edit to be possible so it can be undone).
 ROOT_INSTANCE = "/var/lib/nightguard"
-LEGACY_INSTANCE = "/home/danitrrga/.local/share/nightguard"
+# Where this project kept its instance before the trust-wall hardening moved it
+# to root-owned ground. Only ever read, only ever on the machine that has one --
+# a fresh install creates ROOT_INSTANCE and never looks here. Derived rather
+# than a literal home, which made every other machine carry one person's path.
+LEGACY_INSTANCE = os.path.join(
+    os.path.expanduser("~"), ".local", "share", "nightguard")
 # Prefer the root-owned location; fall back to the legacy one only until deploy.sh has moved
 # it. Safe to prefer unconditionally: /var/lib is root:root 0755, so the user can neither
 # create nor shadow ROOT_INSTANCE — once it exists the fallback is unreachable.

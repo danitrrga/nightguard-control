@@ -1,135 +1,165 @@
-# nightguard
+# Nightguard Control
 
 ![nightguard banner](banner.png)
 
-**Your late-night self is smart. Nightguard is smarter.**
+**A curfew you cannot quietly talk yourself out of.**
 
-A digital discipline system for AI agents that enforces bedtime curfews, keeps your screen-time blockers alive, and catches you when you try to cheat the clock.
+Nightguard closes your machine at an hour you choose and — this is the part that
+makes it different from every blocker with an off switch — makes *weakening* it
+cost something. Loosening the rules spends one of three tokens a week, is refused
+outside a window you set in the morning, and cannot be done by editing the
+config file, because a root watchdog puts hand edits back within a minute.
 
-> *"I'll just fix one more thing..."* — You, at 2 AM, every night.
+Your morning self writes the rules. Your two-in-the-morning self has to pay to
+change them.
 
-Nightguard makes the disciplined choice the default — and the undisciplined choice harder than just going to bed.
+![the panel](docs/panel.png)
 
-## Features
+---
 
-**Curfew Guard** — Blocks Codex, Claude Code, Opencode... during the hours you choose. Set different schedules for weekdays vs weekends, or disable specific days entirely.
+## What it actually does
 
-**Clock Protection** — Verifies time against NTP servers. Changed your system clock to 2 PM? Nightguard knows it's actually midnight. Nice try.
+**Closes applications at the hour.** Named by the exact basename of their
+executable, which is the only string the enforcer can act on. The picker shows
+you both the name you recognise and that string for everything installed, so you
+never have to guess it.
 
-**App Watchdog** — Closed your screen-time blocker from the system tray? It's back in 2 minutes. Supports any Windows app — Store apps and regular `.exe` programs.
+**Closes sites, separately.** Web apps — a chat, a calendar, a board — all run
+inside one browser process, so ending a process cannot separate them. Their
+identity is the address, so they are blocked through a root-owned browser policy
+instead.
 
-**Fully Configurable** — One YAML file controls everything: timezone, curfew hours, per-day schedules, which apps to protect, custom block messages, and more.
+**Watches the clock.** The system clock is compared against real time. Moving it
+forward to skip the night reads as tampering, and tampering closes the house.
 
-## Setup
+**Reverts hand edits.** The signed copy of the config is the truth. The live copy
+is yours to edit — and the watchdog will put it back, every minute, because the
+whole point is that editing it is not the way to change the rules.
 
-1. Clone this repo
-2. Open it in [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-3. Say: **"Set up nightguard for me"**
+**Prices every change.** Anything that tightens the curfew is free and immediate.
+Anything that loosens it spends a token, and there are three a week. Outside the
+edit window it is refused before the tokens are even considered — because a
+weekly allowance limits how *often* you give in, not *when*, and the hour your
+judgement is worst is exactly the hour you reach for it.
 
-Claude walks you through everything — timezone, schedule, apps, preferences — and installs it for you. No config files to edit by hand.
+## How it is built
 
-### Manual setup
+Three pieces, and the split between them is the security model:
 
-```powershell
-# 1. Copy and edit the config
-mkdir ~/.claude/nightguard
-cp config.example.yaml ~/.claude/nightguard/config.yaml
-# Edit config.yaml with your preferences
+| | | |
+|---|---|---|
+| **The signer** | `/usr/local/lib/nightguard`, root-owned | The only thing that writes the config. Classifies every change as tightening or loosening, prices it, signs the result with a key only root can read. Reached through `pkexec`; the password prompt is deliberate friction. |
+| **The watchdog** | a root systemd timer | Every 60 seconds: does the live config still match what was signed? If not, put it back. Stopping it asks for an administrator password, every time — no timestamp caching. |
+| **The panel** | an [Omarchy](https://omarchy.org) shell plugin, QML | The only sanctioned editor. Shows what is signed, stages what you want to change, tells you what it costs, and hands it to the signer. It never writes anything itself. |
 
-# 2. Install hooks (no admin needed)
-powershell -File scripts/setup.ps1 -SkipScheduledTask
+Behind the panel is a small dependency-free Python CLI (`ngtui`) that reads state
+and builds proposals. No frameworks anywhere; the YAML the guard reads is parsed
+by a hand-written minimal parser, and every edit is a line edit that preserves
+your comments and formatting — a re-emitted file would change the bytes the
+signature covers.
 
-# 3. Install app watchdog (admin PowerShell, one-time)
-powershell -File scripts/setup.ps1
+## Install
+
+```bash
+git clone https://github.com/danitrrga/nightguard-control.git
+cd nightguard-control
+sudo scripts/linux/deploy.sh
 ```
 
-## Configuration
+That is the whole thing. It installs the signer and the watchdog as root, creates
+the instance under `/var/lib/nightguard`, seeds a config from
+[`config.example.yaml`](config.example.yaml), generates the signing key, signs it,
+installs the systemd units, the polkit rule and the sudoers entry, puts the shell
+plugin in your Omarchy plugin directory and the application in your launcher.
 
-All settings live in `~/.claude/nightguard/config.yaml`. See [`config.example.yaml`](config.example.yaml) for the full annotated reference.
+It binds to one person — the one who gets the panel and the right to sign. It
+works that out from `sudo`; say so explicitly if it guesses wrong:
 
-### Basics
+```bash
+sudo NIGHTGUARD_OWNER=yourname scripts/linux/deploy.sh
+```
+
+Re-run it after `git pull`. It is idempotent, and if it fails part-way it
+restarts the watchdog timer before exiting, so it never leaves you unprotected.
+
+Then edit `/var/lib/nightguard/config.yaml` for your hours — the first edit, before
+anything is signed into place, is the one you make by hand. Re-run the deploy and
+everything after that goes through the panel.
+
+### Requirements
+
+- Linux with [Omarchy 4](https://omarchy.org) (Hyprland + the Quickshell-based shell)
+- Python 3.11+, system `python3` — no packages, no virtualenv
+- `polkit` and `systemd`
+- [`uv`](https://docs.astral.sh/uv/), to install the CLI behind the panel
+- A network connection, to verify the real time
+
+The interface is in Spanish. The config file and everything under the hood is in
+English.
+
+## Configuring it
+
+Every setting is in [`config.example.yaml`](config.example.yaml), annotated. The
+shape that matters most:
 
 ```yaml
-timezone: America/New_York
-
 curfew:
   enabled: true
-  start: "22:00"
+  start: "23:00"
   end: "07:00"
-```
 
-### Per-day schedules
-
-Stay up later on weekends. Disable curfew on specific days.
-
-```yaml
-curfew:
-  start: "21:30"
-  end: "06:00"
-
-  schedule:
-    friday:
-      start: "23:00"
-      end: "08:00"
-    saturday:
-      start: "23:00"
-      end: "08:00"
-    sunday: off
-```
-
-### Custom messages
-
-Set the tone. Gentle reminder, strict parent, sarcastic friend — whatever keeps you honest.
-
-```yaml
-curfew:
-  message: "Go to bed. You have a 9 AM meeting tomorrow."
-  tamper_message: "Caught you changing the clock. Go to sleep."
-  offline_message: "Can't check the time, so you're blocked. Goodnight."
-```
-
-Use `{start}` and `{end}` as placeholders:
-```yaml
-  message: "Curfew started at {start}. See you at {end}."
-```
-
-### App watchdog
-
-Keep screen-time blockers (or any app) running. Works with Microsoft Store and regular apps.
-
-```yaml
-watchdog:
+edit_window:          # when the curfew may be WEAKENED
   enabled: true
-  check_interval_minutes: 2
-  apps:
-    - name: Cold Turkey Blocker
-      type: exe
-      path: "C:\\Program Files\\Cold Turkey\\Cold Turkey Blocker.exe"
-      process_name: ColdTurkey
+  start: "07:00"
+  end: "12:00"
+
+blocking:
+  native_apps:
+    mode: blocklist   # or allowlist — stricter, and it will close your terminal
+    blacklist: []     # executable basenames; the panel shows you these
+  browser_extension:
+    blocked_urls: []  # hosts, closed through the root-owned browser policy
 ```
 
-## How it works
+Change it from the panel after the first install: click the shield in the bar for
+the glance, or open **Nightguard** from the launcher for the full window.
 
-Nightguard installs as a [Claude Code hook](https://docs.anthropic.com/en/docs/claude-code/hooks) — a script that runs before every prompt. During curfew, it blocks the prompt and tells you to go to bed.
+## What it does not protect against
 
-The time check queries independent HTTPS time APIs (`timeapi.io`, `worldclockapi.com`) to get the real time, falling back to NTP via `w32tm` only as a last resort. HTTPS is preferred because some managed networks (universities, corporate VPNs) transparently intercept NTP traffic and return the local system clock as "authoritative", defeating tamper detection. HTTPS uses TLS cert validation, which fails when the clock is significantly wrong — making it much harder to spoof. If your system clock is off by more than 5 minutes from any reachable source, it flags tampering. If all sources are unreachable, it blocks by default.
+Stated plainly, because a security tool that oversells itself is worse than one
+that does not exist:
 
-The app watchdog runs as a Windows Scheduled Task, checking every 2 minutes if your configured apps are still alive.
+- **Root can do anything.** This binds a person who has the root password and
+  chooses not to use it at midnight. It is a pact, not a prison.
+- **Membership of a group that polkit trusts is a total bypass.** On most systems
+  that is `wheel`; on Omarchy it can also be `empower`. If you are in a group
+  that gets an unprompted yes, every authentication in this model is free. The
+  panel warns you when it detects this; it cannot fix it.
+- **It does not survive a live USB**, a second account with admin rights, or a
+  reinstall. Nothing on the machine can.
+- **It cannot separate two web apps in the same browser** except by address, which
+  is why sites and applications are two different lists.
 
-## Requirements
+## Uninstalling
 
-- Windows 10/11
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-- PowerShell 5.1+ (included with Windows)
-- Internet connection (for NTP verification)
-- Admin privileges (one-time, for the watchdog scheduled task)
+```bash
+sudo systemctl disable --now nightguard-watchdog.timer
+sudo rm -f /etc/systemd/system/nightguard-watchdog.{service,timer} \
+           /etc/polkit-1/rules.d/00-nightguard.rules \
+           /etc/sudoers.d/nightguard
+sudo rm -rf /usr/local/lib/nightguard /var/lib/nightguard
+rm -rf ~/.config/omarchy/plugins/danitrrga.nightguard
+```
 
-## Philosophy
+Deliberately not a script. Removing the thing that stops you removing it should
+take more than one command at two in the morning.
 
-Willpower is a depletable resource. At midnight, after a long day, you will talk yourself into "just five more minutes" every time. Nightguard removes that negotiation entirely.
+## The retired Windows version
 
-It's designed to be **hard to bypass when you're tired** and **easy to configure when you're thinking clearly**. Your morning self sets the rules. Your night self follows them.
+This started as a Tauri/Rust application for Windows, driven by PowerShell hooks.
+None of it is built, tested or shipped any more, and it is not in this branch. It
+is kept whole on `archive/windows-tauri` if you want to read it.
 
 ## License
 
-MIT
+The [MIT License](LICENSE).

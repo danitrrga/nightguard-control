@@ -3,7 +3,7 @@
 # Everything it creates is removed at the end.
 set -uo pipefail
 JAIL=/sys/fs/cgroup/nightguard-experiment
-OWNER=danitrrga
+OWNER=${SUDO_USER:-$(id -un)}
 
 cleanup() {
     [[ -d $JAIL ]] && rmdir "$JAIL" 2>/dev/null

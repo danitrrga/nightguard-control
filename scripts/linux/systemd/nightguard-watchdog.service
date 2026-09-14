@@ -4,7 +4,7 @@ Description=Nightguard watchdog (root) — revert tampered config + restore brow
 # Runs as root so it can read the root-owned .guardkey (Phase 7 ROOT-01).
 #
 # ExecStart points at the DEPLOYED, root-owned copy, never at the working tree. It used to
-# run /home/danitrrga/dev/Projects/nightguard-control/scripts/linux/nightguard_watchdog.py —
+# run the watchdog straight out of a working tree in someone.s home —
 # a user-writable file in a user-writable directory, executed as root every 60 seconds, so
 # rewriting it was arbitrary root code with no password. Deploy with scripts/linux/deploy.sh.
 After=network-online.target

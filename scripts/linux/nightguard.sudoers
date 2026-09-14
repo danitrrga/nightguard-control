@@ -22,4 +22,4 @@ Cmnd_Alias NIGHTGUARD_CTL = \
     /usr/bin/python3 /usr/local/lib/nightguard/nightguard_ctl.py commit *, \
     /usr/bin/python3 /usr/local/lib/nightguard/nightguard_ctl.py verify
 
-danitrrga ALL=(root) NIGHTGUARD_CTL
+@NIGHTGUARD_OWNER@ ALL=(root) NIGHTGUARD_CTL

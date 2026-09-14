@@ -1,0 +1,96 @@
+# Nightguard — the configuration.
+#
+# This file is yours to edit. It is also the one file the guard watches: edit it
+# by hand and the watchdog puts it back within a minute, because a curfew you can
+# rewrite at two in the morning is not a curfew. Changes go through the panel,
+# which prices them and asks root to sign them.
+#
+# Everything here is read by a minimal parser, not a full YAML library. Keep to
+# the shapes below: two-space indent, `key: value`, and `- item` lists.
+
+# Used for every hour in this file. An IANA name.
+timezone: Europe/Amsterdam
+
+curfew:
+  enabled: true
+
+  # 24-hour times. A curfew that ends before it starts wraps past midnight,
+  # which is the normal case.
+  start: "23:00"
+  end: "07:00"
+
+  # Commands that still work while the house is closed. Everything else your
+  # agent is asked to do is refused with the message below.
+  allow_commands:
+    - "/shutdown"
+
+  # If the real time cannot be verified, is the house open or closed? Closed.
+  # The alternative is a curfew you can defeat by unplugging the network.
+  block_when_offline: true
+
+  # {start} and {end} are substituted. Write these in your own voice — you are
+  # the person who reads them at midnight.
+  message: "It is past {start}. The house is closed for the night; it opens again at {end}."
+  tamper_message: "The clock has been moved. The house rules stand."
+  offline_message: "I cannot verify the time. The house stays closed until I can."
+
+# Compares the system clock against real time. Without it, moving the clock
+# forward opens the night for free.
+clock_protection:
+  enabled: true
+  max_offset_minutes: 5
+
+# The watchdog reverts hand edits to this file and keeps the browser policy in
+# place. It is a root systemd timer; stopping it asks for an administrator
+# password every time.
+watchdog:
+  enabled: true
+  check_interval_seconds: 60
+
+# What the curfew actually closes.
+blocking:
+  browser_extension:
+    enabled: true
+
+    # A Chromium extension force-installed through the root-owned managed
+    # policy. Leave the id empty if you do not use one.
+    extension_id: ""
+
+    # Sites closed during curfew, through that same root-owned policy. Hosts,
+    # not URLs. Web apps — a chat, a calendar, a board — all run inside one
+    # browser process, so they cannot be separated by ending a process. Their
+    # identity is the address, which is why they belong here and not below.
+    blocked_urls: []
+
+  native_apps:
+    enabled: true
+
+    # blocklist: end only what is named here, leave everything else alone.
+    # allowlist: end everything EXCEPT what is named here — stricter, and it
+    # will close your terminal unless you list it.
+    mode: blocklist
+
+    # The exact basename of the program's executable, which is the only string
+    # the watchdog can act on. The panel shows you both names for every
+    # application it can see, so you never have to guess this.
+    blacklist: []
+
+    # Only consulted in allowlist mode. Put your terminal here before you
+    # switch, not after.
+    allowlist: []
+
+    # Detect newly installed games — Steam, Heroic, or any launcher entry that
+    # declares itself a game — so an install tomorrow is covered tonight
+    # without an edit.
+    block_games: true
+
+# When the curfew may be WEAKENED. Outside these hours a loosening change is
+# refused before the weekly allowance is even considered.
+#
+# This exists because the allowance limits how OFTEN you give in, not WHEN — and
+# the hour your judgement is worst is exactly the hour you reach for it. Put
+# this window somewhere in your morning.
+edit_window:
+  enabled: true
+  start: "07:00"
+  end: "12:00"

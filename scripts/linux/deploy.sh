@@ -16,18 +16,69 @@
 # longer changes what root executes, which is the entire point.
 set -euo pipefail
 
-OWNER=danitrrga
+# Who this instance binds to: the person whose desktop gets the panel, whose
+# sudoers line is written, and who owns config.yaml. Derived, never hard-coded --
+# it was a literal username for a year, which made this script a personal
+# artefact rather than an installer. Order matters: NIGHTGUARD_OWNER for an
+# explicit choice, then whoever invoked sudo/pkexec, then the single ordinary
+# user on a single-user machine. `logname` is not consulted: it reports the
+# login of the controlling terminal, and this is run from a graphical session
+# as often as not.
+resolve_owner() {
+    if [[ -n ${NIGHTGUARD_OWNER:-} ]]; then echo "$NIGHTGUARD_OWNER"; return; fi
+    if [[ -n ${SUDO_USER:-} && $SUDO_USER != root ]]; then echo "$SUDO_USER"; return; fi
+    if [[ -n ${PKEXEC_UID:-} ]]; then
+        local name; name=$(getent passwd "$PKEXEC_UID" | cut -d: -f1)
+        [[ -n $name ]] && { echo "$name"; return; }
+    fi
+    # Ordinary login accounts only: UID >= 1000, a real shell, exactly one.
+    local candidates
+    candidates=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 && $7 !~ /(nologin|false)$/ {print $1}')
+    if [[ $(wc -l <<< "$candidates") -eq 1 ]]; then echo "$candidates"; return; fi
+    echo ""
+}
+
+OWNER=$(resolve_owner)
+if [[ -z $OWNER ]]; then
+    cat >&2 <<'MSG'
+ERROR: cannot tell whose machine this is.
+
+Nightguard binds to one person: they get the desktop panel, the sudoers line
+that lets them sign a change, and ownership of config.yaml. Say who:
+
+    sudo NIGHTGUARD_OWNER=yourname scripts/linux/deploy.sh
+
+MSG
+    exit 1
+fi
+
+OWNER_HOME=$(getent passwd "$OWNER" | cut -d: -f6)
+[[ -n $OWNER_HOME && -d $OWNER_HOME ]] || {
+    echo "ERROR: $OWNER has no home directory — refusing to guess one" >&2; exit 1; }
+
 REPO_CODE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODE=/usr/local/lib/nightguard
-PLUGIN_DIR="/home/$OWNER/.config/omarchy/plugins/danitrrga.nightguard"
+PLUGIN_DIR="$OWNER_HOME/.config/omarchy/plugins/danitrrga.nightguard"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DATA=/var/lib/nightguard
-OLD_DATA=/home/danitrrga/.local/share/nightguard
+OLD_DATA="$OWNER_HOME/.local/share/nightguard"
 
 [[ $EUID -eq 0 ]] || { echo "run with sudo"; exit 1; }
 
+echo "== installing for $OWNER ($OWNER_HOME) =="
+
+# The sudoers file in the repo carries a placeholder, not a username: a literal
+# name there grants one person's account the right to sign on every machine that
+# ever installs this, and silently grants nobody the right on the machines where
+# that account does not exist.
+SUDOERS_STAGED=$(mktemp /tmp/nightguard-sudoers.XXXXXX)
+chmod 0440 "$SUDOERS_STAGED"
+sed "s/@NIGHTGUARD_OWNER@/$OWNER/" "$REPO_CODE/nightguard.sudoers" > "$SUDOERS_STAGED"
+grep -q "@NIGHTGUARD_OWNER@" "$SUDOERS_STAGED" && {
+    echo "ERROR: the owner placeholder survived substitution" >&2; exit 1; }
+
 echo "== validating sudoers BEFORE it lands in /etc =="
-visudo -cf "$REPO_CODE/nightguard.sudoers"
+visudo -cf "$SUDOERS_STAGED"
 
 # If anything below fails we must not leave the machine with the watchdog stopped — that is
 # protection off, which is exactly the state this whole change exists to prevent.
@@ -57,7 +108,12 @@ if [[ -d $OLD_DATA && ! -d $DATA ]]; then
     echo "   migrating from $OLD_DATA (preserving modes)"
     cp -a "$OLD_DATA" "$DATA"
 elif [[ ! -d $DATA ]]; then
-    echo "   ERROR: neither $OLD_DATA nor $DATA exists — nothing to deploy against"; exit 1
+    # First install. Everything below this line seeds the instance; the signing
+    # key and the first signature are made at the end, once the code is in place
+    # and the config exists, because `init` signs whatever config.yaml says.
+    echo "   first install — creating $DATA"
+    install -d -o root -g root -m 0755 "$DATA"
+    FIRST_INSTALL=1
 else
     echo "   $DATA already present, re-applying ownership only"
 fi
@@ -66,6 +122,8 @@ fi
 # mode, not the file's, so a user-owned parent let the root-owned key and state be displaced.
 chown root:root "$DATA"
 chmod 0755 "$DATA"
+
+FIRST_INSTALL=${FIRST_INSTALL:-0}
 
 root_600=(.guardkey .nightguard.lock)
 root_644=(guard.json config.sanctioned.yaml guard-audit.log watchdog.log .lock_suppressed_since)
@@ -81,7 +139,14 @@ done
 # possible so the watchdog can undo it. Note the directory is now root-owned, so editors that
 # save by writing a temp file and renaming it over the original will fail; edit in place, or
 # use the sanctioned path (ngtui / nightguard_ctl.py commit).
-[[ -e $DATA/config.yaml ]] || cp "$DATA/config.sanctioned.yaml" "$DATA/config.yaml"
+if [[ ! -e $DATA/config.yaml || ! -s $DATA/config.yaml ]]; then
+    if [[ -s $DATA/config.sanctioned.yaml ]]; then
+        cp "$DATA/config.sanctioned.yaml" "$DATA/config.yaml"
+    else
+        echo "   seeding config.yaml from config.example.yaml"
+        cp "$REPO_ROOT/config.example.yaml" "$DATA/config.yaml"
+    fi
+fi
 chown "$OWNER:$OWNER" "$DATA/config.yaml"; chmod 0644 "$DATA/config.yaml"
 # .timecache is written by the user-context guard; pre-create it user-owned, since the
 # root-owned directory no longer lets that process create files itself.
@@ -134,7 +199,8 @@ install -d -o root -g root -m 0750 /etc/polkit-1/rules.d
 install -o root -g root -m 0644 "$REPO_CODE/polkit/00-nightguard.rules" /etc/polkit-1/rules.d/
 
 echo "== sudoers =="
-install -o root -g root -m 0440 "$REPO_CODE/nightguard.sudoers" /etc/sudoers.d/nightguard
+install -o root -g root -m 0440 "$SUDOERS_STAGED" /etc/sudoers.d/nightguard
+rm -f "$SUDOERS_STAGED"
 
 echo "== reinstalling the ngtui CLI so it tracks these paths =="
 # ngtui is a uv tool: an installed SNAPSHOT of ngtui/, with the stack and instance paths
@@ -194,8 +260,8 @@ echo "   the shell hot-reloads a changed plugin on its own"
 # applications dir, because that is where a user-level launcher entry belongs
 # and a root-owned file there would be a root-writable path in his session.
 echo "== launcher entry + icons =="
-APPS_DIR="/home/$OWNER/.local/share/applications"
-ICON_BASE="/home/$OWNER/.local/share/icons/hicolor"
+APPS_DIR="$OWNER_HOME/.local/share/applications"
+ICON_BASE="$OWNER_HOME/.local/share/icons/hicolor"
 runuser -u "$OWNER" -- install -d -m 0755 "$APPS_DIR"
 runuser -u "$OWNER" -- install -m 0644 \
     "$REPO_ROOT/packaging/omarchy/nightguard.desktop" "$APPS_DIR/nightguard.desktop"
@@ -227,7 +293,7 @@ for S in 16 32 48 64 128 256 512; do
     runuser -u "$OWNER" -- rm -f "$ICON_BASE/${S}x${S}/apps/org.omarchy.ngtui.png" 2>/dev/null || true
 done
 runuser -u "$OWNER" -- rm -f "$ICON_BASE/scalable/apps/org.omarchy.ngtui.svg" 2>/dev/null || true
-runuser -u "$OWNER" -- rm -f "/home/$OWNER/.local/bin/ngtui-menu" 2>/dev/null || true
+runuser -u "$OWNER" -- rm -f "$OWNER_HOME/.local/bin/ngtui-menu" 2>/dev/null || true
 
 # Without these the entry does not appear until the next login, and "I installed
 # it and nothing happened" is the same symptom as a broken install.
@@ -246,6 +312,14 @@ systemctl daemon-reload
 # reads the window from the SANCTIONED config, so a config without the block is
 # ungated and the feature would ship inert. Idempotent: a no-op once present, so
 # repeated deploys neither rewrite nor re-sign.
+if [[ $FIRST_INSTALL -eq 1 ]]; then
+    echo "== first install: creating the signing key and signing the config =="
+    # `init` writes the 32-byte key (0600, root) if it is absent and signs
+    # whatever config.yaml currently says. Until this runs there is no signature,
+    # so the watchdog would read every config as tampered.
+    NIGHTGUARD_DIR="$DATA" /usr/bin/python3 "$CODE/nightguard_ctl.py" init
+fi
+
 echo "== config schema: adding anything this build needs =="
 NIGHTGUARD_DIR="$DATA" /usr/bin/python3 "$CODE/nightguard_ctl.py" ensure-config
 
