@@ -1,5 +1,12 @@
 # Nightguard Control — UI/UX Polish (Phase 6) Design Spec
 
+> **Superseded — historical, and do not execute.** A re-skin spec for the
+> Tauri webview. Every file it tells you to edit was deleted from this branch,
+> and the Moonlit Indigo palette it prescribes is now banned: a test fails the
+> build on any hex literal in the QML, using this document's own accent as its
+> control. Its one surviving idea, the night ring, was rebuilt as
+> `packaging/omarchy/plugins/danitrrga.nightguard/DayDial.qml`.
+
 **Date:** 2026-06-11
 **Status:** Approved direction (decisions locked via brainstorming); status-first execution authorized to run autonomously.
 **Scope:** Aesthetic + UX layer ONLY. The Rust backend, IPC command signatures, guard, and all logic are **untouched**. This re-skins and recomposes the frontend (`src/index.html`, `src/styles.css`, `src/main.ts` render layer) so it reads as a 2026 industry-leading desktop app (Linear / Raycast / Vercel caliber).

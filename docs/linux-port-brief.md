@@ -1,5 +1,14 @@
 # Nightguard v2.0 — Linux Port Brief
 
+> **Partly superseded — historical.** The brief that seeded the Linux port.
+> Two of its load-bearing recommendations were overruled during the build and
+> the document was never updated: blocking is NOT by Hyprland window class
+> (that is forgeable — the enforcer matches the exact basename of
+> `/proc/PID/exe` and freezes into a root cgroup), and the commit path is NOT a
+> root socket helper (it is `pkexec` per commit). ActivityWatch was never
+> built; the Tauri port was abandoned. Read
+> [ARCHITECTURE.md](ARCHITECTURE.md) for what was actually built.
+
 > Brainstorm capture (2026-06-22) to seed a GSD milestone discussion. The v1.0
 > product is Windows-only (DPAPI + PowerShell guard + Windows Scheduled Task).
 > Daniel has moved to Linux (CachyOS + Hyprland/omarchy); this milestone ports

@@ -334,3 +334,36 @@ def test_no_package_module_imports_a_dependency_this_package_does_not_declare():
         "these modules import something pyproject does not declare, so they "
         "cannot be imported on a clean checkout: " + ", ".join(offenders)
     )
+
+
+def test_every_document_that_describes_the_retired_product_says_so_at_the_top():
+    """Four documents under docs/ describe the Windows product or a design that
+    was never built, and two of them still open with "Approved for planning" and
+    "authorized to run autonomously". They are the most detailed and most
+    convincing writing in the repository, and a person cloning it finds them
+    before they find the README.
+
+    One of them is worse than misleading: the re-skin spec prescribes the exact
+    hex palette that test_no_fixed_hex now fails the build over, using that
+    document's own accent as its control. An agent handed it would produce a
+    commit that cannot pass.
+
+    Kept rather than deleted — they are a real record. Stamped so nobody reads
+    them as instructions.
+    """
+    stamped = {
+        "docs/design-spec.md": "Superseded",
+        "docs/2026-06-04-nightguard-control-design.md": "Superseded",
+        "docs/superpowers/specs/2026-06-11-ui-polish-design.md": "do not execute",
+        "docs/focus-mode-brief.md": "Never built",
+        "docs/linux-port-brief.md": "superseded",
+        "HARDENING-SUMMARY.md": "Dated record",
+    }
+    for path, marker in stamped.items():
+        full = os.path.join(_ROOT, path)
+        assert os.path.exists(full), "%s is gone — drop its row here too" % path
+        head = _read(full)[:1200]
+        assert marker in head, (
+            "%s no longer carries its historical banner in the first lines, so "
+            "it reads as current" % path
+        )

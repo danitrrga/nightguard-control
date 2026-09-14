@@ -1,5 +1,13 @@
 # Hardening session — 2026-09-07
 
+> **Dated record — 2026-09-07.** The security findings in this document still
+> hold and are worth reading. Where it goes stale is the surface: it names the
+> terminal editor as the place you make changes, and that editor is retired —
+> `ngtui` now exits 2 and points at the desktop panel. Its claim that the
+> signer "is reached through the terminal UI" is now the opposite of the
+> shipped path, which runs from the panel. The test counts are a snapshot of
+> that day.
+
 12 commits on `plan/phase-02-mutation-engine`. Suite went from **87 passed, 3
 skipped** to **386 passed, 3 skipped**.
 

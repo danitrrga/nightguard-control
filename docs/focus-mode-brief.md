@@ -1,5 +1,10 @@
 # Nightguard — Focus Mode Brief (Voluntary Daytime Curfew)
 
+> **Never built — historical.** A brainstorm for a voluntary daytime focus
+> mode. No `focus:` config block, no CLI, no code of any kind exists for it,
+> and it assumed two things that did not happen: window-class blocking and a
+> waybar bar. Kept as a record of an idea, not as a plan.
+
 > Brainstorm capture (2026-06-22) to seed a GSD milestone discussion. Focus Mode
 > extends nightguard from a single **involuntary bedtime curfew** into a system that
 > also offers **voluntary, timer-bound daytime focus sessions** — triggered by Daniel,

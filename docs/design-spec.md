@@ -1,5 +1,13 @@
 # Nightguard Control — Design Spec
 
+> **Superseded — historical.** This is the June 2026 design for the Windows
+> product: Tauri, Rust, PowerShell hooks, a DPAPI-wrapped key, a `+8` grace
+> button. None of it is in this branch; the code is on `archive/windows-tauri`.
+> Nothing here describes what ships. For the current design read
+> [ARCHITECTURE.md](ARCHITECTURE.md). Byte-identical to
+> `2026-06-04-nightguard-control-design.md`; this is the copy other documents
+> link to.
+
 **Date:** 2026-06-04
 **Status:** Approved for planning (brainstorming complete)
 **Implementation protocol:** GSD (user-chosen, overrides default writing-plans)

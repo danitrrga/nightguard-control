@@ -1,5 +1,10 @@
 # Nightguard Control — Design Spec
 
+> **Superseded — historical.** A byte-identical copy of
+> [design-spec.md](design-spec.md), kept because it carries its date in the
+> filename. Describes the retired Windows product, not what ships. For the
+> current design read [ARCHITECTURE.md](ARCHITECTURE.md).
+
 **Date:** 2026-06-04
 **Status:** Approved for planning (brainstorming complete)
 **Implementation protocol:** GSD (user-chosen, overrides default writing-plans)

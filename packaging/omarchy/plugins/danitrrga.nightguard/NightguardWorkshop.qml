@@ -724,8 +724,15 @@ Item {
       // dialog's own handler owns every key while it is up, which is what makes
       // Escape reliably answer the QUESTION rather than reaching whichever
       // child happened to hold focus when it opened. `selectedIndex: 0` means
-      // Enter cancels too: the default answer to "do you want to weaken this?"
-      // is no, and the only way to say yes is to click the button.
+      // Enter CANCELS: the default answer to "do you want to weaken this?" is
+      // no, so a reflex keypress never signs anything.
+      //
+      // It is not true that only a click can say yes -- the kit's dialog moves
+      // the selection on Left/Right/Tab, so right-then-Enter confirms. This
+      // comment claimed otherwise for a while. The dropdown (NightguardPanel)
+      // genuinely has no keyboard path; the window has a deliberate two-key
+      // one. Nobody reflexively presses two keys, which is the friction that
+      // was wanted, but say what is true.
       Keys.priority: Keys.AfterItem
       Keys.onPressed: function(event) {
         if (confirmApply.opened) {
